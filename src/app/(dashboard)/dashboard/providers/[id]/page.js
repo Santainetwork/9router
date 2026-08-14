@@ -990,6 +990,22 @@ export default function ProviderDetailPage() {
                   setSelectedConnection(conn);
                   setShowEditModal(true);
                 }}
+                onUpdateLimits={async (rpm, queueTimeoutMs) => {
+                  try {
+                    const res = await fetch(`/api/providers/${conn.id}`, {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ rpm, queueTimeoutMs }),
+                    });
+                    if (res.ok) {
+                      setConnections(prev => prev.map(c =>
+                        c.id === conn.id ? { ...c, rpm, queueTimeoutMs } : c
+                      ));
+                    }
+                  } catch (error) {
+                    console.log("Error updating connection limits:", error);
+                  }
+                }}
                 onDelete={() => handleDelete(conn.id)}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />

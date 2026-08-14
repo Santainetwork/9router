@@ -682,6 +682,21 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  const handleUpdateKeyLimits = async (id, rpm, queueTimeoutMs) => {
+    try {
+      const res = await fetch(`/api/keys/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rpm, queueTimeoutMs }),
+      });
+      if (res.ok) {
+        setKeys(prev => prev.map(k => k.id === id ? { ...k, rpm, queueTimeoutMs } : k));
+      }
+    } catch (error) {
+      console.log("Error updating key limits:", error);
+    }
+  };
+
   const maskKey = (fullKey) => {
     if (!fullKey || fullKey.length <= 10) return fullKey || "";
     return fullKey.slice(0, 6) + "•".repeat(fullKey.length - 10) + fullKey.slice(-4);
@@ -1042,6 +1057,34 @@ export default function APIPageClient({ machineId }) {
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
+                  <div className="mt-2 flex flex-wrap items-end gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-text-muted">RPM (0 = unlimited)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        defaultValue={key.rpm ?? 0}
+                        onBlur={(e) => {
+                          const rpm = Math.max(0, parseInt(e.target.value, 10) || 0);
+                          if (rpm !== (key.rpm ?? 0)) handleUpdateKeyLimits(key.id, rpm, key.queueTimeoutMs ?? 0);
+                        }}
+                        className="w-28 rounded border border-border bg-input px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-text-muted">Queue timeout ms (0 = reject)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        defaultValue={key.queueTimeoutMs ?? 0}
+                        onBlur={(e) => {
+                          const queueTimeoutMs = Math.max(0, parseInt(e.target.value, 10) || 0);
+                          if (queueTimeoutMs !== (key.queueTimeoutMs ?? 0)) handleUpdateKeyLimits(key.id, key.rpm ?? 0, queueTimeoutMs);
+                        }}
+                        className="w-36 rounded border border-border bg-input px-2 py-1 text-sm"
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Toggle

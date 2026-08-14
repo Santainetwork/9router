@@ -6,7 +6,7 @@ import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onUpdateLimits, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -208,6 +208,36 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               )}
             </div>
           )}
+          {onUpdateLimits && (
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-text-muted">RPM (0 = unlimited)</label>
+                <input
+                  type="number"
+                  min="0"
+                  defaultValue={connection.rpm ?? 0}
+                  onBlur={(e) => {
+                    const rpm = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    if (rpm !== (connection.rpm ?? 0)) onUpdateLimits(rpm, connection.queueTimeoutMs ?? 0);
+                  }}
+                  className="w-24 rounded border border-border bg-input px-2 py-1 text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-text-muted">Queue timeout ms (0 = reject)</label>
+                <input
+                  type="number"
+                  min="0"
+                  defaultValue={connection.queueTimeoutMs ?? 0}
+                  onBlur={(e) => {
+                    const queueTimeoutMs = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    if (queueTimeoutMs !== (connection.queueTimeoutMs ?? 0)) onUpdateLimits(connection.rpm ?? 0, queueTimeoutMs);
+                  }}
+                  className="w-32 rounded border border-border bg-input px-2 py-1 text-sm"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
@@ -289,6 +319,8 @@ ConnectionRow.propTypes = {
     lastError: PropTypes.string,
     priority: PropTypes.number,
     globalPriority: PropTypes.number,
+    rpm: PropTypes.number,
+    queueTimeoutMs: PropTypes.number,
   }).isRequired,
   proxyPools: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string,
@@ -304,6 +336,7 @@ ConnectionRow.propTypes = {
   onMoveDown: PropTypes.func.isRequired,
   onToggleActive: PropTypes.func.isRequired,
   onUpdateProxy: PropTypes.func,
+  onUpdateLimits: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   oneByOneStatus: PropTypes.shape({
