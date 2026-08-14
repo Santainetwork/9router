@@ -73,7 +73,10 @@ Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
   provider names.
 - Overview page: a live **Request queue** card polling every 5s, showing how many
   requests are queued (waiting on an RPM slot) per key / provider.
-  Commit `4fd4eef8`.
+- **Dedicated page** `/dashboard/queue-monitor` (sidebar "Request Queue"):
+  totals, a per-bucket table (name, scope, rpm, in-window, queued, window reset),
+  pause/resume, 3s polling.
+  Commits `4fd4eef8`, `bd9fc451`.
 
 ### Attribution
 - "Modified by SantaiNetwork" added to the sidebar header, login page, the Key
