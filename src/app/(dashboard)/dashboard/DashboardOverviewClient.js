@@ -271,9 +271,12 @@ export default function DashboardOverviewClient() {
             <p className="text-sm font-medium">Request queue</p>
             <span className="inline-flex size-2 rounded-full bg-green-500 animate-pulse" title="live (5s)" />
           </div>
-          <span className="text-xs text-text-muted">
-            {queue ? `${queue.totalQueued} queued · ${queue.totalActiveWindows} active` : "…"}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-text-muted">
+              {queue ? `${queue.totalQueued} queued · ${queue.totalActiveWindows} active` : "…"}
+            </span>
+            <Link href="/dashboard/queue-monitor" className="text-xs text-primary hover:underline">Open</Link>
+          </div>
         </div>
         {!queue || queue.buckets.length === 0 ? (
           <p className="text-sm text-text-muted">No requests queued. Nothing is waiting on an RPM limit right now.</p>
