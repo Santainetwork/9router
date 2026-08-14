@@ -21,7 +21,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { isActive, rpm, queueTimeoutMs } = body;
+    const { isActive, rpm, queueTimeoutMs, allowedModels, tokenQuota } = body;
 
     const existing = await getApiKeyById(id);
     if (!existing) {
@@ -32,6 +32,12 @@ export async function PUT(request, { params }) {
     if (isActive !== undefined) updateData.isActive = isActive;
     if (rpm !== undefined) updateData.rpm = Math.max(0, Math.floor(Number(rpm) || 0));
     if (queueTimeoutMs !== undefined) updateData.queueTimeoutMs = Math.max(0, Math.floor(Number(queueTimeoutMs) || 0));
+    if (tokenQuota !== undefined) updateData.tokenQuota = Math.max(0, Math.floor(Number(tokenQuota) || 0));
+    if (allowedModels !== undefined) {
+      updateData.allowedModels = Array.isArray(allowedModels)
+        ? allowedModels.filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim())
+        : [];
+    }
 
     const updated = await updateApiKey(id, updateData);
 

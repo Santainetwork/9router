@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
+import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
@@ -70,6 +70,12 @@ export async function handleEmbeddings(request) {
   {
     const limited = await enforceApiKeyRateLimit(apiKey);
     if (limited) return limited;
+  }
+
+  // Per-API-key RBAC: model allowlist + total-token quota.
+  {
+    const denied = await enforceApiKeyAccess(apiKey, modelStr);
+    if (denied) return denied;
   }
 
   if (!modelStr) {

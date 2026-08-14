@@ -682,15 +682,16 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  const handleUpdateKeyLimits = async (id, rpm, queueTimeoutMs) => {
+  const handleUpdateKeyLimits = async (id, patch) => {
     try {
       const res = await fetch(`/api/keys/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rpm, queueTimeoutMs }),
+        body: JSON.stringify(patch),
       });
       if (res.ok) {
-        setKeys(prev => prev.map(k => k.id === id ? { ...k, rpm, queueTimeoutMs } : k));
+        const data = await res.json().catch(() => ({}));
+        setKeys(prev => prev.map(k => k.id === id ? { ...k, ...patch, ...(data.key || {}) } : k));
       }
     } catch (error) {
       console.log("Error updating key limits:", error);
@@ -1066,7 +1067,7 @@ export default function APIPageClient({ machineId }) {
                         defaultValue={key.rpm ?? 0}
                         onBlur={(e) => {
                           const rpm = Math.max(0, parseInt(e.target.value, 10) || 0);
-                          if (rpm !== (key.rpm ?? 0)) handleUpdateKeyLimits(key.id, rpm, key.queueTimeoutMs ?? 0);
+                          if (rpm !== (key.rpm ?? 0)) handleUpdateKeyLimits(key.id, { rpm });
                         }}
                         className="w-28 rounded border border-border bg-input px-2 py-1 text-sm"
                       />
@@ -1079,9 +1080,39 @@ export default function APIPageClient({ machineId }) {
                         defaultValue={key.queueTimeoutMs ?? 0}
                         onBlur={(e) => {
                           const queueTimeoutMs = Math.max(0, parseInt(e.target.value, 10) || 0);
-                          if (queueTimeoutMs !== (key.queueTimeoutMs ?? 0)) handleUpdateKeyLimits(key.id, key.rpm ?? 0, queueTimeoutMs);
+                          if (queueTimeoutMs !== (key.queueTimeoutMs ?? 0)) handleUpdateKeyLimits(key.id, { queueTimeoutMs });
                         }}
                         className="w-36 rounded border border-border bg-input px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-text-muted">Token quota (0 = unlimited)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        defaultValue={key.tokenQuota ?? 0}
+                        onBlur={(e) => {
+                          const tokenQuota = Math.max(0, parseInt(e.target.value, 10) || 0);
+                          if (tokenQuota !== (key.tokenQuota ?? 0)) handleUpdateKeyLimits(key.id, { tokenQuota });
+                        }}
+                        className="w-36 rounded border border-border bg-input px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 min-w-[16rem] flex-1">
+                      <label className="text-xs text-text-muted">Allowed models (comma-separated, blank = all)</label>
+                      <input
+                        type="text"
+                        defaultValue={(key.allowedModels || []).join(", ")}
+                        placeholder="e.g. openai/gpt-4o, anthropic/claude-3-5-sonnet"
+                        onBlur={(e) => {
+                          const allowedModels = e.target.value
+                            .split(",")
+                            .map((m) => m.trim())
+                            .filter(Boolean);
+                          const current = (key.allowedModels || []).join(",");
+                          if (allowedModels.join(",") !== current) handleUpdateKeyLimits(key.id, { allowedModels });
+                        }}
+                        className="w-full rounded border border-border bg-input px-2 py-1 text-sm"
                       />
                     </div>
                   </div>

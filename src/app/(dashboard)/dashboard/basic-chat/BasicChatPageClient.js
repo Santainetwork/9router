@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   activeSessionId: "basic-chat.activeSessionId",
   activeProviderId: "basic-chat.activeProviderId",
   draft: "basic-chat.draft",
+  apiKey: "basic-chat.apiKey",
 };
 
 function createId() {
@@ -194,6 +195,11 @@ export default function BasicChatPageClient() {
     return globalThis.localStorage.getItem(STORAGE_KEYS.draft) || "";
   });
   const [attachments, setAttachments] = useState([]);
+  const [apiKey, setApiKey] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return globalThis.localStorage.getItem(STORAGE_KEYS.apiKey) || "";
+  });
+  const [apiKeyOpen, setApiKeyOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState("");
   const [streamingText, setStreamingText] = useState("");
@@ -370,10 +376,11 @@ export default function BasicChatPageClient() {
       globalThis.localStorage.setItem(STORAGE_KEYS.activeSessionId, activeSessionId);
       globalThis.localStorage.setItem(STORAGE_KEYS.activeProviderId, activeProviderId);
       globalThis.localStorage.setItem(STORAGE_KEYS.draft, draft);
+      globalThis.localStorage.setItem(STORAGE_KEYS.apiKey, apiKey);
     } catch {
       // Ignore storage errors.
     }
-  }, [isHydrated, sessions, activeSessionId, activeProviderId, draft]);
+  }, [isHydrated, sessions, activeSessionId, activeProviderId, draft, apiKey]);
 
   useEffect(() => {
     if (!isHydrated || loadingData || initializedRef.current) return;
@@ -570,78 +577,29 @@ export default function BasicChatPageClient() {
     }));
   };
 
-  const sendMessage = async () => {
-    const model = activeModel || activeProviderGroup?.models?.[0] || null;
-    if (!model) return;
-
-    const userText = draft.trim();
-    if (!userText && attachments.length === 0) return;
-
-    let sessionId = activeSessionId;
-    let session = sessions.find((item) => item.id === sessionId);
-    if (!session) {
-      session = ensureSessionForModel(model);
-      if (!session) return;
-      sessionId = session.id;
-      setSessions((prev) => [session, ...prev]);
-      setActiveSessionId(sessionId);
-    }
-
-    const userMessage = {
-      id: createId(),
-      role: "user",
-      content: userText,
-      attachments: attachments.map((attachment) => ({
-        id: attachment.id,
-        name: attachment.name,
-        type: attachment.type,
-        dataUrl: attachment.dataUrl,
-      })),
-      createdAt: new Date().toISOString(),
-    };
-
-    const assistantMessageId = createId();
-    const assistantMessage = {
-      id: assistantMessageId,
-      role: "assistant",
-      content: "",
-      createdAt: new Date().toISOString(),
-      status: "streaming",
-    };
-
-    const nextMessages = [...(session.messages || []), userMessage, assistantMessage];
-    setSessions((prev) => prev.map((item) => (item.id === sessionId ? {
-      ...item,
-      providerId: model.providerId,
-      providerName: model.providerName,
-      modelId: model.id,
-      modelName: model.name,
-      messages: nextMessages,
-      updatedAt: new Date().toISOString(),
-      title: item.title === "New chat" ? makeSessionTitle(userText) : item.title,
-    } : item)));
-    setDraft("");
-    setAttachments([]);
+  // Shared streaming core. Runs a completion for `requestMessages`, writing the
+  // stream into the assistant message `assistantMessageId` in `sessionId`.
+  const runStream = async (sessionId, model, requestMessages, assistantMessageId, titleSeed) => {
     setIsSending(true);
     setStreamingMessageId(assistantMessageId);
     setStreamingText("");
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
-    const requestMessages = nextMessages
-      .filter((message) => !(message.role === "assistant" && message.id === assistantMessageId))
-      .map((message) => ({
-        role: message.role,
-        content: message.role === "user" ? buildUserContent(message) : message.content,
-      }));
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    };
+    // When the user supplies a key, hit the provider directly via that key
+    // (bypasses server-side key injection). Otherwise the dashboard proxy
+    // injects an active issued key.
+    const trimmedKey = (apiKey || "").trim();
+    if (trimmedKey) headers.Authorization = `Bearer ${trimmedKey}`;
 
     try {
       const response = await fetch("/api/dashboard/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
+        headers,
         body: JSON.stringify({
           model: model.requestModel || model.id,
           messages: requestMessages,
@@ -652,7 +610,7 @@ export default function BasicChatPageClient() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(textValue(errorData.error || errorData.message || `Request failed (${response.status})`));
+        throw new Error(textValue(errorData.error?.message || errorData.error || errorData.message || `Request failed (${response.status})`));
       }
 
       const reader = response.body?.getReader();
@@ -706,16 +664,16 @@ export default function BasicChatPageClient() {
 
       updateSession(sessionId, (currentSession) => ({
         ...currentSession,
-        messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText || message.content, status: "done" } : message)),
+        messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText || message.content, status: assistantText ? "done" : "error" } : message)),
         updatedAt: new Date().toISOString(),
       }));
-      finalizeSessionTitle(sessionId, userText);
+      if (titleSeed) finalizeSessionTitle(sessionId, titleSeed);
     } catch (error) {
       if (error.name !== "AbortError") {
         const errorText = textValue(error?.message || error);
         updateSession(sessionId, (currentSession) => ({
           ...currentSession,
-          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: message.content || `Error: ${errorText}`, status: "error" } : message)),
+          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: `Error: ${errorText}`, status: "error" } : message)),
           updatedAt: new Date().toISOString(),
         }));
         setLoadError(errorText || "Failed to send message.");
@@ -726,6 +684,101 @@ export default function BasicChatPageClient() {
       setStreamingText("");
       abortRef.current = null;
     }
+  };
+
+  const buildRequestMessages = (messages, stopBeforeId) => {
+    const out = [];
+    for (const message of messages) {
+      if (stopBeforeId && message.id === stopBeforeId) break;
+      if (message.role !== "user" && message.role !== "assistant") continue;
+      if (message.role === "assistant" && (message.status === "error" || !textValue(message.content))) continue;
+      out.push({
+        role: message.role,
+        content: message.role === "user" ? buildUserContent(message) : message.content,
+      });
+    }
+    return out;
+  };
+
+  const sendMessage = async () => {
+    if (isSending) return;
+    const model = activeModel || activeProviderGroup?.models?.[0] || null;
+    if (!model) return;
+
+    const userText = draft.trim();
+    if (!userText && attachments.length === 0) return;
+
+    let sessionId = activeSessionId;
+    let session = sessions.find((item) => item.id === sessionId);
+    if (!session) {
+      session = ensureSessionForModel(model);
+      if (!session) return;
+      sessionId = session.id;
+      setSessions((prev) => [session, ...prev]);
+      setActiveSessionId(sessionId);
+    }
+
+    const userMessage = {
+      id: createId(),
+      role: "user",
+      content: userText,
+      attachments: attachments.map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        type: attachment.type,
+        dataUrl: attachment.dataUrl,
+      })),
+      createdAt: new Date().toISOString(),
+    };
+
+    const assistantMessageId = createId();
+    const assistantMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+      status: "streaming",
+    };
+
+    const nextMessages = [...(session.messages || []), userMessage, assistantMessage];
+    setSessions((prev) => prev.map((item) => (item.id === sessionId ? {
+      ...item,
+      providerId: model.providerId,
+      providerName: model.providerName,
+      modelId: model.id,
+      modelName: model.name,
+      messages: nextMessages,
+      updatedAt: new Date().toISOString(),
+      title: item.title === "New chat" ? makeSessionTitle(userText) : item.title,
+    } : item)));
+    setDraft("");
+    setAttachments([]);
+
+    const requestMessages = buildRequestMessages(nextMessages, assistantMessageId);
+    await runStream(sessionId, model, requestMessages, assistantMessageId, userText);
+  };
+
+  // Regenerate the assistant reply for `assistantId`: re-run using all messages
+  // that precede it, replacing its content in place.
+  const retryMessage = async (assistantId) => {
+    if (isSending) return;
+    const model = activeModel || activeProviderGroup?.models?.[0] || null;
+    if (!model) return;
+
+    const sessionId = activeSessionId;
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!session) return;
+
+    const requestMessages = buildRequestMessages(session.messages || [], assistantId);
+    if (requestMessages.length === 0) return;
+
+    updateSession(sessionId, (currentSession) => ({
+      ...currentSession,
+      messages: currentSession.messages.map((message) => (message.id === assistantId ? { ...message, content: "", status: "streaming" } : message)),
+      updatedAt: new Date().toISOString(),
+    }));
+
+    await runStream(sessionId, model, requestMessages, assistantId, null);
   };
 
   const handleKeyDown = (event) => {
@@ -801,6 +854,14 @@ export default function BasicChatPageClient() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setApiKeyOpen((value) => !value)}
+              className={`rounded-2xl border px-4 py-3 text-sm transition ${apiKey.trim() ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15" : "border-white/10 bg-white/5 text-white/80 hover:bg-white/8"}`}
+              title={apiKey.trim() ? "Using your API key" : "Set an API key to call the provider directly"}
+            >
+              <span className="material-symbols-outlined align-middle text-[18px]">key</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setHistoryOpen((value) => !value)}
               className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 transition hover:bg-white/8"
             >
@@ -811,6 +872,36 @@ export default function BasicChatPageClient() {
             </Button>
           </div>
         </div>
+
+        {apiKeyOpen ? (
+          <div className="mx-4 mb-1 rounded-[18px] border border-white/10 bg-[#262626] p-3 lg:mx-6">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">API Key (optional)</p>
+              <button type="button" onClick={() => setApiKeyOpen(false)} className="text-white/40 hover:text-white" aria-label="Close">
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-white/50">
+              Provide a 9router API key to call the provider directly with that key. Leave blank to use an auto-selected active key.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder="sk-..."
+                autoComplete="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded-[12px] border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white outline-none placeholder:text-white/30 focus:border-white/25"
+              />
+              {apiKey ? (
+                <button type="button" onClick={() => setApiKey("")} className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70 transition hover:bg-white/10">
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {historyOpen ? (
           <div ref={historyMenuRef} className="absolute right-4 top-[72px] z-20 w-[min(360px,calc(100vw-2rem))] rounded-[20px] border border-white/10 bg-[#262626] p-2 shadow-2xl shadow-black/50 lg:right-6">
@@ -901,6 +992,24 @@ export default function BasicChatPageClient() {
                         {content}
                         {isAssistant && isStreaming && !streamingText ? <span className="inline-block animate-pulse">▋</span> : null}
                       </div>
+
+                      {isAssistant && !isStreaming ? (
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => retryMessage(message.id)}
+                            disabled={isSending}
+                            className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                            title="Regenerate this reply"
+                          >
+                            <span className="material-symbols-outlined text-[15px]">refresh</span>
+                            Retry
+                          </button>
+                          {message.status === "error" ? (
+                            <span className="text-xs text-rose-300/80">failed</span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );

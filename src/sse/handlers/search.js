@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
+import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
@@ -63,6 +63,12 @@ export async function handleSearch(request) {
   {
     const limited = await enforceApiKeyRateLimit(apiKey);
     if (limited) return limited;
+  }
+
+  // Per-API-key RBAC: model allowlist + total-token quota.
+  {
+    const denied = await enforceApiKeyAccess(apiKey, providerInput);
+    if (denied) return denied;
   }
 
   if (!providerInput || typeof providerInput !== "string") {

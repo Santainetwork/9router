@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
+import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets } from "open-sse/handlers/videoCore.js";
@@ -105,6 +105,13 @@ export async function handleVideoCreate(request, action) {
   const resolved = await resolveVideoProvider(bodyInfo.parsed);
   if (resolved.error) return resolved.error;
   const { provider, model } = resolved;
+
+  // Per-API-key RBAC: model allowlist + total-token quota.
+  {
+    const apiKey = extractApiKey(request);
+    const denied = await enforceApiKeyAccess(apiKey, bodyInfo.parsed?.model || model);
+    if (denied) return denied;
+  }
 
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
   // otherwise forward the original bytes untouched.

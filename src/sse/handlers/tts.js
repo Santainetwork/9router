@@ -2,7 +2,7 @@ import {
   extractApiKey, isValidApiKey,
   getProviderCredentials, markAccountUnavailable,
 } from "../services/auth.js";
-import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
+import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
@@ -46,6 +46,12 @@ export async function handleTts(request) {
   {
     const limited = await enforceApiKeyRateLimit(apiKey);
     if (limited) return limited;
+  }
+
+  // Per-API-key RBAC: model allowlist + total-token quota.
+  {
+    const denied = await enforceApiKeyAccess(apiKey, modelStr);
+    if (denied) return denied;
   }
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");

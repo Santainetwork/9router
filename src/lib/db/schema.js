@@ -85,6 +85,8 @@ export const TABLES = {
       createdAt: "TEXT NOT NULL",
       rpm: "INTEGER DEFAULT 0",
       queueTimeoutMs: "INTEGER DEFAULT 0",
+      allowedModels: "TEXT",
+      tokenQuota: "INTEGER DEFAULT 0",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
   },

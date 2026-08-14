@@ -9,7 +9,7 @@ import {
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { acquire, RateLimitTimeoutError } from "open-sse/services/rateLimiter.js";
-import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
+import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -85,6 +85,12 @@ export async function handleChat(request, clientRawRequest = null) {
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
+  }
+
+  // Per-API-key RBAC: model allowlist + total-token quota.
+  {
+    const denied = await enforceApiKeyAccess(apiKey, modelStr);
+    if (denied) return denied;
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
