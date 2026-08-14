@@ -5,7 +5,7 @@ import { Card, Button, Toggle, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
-import useThemeStore from "@/store/themeStore";
+import useThemeStore, { THEME_PRESETS } from "@/store/themeStore";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
@@ -25,6 +25,13 @@ export default function ProfilePage() {
   const accent = useThemeStore((s) => s.accent);
   const setAccent = useThemeStore((s) => s.setAccent);
   const resetAccent = useThemeStore((s) => s.resetAccent);
+  const palette = useThemeStore((s) => s.palette);
+  const radius = useThemeStore((s) => s.radius);
+  const preset = useThemeStore((s) => s.preset);
+  const setPaletteColor = useThemeStore((s) => s.setPaletteColor);
+  const setRadius = useThemeStore((s) => s.setRadius);
+  const applyPreset = useThemeStore((s) => s.applyPreset);
+  const resetCustomTheme = useThemeStore((s) => s.resetCustomTheme);
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
@@ -797,42 +804,113 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
-          {/* Custom accent color */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-border">
-            <div>
-              <p className="font-medium text-sm sm:text-base">Accent Color</p>
-              <p className="text-xs sm:text-sm text-text-muted">Customize the brand color used across the dashboard.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {["#E56A4A", "#3B82F6", "#10B981", "#8B5CF6", "#EC4899", "#F59E0B"].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setAccent(c)}
-                  aria-label={`Use ${c}`}
-                  className={cn(
-                    "size-7 rounded-full border-2 transition-transform hover:scale-110",
-                    (accent || "#E56A4A").toLowerCase() === c.toLowerCase() ? "border-text-main" : "border-transparent"
-                  )}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-              <input
-                type="color"
-                value={accent || "#E56A4A"}
-                onChange={(e) => setAccent(e.target.value)}
-                aria-label="Custom accent color"
-                className="size-8 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
-              />
-              {accent && (
+          {/* Theme presets */}
+          <div className="flex flex-col gap-3 pt-4 border-t border-border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-sm sm:text-base">Theme Presets</p>
+                <p className="text-xs sm:text-sm text-text-muted">Apply a full color scheme in one click.</p>
+              </div>
+              {(accent || Object.keys(palette).length > 0 || radius > 0) && (
                 <button
                   type="button"
-                  onClick={resetAccent}
-                  className="text-xs text-text-muted hover:text-text-main underline"
+                  onClick={resetCustomTheme}
+                  className="text-xs text-text-muted hover:text-text-main underline shrink-0"
                 >
-                  Reset
+                  Reset all
                 </button>
               )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {Object.entries(THEME_PRESETS).map(([key, p]) => {
+                const swatchBg = p.bg || "var(--color-bg)";
+                const swatchAccent = p.accent || "var(--color-primary)";
+                const swatchSurface = p.surface || "var(--color-surface)";
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => applyPreset(key)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border p-2 text-left transition-colors",
+                      preset === key ? "border-primary ring-1 ring-primary/40" : "border-border hover:border-primary/50"
+                    )}
+                  >
+                    <span
+                      className="flex size-8 shrink-0 items-center justify-center rounded-md border border-black/10"
+                      style={{ backgroundColor: swatchBg }}
+                    >
+                      <span className="flex gap-0.5">
+                        <span className="size-2 rounded-full" style={{ backgroundColor: swatchAccent }} />
+                        <span className="size-2 rounded-full" style={{ backgroundColor: swatchSurface }} />
+                      </span>
+                    </span>
+                    <span className="text-xs font-medium truncate">{p.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom colors */}
+          <div className="flex flex-col gap-3 pt-4 border-t border-border">
+            <div>
+              <p className="font-medium text-sm sm:text-base">Custom Colors</p>
+              <p className="text-xs sm:text-sm text-text-muted">Fine-tune individual colors. Leave a swatch to fall back to the built-in value.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { key: "accent", label: "Accent", value: accent, fallback: "#E56A4A", set: setAccent },
+                { key: "bg", label: "Background", value: palette.bg, fallback: isDark ? "#1a1a1a" : "#FDFAF6", set: (v) => setPaletteColor("bg", v) },
+                { key: "surface", label: "Surface / Cards", value: palette.surface, fallback: isDark ? "#262626" : "#ffffff", set: (v) => setPaletteColor("surface", v) },
+                { key: "text", label: "Text", value: palette.text, fallback: isDark ? "#ededed" : "#0a0a0a", set: (v) => setPaletteColor("text", v) },
+                { key: "border", label: "Border", value: palette.border, fallback: isDark ? "#333333" : "#e5e7eb", set: (v) => setPaletteColor("border", v) },
+              ].map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-2 rounded-lg bg-bg border border-border p-2">
+                  <span className="text-sm">{row.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-text-muted">{(row.value || "").toUpperCase()}</span>
+                    <input
+                      type="color"
+                      value={row.value || row.fallback}
+                      onChange={(e) => row.set(e.target.value)}
+                      aria-label={`${row.label} color`}
+                      className="size-8 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
+                    />
+                    {row.value && (
+                      <button
+                        type="button"
+                        onClick={() => (row.key === "accent" ? resetAccent() : setPaletteColor(row.key, ""))}
+                        aria-label={`Reset ${row.label}`}
+                        className="text-text-muted hover:text-text-main"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">close</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Corner radius */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-border">
+            <div>
+              <p className="font-medium text-sm sm:text-base">Corner Radius</p>
+              <p className="text-xs sm:text-sm text-text-muted">Roundness of cards, buttons, and inputs.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={24}
+                step={1}
+                value={radius || 10}
+                onChange={(e) => setRadius(Number(e.target.value))}
+                className="w-40 accent-[var(--color-primary)]"
+                aria-label="Corner radius"
+              />
+              <span className="text-xs font-mono text-text-muted w-10 text-right">{radius || 10}px</span>
             </div>
           </div>
           <div className="flex flex-col gap-3 pt-4 border-t border-border">
