@@ -1,7 +1,7 @@
-import { getMachineId } from "@/shared/utils/machine";
-import EndpointPageClient from "./endpoint/EndpointPageClient";
+import DashboardOverviewClient from "./DashboardOverviewClient";
 
-export default async function DashboardPage() {
-  const machineId = await getMachineId();
-  return <EndpointPageClient machineId={machineId} />;
+export const dynamic = "force-dynamic";
+
+export default function DashboardPage() {
+  return <DashboardOverviewClient />;
 }
