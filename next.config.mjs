@@ -12,6 +12,11 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Allow the dev HMR/asset server to serve /_next chunks when the dashboard is
+  // opened via a LAN IP or tunnel host (Next 15+ blocks cross-origin dev
+  // requests by default → 403 on /_next/static/*). Comma-separated env override.
+  allowedDevOrigins: (process.env.ALLOWED_DEV_ORIGINS || "")
+    .split(",").map((s) => s.trim()).filter(Boolean),
   output: "standalone",
   // `open` must stay external. It derives its own directory from `import.meta.url`, and
   // webpack replaces that with the absolute path of the BUILD machine as a string literal.
