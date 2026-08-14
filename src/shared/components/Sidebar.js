@@ -130,6 +130,7 @@ export default function Sidebar({ onClose }) {
                 {APP_CONFIG.name}
               </h1>
               <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
+              <span className="text-[10px] text-text-subtle">Modified by SantaiNetwork</span>
             </div>
           </Link>
           {updateInfo && (
