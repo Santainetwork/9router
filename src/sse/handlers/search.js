@@ -5,6 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
+import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
@@ -56,6 +57,12 @@ export async function handleSearch(request) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
+  }
+
+  // Per-API-key RPM rate limit + queue (same gate as chat/messages).
+  {
+    const limited = await enforceApiKeyRateLimit(apiKey);
+    if (limited) return limited;
   }
 
   if (!providerInput || typeof providerInput !== "string") {

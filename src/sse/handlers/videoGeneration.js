@@ -5,6 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
+import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets } from "open-sse/handlers/videoCore.js";
@@ -34,6 +35,9 @@ async function requireValidApiKey(request) {
     const valid = await isValidApiKey(apiKey);
     if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
+  // Per-API-key RPM rate limit + queue (same gate as chat/messages).
+  const limited = await enforceApiKeyRateLimit(apiKey);
+  if (limited) return limited;
   return null;
 }
 

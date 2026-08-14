@@ -8,8 +8,8 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { getApiKeyLimits } from "@/lib/localDb";
 import { acquire, RateLimitTimeoutError } from "open-sse/services/rateLimiter.js";
+import { enforceApiKeyRateLimit } from "../services/rateLimitGate.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -77,19 +77,9 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Per-API-key RPM rate limit + queue (applies whenever a known key is presented).
-  if (apiKey) {
-    const limits = await getApiKeyLimits(apiKey);
-    if (limits && limits.rpm > 0) {
-      try {
-        await acquire("apikey", limits.id, { rpm: limits.rpm, timeoutMs: limits.queueTimeoutMs });
-      } catch (e) {
-        if (e instanceof RateLimitTimeoutError) {
-          log.warn("RATELIMIT", `API key ${log.maskKey(apiKey)} exceeded ${limits.rpm} rpm`);
-          return unavailableResponse(HTTP_STATUS.RATE_LIMITED, "API key rate limit exceeded", e.retryAfter, `${e.retryAfter}s`);
-        }
-        throw e;
-      }
-    }
+  {
+    const limited = await enforceApiKeyRateLimit(apiKey);
+    if (limited) return limited;
   }
 
   if (!modelStr) {

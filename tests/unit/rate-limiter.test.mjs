@@ -47,6 +47,37 @@ async function main() {
   //    possible; instead verify grant happens within a real 60s window is too slow).
   //    Skip long-window drain here; covered by logic review + test 4 timing.
 
+  // 7. Negative / NaN rpm → treated as no-limit (pass-through, no bucket).
+  _reset();
+  await acquire("apikey", "neg", { rpm: -5, timeoutMs: 100 });
+  await acquire("apikey", "neg", { rpm: NaN });
+  assert.equal(_stats("apikey", "neg"), null, "negative/NaN rpm → no bucket");
+
+  // 8. Concurrent burst: fire N>rpm at once with no timeout; exactly rpm win.
+  _reset();
+  const rpm = 3;
+  const results = await Promise.allSettled(
+    Array.from({ length: 10 }, () => acquire("provider", "burst", { rpm }))
+  );
+  const granted = results.filter((r) => r.status === "fulfilled").length;
+  const rejected = results.filter((r) => r.status === "rejected").length;
+  assert.equal(granted, rpm, `exactly ${rpm} granted in burst`);
+  assert.equal(rejected, 10 - rpm, "rest rejected");
+  assert.ok(
+    results.every((r) => r.status === "fulfilled" || r.reason instanceof RateLimitTimeoutError),
+    "burst rejects are RateLimitTimeoutError"
+  );
+  assert.equal(_stats("provider", "burst").count, rpm, "count matches rpm after burst");
+
+  // 9. retry-after is a positive integer (seconds) on immediate reject.
+  _reset();
+  await acquire("apikey", "ra", { rpm: 1 });
+  await assert.rejects(
+    () => acquire("apikey", "ra", { rpm: 1 }),
+    (e) => Number.isInteger(e.retryAfter) && e.retryAfter >= 1 && e.retryAfter <= 60,
+    "retryAfter is int in [1,60]"
+  );
+
   console.log("rate-limiter: all assertions passed");
 }
 

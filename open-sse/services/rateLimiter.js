@@ -72,6 +72,8 @@ function pump(scope, key) {
     const msLeft = Math.max(1, WINDOW_MS - (t - b.windowStart));
     if (!b.pumpTimer) {
       b.pumpTimer = setTimeout(() => { b.pumpTimer = null; pump(scope, key); }, msLeft);
+      // Don't keep the process alive solely to drain an empty-ish queue.
+      if (typeof b.pumpTimer.unref === "function") b.pumpTimer.unref();
     }
   }
 }
@@ -116,7 +118,17 @@ export function acquire(scope, key, { rpm, timeoutMs = 0 } = {}) {
 }
 
 // Test/introspection helpers.
-export function _reset() { scopes.clear(); }
+export function _reset() {
+  // Clear any pending pump/queue timers before dropping buckets so tests and
+  // hot-reloads don't leak timers that keep the event loop alive.
+  for (const m of scopes.values()) {
+    for (const b of m.values()) {
+      if (b.pumpTimer) { clearTimeout(b.pumpTimer); b.pumpTimer = null; }
+      for (const w of b.queue) { if (w.timer) clearTimeout(w.timer); }
+    }
+  }
+  scopes.clear();
+}
 export function _stats(scope, key) {
   const b = scopes.get(scope)?.get(key);
   if (!b) return null;
