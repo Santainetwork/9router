@@ -10,6 +10,8 @@ function rowToKey(row) {
     machineId: row.machineId,
     isActive: row.isActive === 1 || row.isActive === true,
     createdAt: row.createdAt,
+    rpm: row.rpm ?? 0,
+    queueTimeoutMs: row.queueTimeoutMs ?? 0,
   };
 }
 
@@ -37,10 +39,12 @@ export async function createApiKey(name, machineId) {
     machineId,
     isActive: true,
     createdAt: new Date().toISOString(),
+    rpm: 0,
+    queueTimeoutMs: 0,
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, rpm, queueTimeoutMs) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, 0, 0]
   );
   return apiKey;
 }
@@ -52,11 +56,13 @@ export async function updateApiKey(id, data) {
     const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
+    const rpm = Number.isFinite(Number(merged.rpm)) ? Math.max(0, Math.floor(Number(merged.rpm))) : 0;
+    const queueTimeoutMs = Number.isFinite(Number(merged.queueTimeoutMs)) ? Math.max(0, Math.floor(Number(merged.queueTimeoutMs))) : 0;
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, rpm = ?, queueTimeoutMs = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, rpm, queueTimeoutMs, id]
     );
-    result = merged;
+    result = { ...merged, rpm, queueTimeoutMs };
   });
   return result;
 }
@@ -72,4 +78,12 @@ export async function validateApiKey(key) {
   const row = db.get(`SELECT isActive FROM apiKeys WHERE key = ?`, [key]);
   if (!row) return false;
   return row.isActive === 1 || row.isActive === true;
+}
+
+// Fetch limit config for a raw key value (used by the request gate).
+export async function getApiKeyLimits(key) {
+  const db = await getAdapter();
+  const row = db.get(`SELECT id, rpm, queueTimeoutMs FROM apiKeys WHERE key = ?`, [key]);
+  if (!row) return null;
+  return { id: row.id, rpm: row.rpm ?? 0, queueTimeoutMs: row.queueTimeoutMs ?? 0 };
 }

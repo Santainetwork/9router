@@ -8,6 +8,8 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
+import { getApiKeyLimits } from "@/lib/localDb";
+import { acquire, RateLimitTimeoutError } from "open-sse/services/rateLimiter.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -71,6 +73,22 @@ export async function handleChat(request, clientRawRequest = null) {
     if (!valid) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+    }
+  }
+
+  // Per-API-key RPM rate limit + queue (applies whenever a known key is presented).
+  if (apiKey) {
+    const limits = await getApiKeyLimits(apiKey);
+    if (limits && limits.rpm > 0) {
+      try {
+        await acquire("apikey", limits.id, { rpm: limits.rpm, timeoutMs: limits.queueTimeoutMs });
+      } catch (e) {
+        if (e instanceof RateLimitTimeoutError) {
+          log.warn("RATELIMIT", `API key ${log.maskKey(apiKey)} exceeded ${limits.rpm} rpm`);
+          return unavailableResponse(HTTP_STATUS.RATE_LIMITED, "API key rate limit exceeded", e.retryAfter, `${e.retryAfter}s`);
+        }
+        throw e;
+      }
     }
   }
 
@@ -244,6 +262,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     // Account selection shown in the unified "▶" line (acc:...)
+    // Per-provider (per-connection) RPM rate limit + queue.
+    if (credentials.connectionId && credentials.connectionId !== "noauth" && credentials.rpm > 0) {
+      try {
+        await acquire("provider", credentials.connectionId, { rpm: credentials.rpm, timeoutMs: credentials.queueTimeoutMs });
+      } catch (e) {
+        if (e instanceof RateLimitTimeoutError) {
+          log.warn("RATELIMIT", `[${provider}/${model}] connection ${credentials.connectionName} exceeded ${credentials.rpm} rpm`);
+          return unavailableResponse(HTTP_STATUS.RATE_LIMITED, `[${provider}/${model}] provider rate limit exceeded`, e.retryAfter, `${e.retryAfter}s`);
+        }
+        throw e;
+      }
+    }
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
