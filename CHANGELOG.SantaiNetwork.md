@@ -64,6 +64,9 @@ Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
   Commits `99ce3b59`, `5588d54b`.
 
 ### Admin request-queue monitor
+- Builds on the earlier per-API-key / per-provider RPM limiter + FIFO request
+  queue with timeout (`0295bb99`) and its RPM/queue-timeout config UI
+  (`88a820f6`).
 - `rateLimiter.queueSnapshot()` — snapshot of every RPM bucket with `queued`,
   `inWindow`, and `rpm`, plus totals.
 - `GET /api/queue` (admin) — the snapshot enriched with human-readable API-key /
