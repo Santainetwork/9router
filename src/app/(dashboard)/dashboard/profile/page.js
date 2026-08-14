@@ -5,6 +5,7 @@ import { Card, Button, Toggle, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
+import useThemeStore from "@/store/themeStore";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
@@ -21,6 +22,9 @@ function getLocaleFromCookie() {
 
 export default function ProfilePage() {
   const { theme, setTheme, isDark } = useTheme();
+  const accent = useThemeStore((s) => s.accent);
+  const setAccent = useThemeStore((s) => s.setAccent);
+  const resetAccent = useThemeStore((s) => s.resetAccent);
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
@@ -791,6 +795,44 @@ export default function ProfilePage() {
                   <span className="capitalize text-xs sm:text-sm">{option}</span>
                 </button>
               ))}
+            </div>
+          </div>
+          {/* Custom accent color */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-border">
+            <div>
+              <p className="font-medium text-sm sm:text-base">Accent Color</p>
+              <p className="text-xs sm:text-sm text-text-muted">Customize the brand color used across the dashboard.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {["#E56A4A", "#3B82F6", "#10B981", "#8B5CF6", "#EC4899", "#F59E0B"].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setAccent(c)}
+                  aria-label={`Use ${c}`}
+                  className={cn(
+                    "size-7 rounded-full border-2 transition-transform hover:scale-110",
+                    (accent || "#E56A4A").toLowerCase() === c.toLowerCase() ? "border-text-main" : "border-transparent"
+                  )}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <input
+                type="color"
+                value={accent || "#E56A4A"}
+                onChange={(e) => setAccent(e.target.value)}
+                aria-label="Custom accent color"
+                className="size-8 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
+              />
+              {accent && (
+                <button
+                  type="button"
+                  onClick={resetAccent}
+                  className="text-xs text-text-muted hover:text-text-main underline"
+                >
+                  Reset
+                </button>
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-3 pt-4 border-t border-border">
