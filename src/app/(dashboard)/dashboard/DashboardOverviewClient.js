@@ -62,6 +62,7 @@ export default function DashboardOverviewClient() {
   const [providers, setProviders] = useState([]);
   const [keys, setKeys] = useState([]);
   const [stats, setStats] = useState(null);
+  const [queue, setQueue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -91,6 +92,20 @@ export default function DashboardOverviewClient() {
       }
     })();
     return () => { alive = false; };
+  }, []);
+
+  // Live RPM queue monitor (admin): poll every 5s.
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/queue", { cache: "no-store" });
+        if (res.ok && alive) setQueue(await res.json());
+      } catch { /* transient, keep last */ }
+    };
+    load();
+    const id = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
 
   const providerSummary = useMemo(() => {
@@ -248,6 +263,43 @@ export default function DashboardOverviewClient() {
           )}
         </Card>
       </div>
+
+      {/* Live RPM queue monitor (admin) */}
+      <Card>
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">Request queue</p>
+            <span className="inline-flex size-2 rounded-full bg-green-500 animate-pulse" title="live (5s)" />
+          </div>
+          <span className="text-xs text-text-muted">
+            {queue ? `${queue.totalQueued} queued · ${queue.totalActiveWindows} active` : "…"}
+          </span>
+        </div>
+        {!queue || queue.buckets.length === 0 ? (
+          <p className="text-sm text-text-muted">No requests queued. Nothing is waiting on an RPM limit right now.</p>
+        ) : (
+          <div className="flex flex-col divide-y divide-border">
+            {queue.buckets.map((b) => (
+              <div key={`${b.scope}:${b.key}`} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{b.label}</p>
+                  <p className="text-[11px] text-text-muted">
+                    {b.scope === "apikey" ? "API key" : "provider"} · rpm {b.rpm || "∞"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {b.queued > 0 ? (
+                    <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-500">
+                      {b.queued} queued
+                    </span>
+                  ) : null}
+                  <span className="text-xs tabular-nums text-text-muted">{b.inWindow}/{b.rpm || "∞"} used</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

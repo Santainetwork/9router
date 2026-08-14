@@ -134,3 +134,33 @@ export function _stats(scope, key) {
   if (!b) return null;
   return { count: b.count, queued: b.queue.length, windowStart: b.windowStart };
 }
+
+// Admin introspection: snapshot of every bucket that currently has waiters or
+// in-window usage, across all scopes. Used by the admin queue view so ops can
+// see how many requests are queued (waiting for an RPM slot) right now.
+export function queueSnapshot() {
+  const t = now();
+  const buckets = [];
+  let totalQueued = 0;
+  let totalActiveWindows = 0;
+  for (const [scope, m] of scopes.entries()) {
+    for (const [key, b] of m.entries()) {
+      // Live count for the current window (0 if the window has rolled over).
+      const inWindow = t - b.windowStart < WINDOW_MS ? b.count : 0;
+      const queued = b.queue.filter((w) => !w.settled).length;
+      if (queued === 0 && inWindow === 0) continue; // idle bucket, skip
+      totalQueued += queued;
+      if (inWindow > 0) totalActiveWindows += 1;
+      buckets.push({
+        scope,               // "apikey" | "provider"
+        key,                 // api key id / connection id
+        rpm: b.rpmLast || 0, // configured limit
+        inWindow,            // requests used in the current 60s window
+        queued,              // requests waiting for a slot
+        windowResetInMs: Math.max(0, WINDOW_MS - (t - b.windowStart)),
+      });
+    }
+  }
+  buckets.sort((a, b) => b.queued - a.queued || b.inWindow - a.inWindow);
+  return { totalQueued, totalActiveWindows, buckets };
+}
