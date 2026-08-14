@@ -1058,63 +1058,14 @@ export default function APIPageClient({ machineId }) {
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
-                  <div className="mt-2 flex flex-wrap items-end gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-text-muted">RPM (0 = unlimited)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        defaultValue={key.rpm ?? 0}
-                        onBlur={(e) => {
-                          const rpm = Math.max(0, parseInt(e.target.value, 10) || 0);
-                          if (rpm !== (key.rpm ?? 0)) handleUpdateKeyLimits(key.id, { rpm });
-                        }}
-                        className="w-28 rounded border border-border bg-input px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-text-muted">Queue timeout ms (0 = reject)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        defaultValue={key.queueTimeoutMs ?? 0}
-                        onBlur={(e) => {
-                          const queueTimeoutMs = Math.max(0, parseInt(e.target.value, 10) || 0);
-                          if (queueTimeoutMs !== (key.queueTimeoutMs ?? 0)) handleUpdateKeyLimits(key.id, { queueTimeoutMs });
-                        }}
-                        className="w-36 rounded border border-border bg-input px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-text-muted">Token quota (0 = unlimited)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        defaultValue={key.tokenQuota ?? 0}
-                        onBlur={(e) => {
-                          const tokenQuota = Math.max(0, parseInt(e.target.value, 10) || 0);
-                          if (tokenQuota !== (key.tokenQuota ?? 0)) handleUpdateKeyLimits(key.id, { tokenQuota });
-                        }}
-                        className="w-36 rounded border border-border bg-input px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-[16rem] flex-1">
-                      <label className="text-xs text-text-muted">Allowed models (comma-separated, blank = all)</label>
-                      <input
-                        type="text"
-                        defaultValue={(key.allowedModels || []).join(", ")}
-                        placeholder="e.g. openai/gpt-4o, anthropic/claude-3-5-sonnet"
-                        onBlur={(e) => {
-                          const allowedModels = e.target.value
-                            .split(",")
-                            .map((m) => m.trim())
-                            .filter(Boolean);
-                          const current = (key.allowedModels || []).join(",");
-                          if (allowedModels.join(",") !== current) handleUpdateKeyLimits(key.id, { allowedModels });
-                        }}
-                        className="w-full rounded border border-border bg-input px-2 py-1 text-sm"
-                      />
-                    </div>
+                  <div className="mt-2">
+                    <a
+                      href="/dashboard/api-keys"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">tune</span>
+                      Access control (RPM, queue, token quota, allowed models)
+                    </a>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

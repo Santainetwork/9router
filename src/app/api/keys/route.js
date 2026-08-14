@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
-import { getApiKeys, createApiKey } from "@/lib/localDb";
+import { getApiKeys, createApiKey, getApiKeyTokenUsage } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/keys - List API keys
+// GET /api/keys - List API keys (with all-time token usage for quota display)
 export async function GET() {
   try {
     const keys = await getApiKeys();
-    return NextResponse.json({ keys });
+    const withUsage = await Promise.all(
+      keys.map(async (k) => ({
+        ...k,
+        tokensUsed: await getApiKeyTokenUsage(k.key).catch(() => 0),
+      }))
+    );
+    return NextResponse.json({ keys: withUsage });
   } catch (error) {
     console.log("Error fetching keys:", error);
     return NextResponse.json({ error: "Failed to fetch keys" }, { status: 500 });

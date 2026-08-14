@@ -205,11 +205,13 @@ export default function BasicChatPageClient() {
   const [streamingText, setStreamingText] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
   const initializedRef = useRef(false);
   const modelMenuRef = useRef(null);
+  const providerMenuRef = useRef(null);
   const historyMenuRef = useRef(null);
 
   useEffect(() => {
@@ -327,6 +329,9 @@ export default function BasicChatPageClient() {
     const handleClickOutside = (event) => {
       if (modelMenuRef.current && !modelMenuRef.current.contains(event.target)) {
         setModelMenuOpen(false);
+      }
+      if (providerMenuRef.current && !providerMenuRef.current.contains(event.target)) {
+        setProviderMenuOpen(false);
       }
       if (historyMenuRef.current && !historyMenuRef.current.contains(event.target)) {
         setHistoryOpen(false);
@@ -795,13 +800,63 @@ export default function BasicChatPageClient() {
     <div className="relative flex-1 flex flex-col h-full min-h-0 min-w-0 bg-[#212121] text-white overflow-hidden">
       <div className="relative mx-auto flex flex-1 h-full min-h-0 w-full max-w-4xl flex-col">
         <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 lg:px-6">
+          <div className="flex items-center gap-2">
+          {/* Provider selector */}
+          <div ref={providerMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => { setProviderMenuOpen((v) => !v); setModelMenuOpen(false); }}
+              className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/8"
+            >
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">Provider</p>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-semibold text-white">{activeProviderGroup?.providerName || "Select provider"}</span>
+                  <span className="material-symbols-outlined text-[18px] text-white/70">expand_more</span>
+                </div>
+              </div>
+            </button>
+
+            {providerMenuOpen ? (
+              <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#262626] shadow-2xl shadow-black/50">
+                <div className="border-b border-white/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-white/45">Providers</p>
+                  <p className="text-sm text-white/75">Pick a provider first</p>
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
+                  {providerGroups.length === 0 ? (
+                    <p className="px-3 py-4 text-sm text-white/55">No connected providers.</p>
+                  ) : providerGroups.map((group) => {
+                    const isActive = group.providerId === activeProviderId;
+                    return (
+                      <button
+                        key={group.providerId}
+                        type="button"
+                        onClick={() => { handleSelectProvider(group.providerId); setProviderMenuOpen(false); }}
+                        className={`w-full rounded-[14px] border px-3 py-3 text-left transition mb-1 ${isActive ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate text-sm font-medium text-white">{group.providerName}</span>
+                          <Badge size="sm" variant="default">{group.models.length}</Badge>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Model selector (scoped to the chosen provider) */}
           <div ref={modelMenuRef} className="relative">
             <button
               type="button"
-              onClick={() => setModelMenuOpen((value) => !value)}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/8"
+              onClick={() => { setModelMenuOpen((value) => !value); setProviderMenuOpen(false); }}
+              disabled={!activeProviderGroup}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/8 disabled:opacity-50"
             >
               <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">Model</p>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white">{modelLabel}</span>
                   <span className="material-symbols-outlined text-[18px] text-white/70">expand_more</span>
@@ -810,45 +865,38 @@ export default function BasicChatPageClient() {
               </div>
             </button>
 
-            {modelMenuOpen ? (
+            {modelMenuOpen && activeProviderGroup ? (
               <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#262626] shadow-2xl shadow-black/50">
                 <div className="border-b border-white/10 px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.22em] text-white/45">Models</p>
-                  <p className="text-sm text-white/75">Only from connected providers</p>
+                  <p className="text-sm text-white/75">{activeProviderGroup.providerName}</p>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
-                  {providerGroups.map((group) => (
-                    <div key={group.providerId} className="mb-2 rounded-[16px] border border-white/10 bg-black/20 p-2">
-                      <div className="flex items-center justify-between px-2 py-2">
-                        <p className="text-sm font-semibold text-white">{group.providerName}</p>
-                        <Badge size="sm" variant="default">{group.models.length}</Badge>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {group.models.map((model) => {
-                          const isActive = model.id === activeModelId;
-                          return (
-                            <button
-                              key={model.id}
-                              type="button"
-                              onClick={() => handleSelectModel(model.id)}
-                              className={`rounded-[14px] border px-3 py-3 text-left transition ${isActive ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-white">{model.name}</p>
-                                  <p className="truncate text-[11px] text-white/45">{model.requestModel}</p>
-                                </div>
-                                {isActive ? <span className="material-symbols-outlined text-[18px] text-blue-300">check_circle</span> : null}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {activeProviderGroup.models.map((model) => {
+                      const isActive = model.id === activeModelId;
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          onClick={() => { handleSelectModel(model.id); setModelMenuOpen(false); }}
+                          className={`rounded-[14px] border px-3 py-3 text-left transition ${isActive ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-white">{model.name}</p>
+                              <p className="truncate text-[11px] text-white/45">{model.requestModel}</p>
+                            </div>
+                            {isActive ? <span className="material-symbols-outlined text-[18px] text-blue-300">check_circle</span> : null}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : null}
+          </div>
           </div>
 
           <div className="flex items-center gap-2">
