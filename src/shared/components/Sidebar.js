@@ -354,6 +354,10 @@ export default function Sidebar({ onClose }) {
           </div>
         </nav>
 
+        {/* Footer attribution */}
+        <div className="px-6 py-3 border-t border-border-subtle">
+          <p className="text-[10px] text-text-subtle">Modified by SantaiNetwork</p>
+        </div>
       </aside>
 
       {/* Remote Promo Modal */}

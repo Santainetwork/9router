@@ -44,12 +44,23 @@ export async function POST(request) {
   // governed by the global Token Saver settings.
   const headers = new Headers(request.headers);
   headers.set(TOKEN_SAVER_HEADER, "off");
+  headers.set("x-9router-basic-chat", "1");
   if (!hasKey(request)) {
     const key = await pickActiveApiKey();
     if (key) headers.set("Authorization", `Bearer ${key}`);
   }
 
   const body = await request.arrayBuffer();
-  const req = new Request(request.url, { method: "POST", headers, body });
-  return await handleChat(req);
+  const parsedBody = JSON.parse(new TextDecoder().decode(body));
+  if (parsedBody.stream === true) {
+    parsedBody.stream_options = { ...(parsedBody.stream_options || {}), include_usage: true };
+  }
+  const encodedBody = JSON.stringify(parsedBody);
+  const req = new Request(request.url, { method: "POST", headers, body: encodedBody });
+  return await handleChat(req, {
+    endpoint: new URL(request.url).pathname,
+    body: parsedBody,
+    headers: Object.fromEntries(headers.entries()),
+    responseMetadata: {},
+  });
 }

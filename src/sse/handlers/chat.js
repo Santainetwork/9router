@@ -25,6 +25,21 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 
+function isBasicChatRequest(clientRawRequest) {
+  return clientRawRequest?.headers?.["x-9router-basic-chat"] === "1";
+}
+
+function attachBasicChatMetadata(response, metadata) {
+  if (!response || !metadata) return response;
+  const headers = new Headers(response.headers);
+  headers.set("x-9router-provider", metadata.provider || "");
+  headers.set("x-9router-model", metadata.model || "");
+  if (metadata.connectionName) headers.set("x-9router-provider-name", metadata.connectionName);
+  if (metadata.apiKeyQueued) headers.set("x-9router-queue-apikey-ms", String(metadata.apiKeyWaitMs || 0));
+  if (metadata.providerQueued) headers.set("x-9router-queue-provider-ms", String(metadata.providerWaitMs || 0));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 /**
  * Handle chat completion request
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
@@ -48,6 +63,7 @@ export async function handleChat(request, clientRawRequest = null) {
       headers: Object.fromEntries(request.headers.entries())
     };
   }
+  if (isBasicChatRequest(clientRawRequest)) clientRawRequest.responseMetadata ||= {};
   const modelStr = body.model;
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
@@ -78,7 +94,7 @@ export async function handleChat(request, clientRawRequest = null) {
 
   // Per-API-key RPM rate limit + queue (applies whenever a known key is presented).
   {
-    const limited = await enforceApiKeyRateLimit(apiKey);
+    const limited = await enforceApiKeyRateLimit(apiKey, clientRawRequest.responseMetadata);
     if (limited) return limited;
   }
 
@@ -227,6 +243,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+  const responseMetadata = isBasicChatRequest(clientRawRequest)
+    ? (clientRawRequest.responseMetadata ||= {})
+    : null;
+  if (responseMetadata) Object.assign(responseMetadata, { provider, model });
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 
@@ -261,7 +281,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Per-provider (per-connection) RPM rate limit + queue.
     if (credentials.connectionId && credentials.connectionId !== "noauth" && credentials.rpm > 0) {
       try {
-        await acquire("provider", credentials.connectionId, { rpm: credentials.rpm, timeoutMs: credentials.queueTimeoutMs });
+        let queued = false;
+        const startedAt = Date.now();
+        await acquire("provider", credentials.connectionId, {
+          rpm: credentials.rpm,
+          timeoutMs: credentials.queueTimeoutMs,
+          onQueued: () => { queued = true; },
+        });
+        if (responseMetadata && queued) {
+          responseMetadata.providerQueued = true;
+          responseMetadata.providerWaitMs = (responseMetadata.providerWaitMs || 0) + (Date.now() - startedAt);
+        }
       } catch (e) {
         if (e instanceof RateLimitTimeoutError) {
           log.warn("RATELIMIT", `[${provider}/${model}] connection ${credentials.connectionName} exceeded ${credentials.rpm} rpm`);
@@ -271,6 +301,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     }
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+    if (responseMetadata) responseMetadata.connectionName = credentials.connectionName || "";
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
@@ -324,7 +355,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) return attachBasicChatMetadata(result.response, responseMetadata);
 
     // Mark account unavailable (auto-calculates cooldown with exponential backoff, or precise resetsAtMs)
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs);

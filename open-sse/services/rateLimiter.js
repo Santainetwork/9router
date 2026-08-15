@@ -85,7 +85,7 @@ function pump(scope, key) {
  * @param {object} opts    { rpm, timeoutMs }
  * @returns {Promise<void>} resolves on grant, rejects RateLimitTimeoutError on timeout
  */
-export function acquire(scope, key, { rpm, timeoutMs = 0 } = {}) {
+export function acquire(scope, key, { rpm, timeoutMs = 0, onQueued } = {}) {
   // No limit configured → pass through.
   if (!rpm || rpm <= 0) return Promise.resolve();
 
@@ -103,6 +103,7 @@ export function acquire(scope, key, { rpm, timeoutMs = 0 } = {}) {
     return Promise.reject(new RateLimitTimeoutError(retryAfterSec));
   }
 
+  if (typeof onQueued === "function") onQueued();
   return new Promise((resolve, reject) => {
     const w = { resolve, reject, settled: false, timer: null };
     w.timer = setTimeout(() => {

@@ -95,6 +95,18 @@ function readAssistantText(chunk) {
   return pieces[0] || "";
 }
 
+function normalizeUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const promptTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0;
+  const completionTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0;
+  const totalTokens = Number(usage.total_tokens ?? (promptTokens + completionTokens)) || 0;
+  return promptTokens || completionTokens || totalTokens ? { promptTokens, completionTokens, totalTokens } : null;
+}
+
+function formatDuration(ms) {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
 async function fileToDataUrl(file) {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -658,6 +670,7 @@ export default function BasicChatPageClient() {
   // Shared streaming core. Runs a completion for `requestMessages`, writing the
   // stream into the assistant message `assistantMessageId` in `sessionId`.
   const runStream = async (sessionId, model, requestMessages, assistantMessageId, titleSeed) => {
+    const startedAt = Date.now();
     setIsSending(true);
     setStreamingMessageId(assistantMessageId);
     setStreamingText("");
@@ -691,13 +704,23 @@ export default function BasicChatPageClient() {
         throw new Error(textValue(errorData.error?.message || errorData.error || errorData.message || `Request failed (${response.status})`));
       }
 
+      const responseMeta = {
+        provider: response.headers.get("x-9router-provider") || model.providerName || "",
+        providerName: response.headers.get("x-9router-provider-name") || model.providerName || "",
+        model: response.headers.get("x-9router-model") || model.requestModel || model.id,
+        apiKeyQueueMs: Number(response.headers.get("x-9router-queue-apikey-ms") || 0),
+        providerQueueMs: Number(response.headers.get("x-9router-queue-provider-ms") || 0),
+      };
+
       const reader = response.body?.getReader();
       if (!reader) {
         const data = await response.json().catch(() => ({}));
         const fallbackText = textValue(data?.choices?.[0]?.message?.content || data?.output_text || data?.error || data?.message || "");
+        responseMeta.usage = normalizeUsage(data?.usage);
+        responseMeta.durationMs = Date.now() - startedAt;
         updateSession(sessionId, (currentSession) => ({
           ...currentSession,
-          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: fallbackText, status: "done" } : message)),
+          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: fallbackText, status: "done", responseMeta } : message)),
           updatedAt: new Date().toISOString(),
         }));
         return;
@@ -706,6 +729,7 @@ export default function BasicChatPageClient() {
       const decoder = new TextDecoder();
       let buffer = "";
       let assistantText = "";
+      let usage = null;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -724,6 +748,7 @@ export default function BasicChatPageClient() {
 
           try {
             const chunk = JSON.parse(payload);
+            usage = normalizeUsage(chunk?.usage) || usage;
             const text = readAssistantText(chunk);
             if (!text) continue;
 
@@ -742,7 +767,12 @@ export default function BasicChatPageClient() {
 
       updateSession(sessionId, (currentSession) => ({
         ...currentSession,
-        messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText || message.content, status: assistantText ? "done" : "error" } : message)),
+        messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? {
+          ...message,
+          content: assistantText || message.content,
+          status: assistantText ? "done" : "error",
+          responseMeta: { ...responseMeta, usage, durationMs: Date.now() - startedAt },
+        } : message)),
         updatedAt: new Date().toISOString(),
       }));
       if (titleSeed) finalizeSessionTitle(sessionId, titleSeed);
@@ -1132,7 +1162,16 @@ export default function BasicChatPageClient() {
                       </div>
 
                       {isAssistant && !isStreaming ? (
-                        <div className="mt-2 flex items-center gap-2">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {message.responseMeta ? (
+                            <div className="mr-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/40" aria-label="Response metadata">
+                              <span title="Provider and model">{message.responseMeta.providerName || message.responseMeta.provider} · {message.responseMeta.model}</span>
+                              {message.responseMeta.usage ? <span title="Prompt / completion / total tokens">{message.responseMeta.usage.promptTokens} in · {message.responseMeta.usage.completionTokens} out · {message.responseMeta.usage.totalTokens} total</span> : null}
+                              {message.responseMeta.apiKeyQueueMs > 0 ? <span title="API key queue wait">API queue {formatDuration(message.responseMeta.apiKeyQueueMs)}</span> : null}
+                              {message.responseMeta.providerQueueMs > 0 ? <span title="Provider queue wait">Provider queue {formatDuration(message.responseMeta.providerQueueMs)}</span> : null}
+                              {message.responseMeta.durationMs != null ? <span title="Total response duration">{formatDuration(message.responseMeta.durationMs)}</span> : null}
+                            </div>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => retryMessage(message.id)}

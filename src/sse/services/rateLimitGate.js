@@ -18,14 +18,24 @@ import * as log from "../utils/logger.js";
  * @returns {Promise<Response|null>} a 429 Response when the limit is exceeded,
  *          otherwise null (caller proceeds).
  */
-export async function enforceApiKeyRateLimit(apiKey) {
+export async function enforceApiKeyRateLimit(apiKey, queueMeta = null) {
   if (!apiKey) return null;
 
   const limits = await getApiKeyLimits(apiKey);
   if (!limits || !(limits.rpm > 0)) return null;
 
   try {
-    await acquire("apikey", limits.id, { rpm: limits.rpm, timeoutMs: limits.queueTimeoutMs });
+    let queued = false;
+    const startedAt = Date.now();
+    await acquire("apikey", limits.id, {
+      rpm: limits.rpm,
+      timeoutMs: limits.queueTimeoutMs,
+      onQueued: () => { queued = true; },
+    });
+    if (queueMeta && queued) {
+      queueMeta.apiKeyQueued = true;
+      queueMeta.apiKeyWaitMs = (queueMeta.apiKeyWaitMs || 0) + (Date.now() - startedAt);
+    }
     return null;
   } catch (e) {
     if (e instanceof RateLimitTimeoutError) {
