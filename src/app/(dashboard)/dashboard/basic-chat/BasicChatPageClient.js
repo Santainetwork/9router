@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
-import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { getProviderAlias } from "@/shared/constants/providers";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -114,11 +114,12 @@ function getProviderLabel(connection) {
   return connection?.name || humanize(connection?.provider || connection?.id || "provider");
 }
 
-function normalizeStaticModel(model, connection) {
+function normalizeStaticModel(model, connection, requestPrefix) {
   if (!model?.id) return null;
+  const requestModel = `${requestPrefix}/${model.id}`;
   return {
-    id: `${connection.provider}/${model.id}`,
-    requestModel: `${connection.provider}/${model.id}`,
+    id: requestModel,
+    requestModel,
     name: model.name || model.id,
     providerId: connection.provider,
     providerName: getProviderLabel(connection),
@@ -126,7 +127,7 @@ function normalizeStaticModel(model, connection) {
   };
 }
 
-function normalizeLiveModel(model, connection) {
+function normalizeLiveModel(model, connection, requestPrefix) {
   const rawId = typeof model === "string" ? model : model?.id || model?.name || model?.model || "";
   if (!rawId) return null;
 
@@ -134,11 +135,7 @@ function normalizeLiveModel(model, connection) {
     ? model
     : model?.name || model?.displayName || rawId;
 
-  let requestModel = rawId;
-  const isCompatible = isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider);
-  if (isCompatible && !rawId.includes("/")) {
-    requestModel = `${connection.provider}/${rawId}`;
-  }
+  const requestModel = rawId.startsWith(`${requestPrefix}/`) ? rawId : `${requestPrefix}/${rawId}`;
 
   return {
     id: requestModel,
@@ -205,6 +202,7 @@ export default function BasicChatPageClient() {
   const [streamingText, setStreamingText] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [customModel, setCustomModel] = useState("");
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -226,8 +224,17 @@ export default function BasicChatPageClient() {
       setLoadError("");
 
       try {
-        const providersRes = await fetch("/api/providers", { cache: "no-store" });
+        const [providersRes, nodesRes] = await Promise.all([
+          fetch("/api/providers", { cache: "no-store" }),
+          fetch("/api/provider-nodes", { cache: "no-store" }),
+        ]);
         const providersData = await providersRes.json().catch(() => ({}));
+        const nodesData = await nodesRes.json().catch(() => ({}));
+        const nodePrefix = new Map(
+          (Array.isArray(nodesData.nodes) ? nodesData.nodes : [])
+            .filter((node) => node?.id && node?.prefix)
+            .map((node) => [node.id, node.prefix])
+        );
         const connections = Array.isArray(providersData.connections)
           ? providersData.connections.filter((connection) => connection?.isActive !== false)
           : [];
@@ -244,6 +251,7 @@ export default function BasicChatPageClient() {
 
         for (const connection of connections) {
           const providerId = connection.provider || connection.id;
+          const requestPrefix = nodePrefix.get(providerId) || getProviderAlias(providerId);
           const providerName = getProviderLabel(connection);
           const providerType = isOpenAICompatibleProvider(providerId)
             ? "openai-compatible"
@@ -256,6 +264,7 @@ export default function BasicChatPageClient() {
               providerId,
               providerName,
               providerType,
+              requestPrefix,
               connections: [],
               models: [],
             });
@@ -264,10 +273,11 @@ export default function BasicChatPageClient() {
           const group = providerMap.get(providerId);
           group.providerName = group.providerName || providerName;
           group.providerType = group.providerType || providerType;
+          group.requestPrefix = group.requestPrefix || requestPrefix;
           group.connections.push(connection);
 
           const staticModels = getModelsByProviderId(providerId)
-            .map((model) => normalizeStaticModel(model, connection))
+            .map((model) => normalizeStaticModel(model, connection, requestPrefix))
             .filter(Boolean);
           group.models.push(...staticModels);
         }
@@ -278,8 +288,9 @@ export default function BasicChatPageClient() {
               const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store" });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) return { connection, models: [] };
+              const requestPrefix = nodePrefix.get(connection.provider) || getProviderAlias(connection.provider);
               const models = parseProviderModelsPayload(data)
-                .map((model) => normalizeLiveModel(model, connection))
+                .map((model) => normalizeLiveModel(model, connection, requestPrefix))
                 .filter(Boolean);
               return { connection, models };
             } catch {
@@ -365,6 +376,16 @@ export default function BasicChatPageClient() {
     if (activeSessionId) {
       const session = sessions.find((item) => item.id === activeSessionId);
       if (session?.modelId && modelIndex.has(session.modelId)) return modelIndex.get(session.modelId);
+      // A manually entered model may not be in the provider's live catalog.
+      // Restore it from the persisted session so custom chats survive reloads.
+      if (session?.modelId) return {
+        id: session.modelId,
+        requestModel: session.modelId,
+        name: session.modelName || session.modelId,
+        providerId: session.providerId,
+        providerName: session.providerName,
+        source: "custom",
+      };
     }
     return activeProviderGroup?.models?.[0] || null;
   }, [activeModelId, modelIndex, activeProviderGroup, sessions, activeSessionId]);
@@ -541,6 +562,44 @@ export default function BasicChatPageClient() {
     setActiveProviderId(model.providerId);
     setActiveModelId(model.id);
     setModelMenuOpen(false);
+  };
+
+  const handleAddCustomModel = () => {
+    const raw = customModel.trim().replace(/^\/+|\/+$/g, "");
+    if (!raw || !activeProviderGroup) return;
+    const prefix = activeProviderGroup.requestPrefix;
+    const requestModel = raw.startsWith(`${prefix}/`) ? raw : `${prefix}/${raw}`;
+    const model = {
+      id: requestModel,
+      requestModel,
+      name: raw,
+      providerId: activeProviderGroup.providerId,
+      providerName: activeProviderGroup.providerName,
+      source: "custom",
+    };
+    setProviderGroups((groups) => groups.map((group) => group.providerId === activeProviderGroup.providerId
+      ? { ...group, models: dedupeModels([...group.models, model]) }
+      : group));
+    setCustomModel("");
+    setModelMenuOpen(false);
+
+    const current = sessions.find((session) => session.id === activeSessionId);
+    if (current && current.messages.length > 0) {
+      const session = ensureSessionForModel(model);
+      setSessions((prev) => [session, ...prev]);
+      setActiveSessionId(session.id);
+    } else if (current) {
+      setSessions((prev) => prev.map((item) => item.id === current.id ? {
+        ...item, providerId: model.providerId, providerName: model.providerName,
+        modelId: model.id, modelName: model.name,
+      } : item));
+    } else {
+      const session = ensureSessionForModel(model);
+      setSessions((prev) => [session, ...prev]);
+      setActiveSessionId(session.id);
+    }
+    setActiveProviderId(model.providerId);
+    setActiveModelId(model.id);
   };
 
   const handleAttachFiles = async (event) => {
@@ -869,7 +928,19 @@ export default function BasicChatPageClient() {
               <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#262626] shadow-2xl shadow-black/50">
                 <div className="border-b border-white/10 px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.22em] text-white/45">Models</p>
-                  <p className="text-sm text-white/75">{activeProviderGroup.providerName}</p>
+                  <p className="text-sm text-white/75">{activeProviderGroup.providerName} · {activeProviderGroup.requestPrefix}/…</p>
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      value={customModel}
+                      onChange={(event) => setCustomModel(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); handleAddCustomModel(); } }}
+                      placeholder="Custom model ID, e.g. qd/ultimate"
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-white/30 focus:border-blue-400/50"
+                    />
+                    <button type="button" onClick={handleAddCustomModel} disabled={!customModel.trim()} className="rounded-lg bg-blue-500/20 px-3 py-2 text-xs text-blue-200 disabled:opacity-40">
+                      Add
+                    </button>
+                  </div>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
                   <div className="grid gap-2 sm:grid-cols-2">

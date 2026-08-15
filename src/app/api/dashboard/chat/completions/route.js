@@ -1,6 +1,7 @@
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { getApiKeys } from "@/lib/db/repos/apiKeysRepo.js";
+import { TOKEN_SAVER_HEADER } from "open-sse/config/runtimeConfig.js";
 
 // Dashboard Basic Chat proxy. The dashboard page is already authenticated by the
 // dashboard session cookie (enforced in dashboardGuard), so this reuses the same
@@ -38,16 +39,17 @@ async function pickActiveApiKey() {
 export async function POST(request) {
   await ensureInitialized();
 
-  let req = request;
+  // Basic Chat is an interactive dashboard tool. Keep its prompts untouched by
+  // RTK/headroom/caveman/ponytail/pxpipe while normal API traffic remains
+  // governed by the global Token Saver settings.
+  const headers = new Headers(request.headers);
+  headers.set(TOKEN_SAVER_HEADER, "off");
   if (!hasKey(request)) {
     const key = await pickActiveApiKey();
-    if (key) {
-      const headers = new Headers(request.headers);
-      headers.set("Authorization", `Bearer ${key}`);
-      const body = await request.arrayBuffer();
-      req = new Request(request.url, { method: "POST", headers, body });
-    }
+    if (key) headers.set("Authorization", `Bearer ${key}`);
   }
 
+  const body = await request.arrayBuffer();
+  const req = new Request(request.url, { method: "POST", headers, body });
   return await handleChat(req);
 }
