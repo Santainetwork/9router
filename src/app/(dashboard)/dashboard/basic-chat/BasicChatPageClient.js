@@ -268,6 +268,7 @@ export default function BasicChatPageClient() {
               requestPrefix,
               connections: [],
               models: [],
+              pendingModelLoads: 0,
             });
           }
 
@@ -276,6 +277,7 @@ export default function BasicChatPageClient() {
           group.providerType = group.providerType || providerType;
           group.requestPrefix = group.requestPrefix || requestPrefix;
           group.connections.push(connection);
+          group.pendingModelLoads += 1;
 
           const staticModels = getModelsByProviderId(providerId)
             .map((model) => normalizeStaticModel(model, connection, requestPrefix))
@@ -283,44 +285,49 @@ export default function BasicChatPageClient() {
           group.models.push(...staticModels);
         }
 
-        const liveResults = await Promise.all(
+        // Providers are available from the local DB almost immediately. Render
+        // them now instead of blocking the entire picker on the slowest remote
+        // model catalog (some providers take 10–15s).
+        const initialGroups = Array.from(providerMap.values())
+          .map((group) => ({
+            ...group,
+            modelsLoading: group.pendingModelLoads > 0,
+            models: dedupeModels(group.models).sort((a, b) => a.name.localeCompare(b.name)),
+          }))
+          .sort((a, b) => a.providerName.localeCompare(b.providerName));
+        if (!cancelled) {
+          setProviderGroups(initialGroups);
+          setLoadingData(false);
+        }
+
+        await Promise.allSettled(
           connections.map(async (connection) => {
+            let models = [];
             try {
               const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store" });
               const data = await response.json().catch(() => ({}));
-              if (!response.ok) return { connection, models: [] };
-              const requestPrefix = nodePrefix.get(connection.provider) || getProviderAlias(connection.provider);
-              const models = parseProviderModelsPayload(data)
-                .map((model) => normalizeLiveModel(model, connection, requestPrefix))
-                .filter(Boolean);
-              return { connection, models };
-            } catch {
-              return { connection, models: [] };
+              if (response.ok) {
+                const requestPrefix = nodePrefix.get(connection.provider) || getProviderAlias(connection.provider);
+                models = parseProviderModelsPayload(data)
+                  .map((model) => normalizeLiveModel(model, connection, requestPrefix))
+                  .filter(Boolean);
+              }
+            } finally {
+              if (cancelled) return;
+              const providerId = connection.provider || connection.id;
+              setProviderGroups((groups) => groups.map((group) => {
+                if (group.providerId !== providerId) return group;
+                const pendingModelLoads = Math.max(0, (group.pendingModelLoads || 1) - 1);
+                return {
+                  ...group,
+                  pendingModelLoads,
+                  modelsLoading: pendingModelLoads > 0,
+                  models: dedupeModels([...group.models, ...models]).sort((a, b) => a.name.localeCompare(b.name)),
+                };
+              }));
             }
           })
         );
-
-        for (const result of liveResults) {
-          const providerId = result.connection.provider || result.connection.id;
-          const group = providerMap.get(providerId);
-          if (!group) continue;
-          group.models.push(...result.models);
-        }
-
-        const normalized = Array.from(providerMap.values())
-          .map((group) => ({
-            ...group,
-            models: dedupeModels(group.models).sort((a, b) => a.name.localeCompare(b.name)),
-          }))
-          .filter((group) => group.models.length > 0)
-          .sort((a, b) => a.providerName.localeCompare(b.providerName));
-
-        if (!cancelled) {
-          setProviderGroups(normalized);
-          if (normalized.length === 0) {
-            setLoadError("Providers connected but no models available.");
-          }
-        }
       } catch (error) {
         if (!cancelled) {
           setLoadError(textValue(error?.message) || "Failed to load providers/models.");
@@ -369,7 +376,10 @@ export default function BasicChatPageClient() {
   }, [providerGroups]);
 
   const activeProviderGroup = useMemo(() => {
-    return providerGroups.find((group) => group.providerId === activeProviderId) || providerGroups[0] || null;
+    return providerGroups.find((group) => group.providerId === activeProviderId)
+      || providerGroups.find((group) => group.models.length > 0)
+      || providerGroups[0]
+      || null;
   }, [providerGroups, activeProviderId]);
 
   const activeModel = useMemo(() => {
@@ -404,7 +414,9 @@ export default function BasicChatPageClient() {
     if (!isHydrated || loadingData || initializedRef.current) return;
     if (providerGroups.length === 0) return;
 
-    const savedProvider = providerGroups.find((group) => group.providerId === activeProviderId) || providerGroups[0];
+    const savedProvider = providerGroups.find((group) => group.providerId === activeProviderId && group.models.length > 0)
+      || providerGroups.find((group) => group.models.length > 0);
+    if (!savedProvider) return;
     const savedModel = activeModelId && modelIndex.has(activeModelId)
       ? modelIndex.get(activeModelId)
       : savedProvider.models[0];
@@ -498,7 +510,20 @@ export default function BasicChatPageClient() {
 
   const handleSelectProvider = (providerId) => {
     const group = providerGroups.find((item) => item.providerId === providerId);
-    if (!group || group.models.length === 0) return;
+    if (!group) return;
+    setActiveProviderId(group.providerId);
+    if (group.models.length === 0) {
+      setActiveModelId("");
+      setSessions((prev) => prev.map((item) => item.id === activeSessionId && item.messages.length === 0 ? {
+        ...item,
+        providerId: group.providerId,
+        providerName: group.providerName,
+        modelId: "",
+        modelName: "",
+      } : item));
+      setModelMenuOpen(false);
+      return;
+    }
     const nextModel = group.models[0];
 
     const current = sessions.find((session) => session.id === activeSessionId);
@@ -518,7 +543,6 @@ export default function BasicChatPageClient() {
       setActiveSessionId(current.id);
     }
 
-    setActiveProviderId(group.providerId);
     setActiveModelId(nextModel.id);
     setModelMenuOpen(false);
   };
@@ -886,7 +910,7 @@ export default function BasicChatPageClient() {
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="truncate text-sm font-medium text-white">{group.providerName}</span>
-                          <Badge size="sm" variant="default">{group.models.length}</Badge>
+                          <Badge size="sm" variant="default">{group.modelsLoading ? `${group.models.length}…` : group.models.length}</Badge>
                         </div>
                       </button>
                     );
@@ -933,6 +957,11 @@ export default function BasicChatPageClient() {
                   </div>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
+                  {activeProviderGroup.models.length === 0 ? (
+                    <p className="px-3 py-4 text-sm text-white/55">
+                      {activeProviderGroup.modelsLoading ? "Loading models…" : "No catalog models. Add a custom model above."}
+                    </p>
+                  ) : null}
                   <div className="grid gap-2 sm:grid-cols-2">
                     {activeProviderGroup.models.map((model) => {
                       const isActive = model.id === activeModelId;
