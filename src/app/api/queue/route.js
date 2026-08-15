@@ -28,10 +28,21 @@ export async function GET() {
         : connName.get(b.key) || b.key,
   }));
 
+  const summarize = (scope) => {
+    const scoped = buckets.filter((bucket) => bucket.scope === scope);
+    return {
+      totalQueued: scoped.reduce((sum, bucket) => sum + bucket.queued, 0),
+      activeBuckets: scoped.filter((bucket) => bucket.inWindow > 0).length,
+      buckets: scoped,
+    };
+  };
+
   return NextResponse.json({
     totalQueued: snap.totalQueued,
     totalActiveWindows: snap.totalActiveWindows,
     buckets,
+    apiKeys: summarize("apikey"),
+    providers: summarize("provider"),
     at: new Date().toISOString(),
   });
 }

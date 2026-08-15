@@ -273,7 +273,7 @@ export default function DashboardOverviewClient() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-text-muted">
-              {queue ? `${queue.totalQueued} queued · ${queue.totalActiveWindows} active` : "…"}
+              {queue ? `API ${queue.apiKeys?.totalQueued || 0} · Provider ${queue.providers?.totalQueued || 0}` : "…"}
             </span>
             <Link href="/dashboard/queue-monitor" className="text-xs text-primary hover:underline">Open</Link>
           </div>
@@ -281,23 +281,14 @@ export default function DashboardOverviewClient() {
         {!queue || queue.buckets.length === 0 ? (
           <p className="text-sm text-text-muted">No requests queued. Nothing is waiting on an RPM limit right now.</p>
         ) : (
-          <div className="flex flex-col divide-y divide-border">
-            {queue.buckets.map((b) => (
-              <div key={`${b.scope}:${b.key}`} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{b.label}</p>
-                  <p className="text-[11px] text-text-muted">
-                    {b.scope === "apikey" ? "API key" : "provider"} · rpm {b.rpm || "∞"}
-                  </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[{ label: "API Key Queue", icon: "key", summary: queue.apiKeys }, { label: "Provider Queue", icon: "dns", summary: queue.providers }].map((item) => (
+              <div key={item.label} className="rounded-lg border border-border bg-bg p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium"><span className="material-symbols-outlined text-[18px] text-primary">{item.icon}</span>{item.label}</span>
+                  <span className="text-sm font-semibold tabular-nums">{item.summary?.totalQueued || 0}</span>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {b.queued > 0 ? (
-                    <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-500">
-                      {b.queued} queued
-                    </span>
-                  ) : null}
-                  <span className="text-xs tabular-nums text-text-muted">{b.inWindow}/{b.rpm || "∞"} used</span>
-                </div>
+                <p className="mt-1 text-xs text-text-muted">{item.summary?.activeBuckets || 0} active buckets</p>
               </div>
             ))}
           </div>
