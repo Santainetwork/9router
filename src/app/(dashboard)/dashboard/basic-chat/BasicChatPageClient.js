@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
+import { restoreSessionModel } from "./basicChatModels";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -375,17 +376,8 @@ export default function BasicChatPageClient() {
     if (activeModelId && modelIndex.has(activeModelId)) return modelIndex.get(activeModelId);
     if (activeSessionId) {
       const session = sessions.find((item) => item.id === activeSessionId);
-      if (session?.modelId && modelIndex.has(session.modelId)) return modelIndex.get(session.modelId);
-      // A manually entered model may not be in the provider's live catalog.
-      // Restore it from the persisted session so custom chats survive reloads.
-      if (session?.modelId) return {
-        id: session.modelId,
-        requestModel: session.modelId,
-        name: session.modelName || session.modelId,
-        providerId: session.providerId,
-        providerName: session.providerName,
-        source: "custom",
-      };
+      const restored = restoreSessionModel(session, modelIndex);
+      if (restored) return restored;
     }
     return activeProviderGroup?.models?.[0] || null;
   }, [activeModelId, modelIndex, activeProviderGroup, sessions, activeSessionId]);
@@ -419,9 +411,7 @@ export default function BasicChatPageClient() {
 
     if (sessions.length > 0) {
       const session = sessions.find((item) => item.id === activeSessionId) || sessions[0];
-      const sessionModel = session?.modelId && modelIndex.has(session.modelId)
-        ? modelIndex.get(session.modelId)
-        : savedModel;
+      const sessionModel = restoreSessionModel(session, modelIndex, savedModel);
       initializedRef.current = true;
       setActiveSessionId(session.id);
       setActiveProviderId(sessionModel?.providerId || savedProvider.providerId);
