@@ -127,3 +127,51 @@ export function wrapOpenAIStreamWithFooter(readable, footer) {
   return readable.pipeThrough(transform);
 }
 
+// Rewrite the `model` field in each OpenAI SSE chunk to the requested model id
+// (what the client addressed), instead of the upstream provider-side id. Applied
+// independently of the footer so the reported model is consistent everywhere.
+// Fail-open: malformed lines pass through untouched.
+export function rewriteStreamModel(readable, requestedModel) {
+  if (!requestedModel) return readable;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const rewriteLine = (line) => {
+    const t = line.trimStart();
+    if (!t.startsWith("data:")) return line;
+    const payload = t.slice(5).trim();
+    if (!payload || payload === "[DONE]" || payload[0] !== "{") return line;
+    try {
+      const obj = JSON.parse(payload);
+      if (obj && typeof obj === "object" && "model" in obj) {
+        obj.model = requestedModel;
+        const nl = line.endsWith("\n") ? "\n" : "";
+        return "data: " + JSON.stringify(obj) + nl;
+      }
+    } catch { /* pass through */ }
+    return line;
+  };
+
+  const transform = new TransformStream({
+    transform(chunk, controller) {
+      try {
+        buffer += decoder.decode(chunk, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, idx + 1);
+          buffer = buffer.slice(idx + 1);
+          controller.enqueue(encoder.encode(rewriteLine(line)));
+        }
+      } catch {
+        controller.enqueue(chunk);
+      }
+    },
+    flush(controller) {
+      if (buffer) controller.enqueue(encoder.encode(rewriteLine(buffer)));
+    },
+  });
+
+  return readable.pipeThrough(transform);
+}
+

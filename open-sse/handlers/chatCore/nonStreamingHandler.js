@@ -346,6 +346,18 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     if (!translatedResponse.created) translatedResponse.created = Math.floor(Date.now() / 1000);
   }
 
+  // Echo the model the client actually requested (e.g. "amar/amanai/deepseek-v4-flash"
+  // or a combo member id), not the upstream provider-side id, so API clients and
+  // logs report the model as the caller addressed it. OpenAI does the same.
+  if (requestedModel) {
+    if (isClaudeMessageResponse) { if (translatedResponse) translatedResponse.model = requestedModel; }
+    else if (translatedResponse && typeof translatedResponse === "object" && "model" in translatedResponse) {
+      translatedResponse.model = requestedModel;
+    } else if (translatedResponse?.choices) {
+      translatedResponse.model = requestedModel;
+    }
+  }
+
   // Strip Azure-specific fields
   if (!isClaudeMessageResponse && !isResponsesResponse) {
     delete translatedResponse.prompt_filter_results;

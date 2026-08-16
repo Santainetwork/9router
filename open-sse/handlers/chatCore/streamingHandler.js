@@ -8,7 +8,7 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
-import { renderFooterText, wrapOpenAIStreamWithFooter } from "./responseFooter.js";
+import { renderFooterText, wrapOpenAIStreamWithFooter, rewriteStreamModel } from "./responseFooter.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -87,6 +87,13 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   const onAbortTerminal = isResponsesPassthrough ? buildAbortedResponsesTerminalBytes : null;
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
   let transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs);
+
+  // Report the model as the client addressed it (requested id / combo member),
+  // not the upstream provider-side id. OpenAI-format client streams only.
+  if (requestedModel && sourceFormat === FORMATS.OPENAI) {
+    try { transformedBody = rewriteStreamModel(transformedBody, requestedModel); }
+    catch (e) { log?.line?.(reqTag, "⚠️", `[model-rewrite] stream skipped: ${e.message}`); }
+  }
 
   // Server-side response footer for streaming clients. Only OpenAI Chat SSE is
   // supported (the format the wrapper emits); other client formats fall through
