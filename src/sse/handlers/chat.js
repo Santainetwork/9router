@@ -345,7 +345,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
       onPxpipeEvent: appendPxpipeEvent,
       providerThinking,
-      responseFooterEnabled: !!chatSettings.responseFooterEnabled,
+      // Basic Chat renders its own footer under each reply (per-browser field
+      // toggles + custom note), so injecting the server footer into the text
+      // as well would show it twice. Server footer is for external API clients.
+      responseFooterEnabled: !!chatSettings.responseFooterEnabled && !isBasicChatRequest(clientRawRequest),
       responseFooterText: chatSettings.responseFooterText || "",
       requestedModel: reportModel,
       // Detect source format by endpoint + body
