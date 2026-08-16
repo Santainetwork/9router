@@ -60,25 +60,40 @@ export function appendFooterToClaudeBody(body, footer) {
 
 // Wrap an OpenAI-format SSE ReadableStream so a single content-delta chunk
 // carrying the footer text is emitted just before the stream's terminal event.
-// The terminal event may be the finish_reason:"stop" chunk and/or `data: [DONE]`
-// — some upstreams omit [DONE], so we inject before whichever comes first, and
-// as a last resort at flush(). If the stream contained tool_calls, the footer is
-// suppressed. Fail-open: on any error the original bytes pass through.
-export function wrapOpenAIStreamWithFooter(readable, footer) {
-  if (!footer) return readable;
+// The footer TEXT is rendered lazily at inject time so it can include usage
+// (token counts) which only arrive in the final chunk. Pass a template string +
+// base ctx (provider/model/…); usage is captured from the stream.
+// Terminal = finish_reason chunk and/or `data: [DONE]` (some upstreams omit
+// [DONE]); injected before whichever comes first, or at flush() as a last resort.
+// Tool-call turns are suppressed. Fail-open: malformed bytes pass through.
+export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
+  if (!template) return readable;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   let buffer = "";
   let sawToolCalls = false;
   let injected = false;
+  let capturedUsage = null;
 
-  const footerChunk = () =>
-    "data: " + JSON.stringify({
+  const footerChunk = () => {
+    const text = renderFooterText(template, { ...baseCtx, usage: capturedUsage || baseCtx.usage });
+    if (!text) return "";
+    return "data: " + JSON.stringify({
       id: "chatcmpl-footer-" + Date.now(),
       object: "chat.completion.chunk",
       created: Math.floor(Date.now() / 1000),
-      choices: [{ index: 0, delta: { content: footer }, finish_reason: null }],
+      choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
     }) + "\n\n";
+  };
+
+  // Pull usage out of a data payload if present (finish chunk or usage-only chunk).
+  const captureUsage = (payload) => {
+    if (capturedUsage || !payload.includes('"usage"')) return;
+    try {
+      const obj = JSON.parse(payload);
+      if (obj && obj.usage && typeof obj.usage === "object") capturedUsage = obj.usage;
+    } catch { /* ignore */ }
+  };
 
   // Does this SSE data line carry a terminal signal (finish_reason set, or [DONE])?
   const isTerminalLine = (line) => {
@@ -87,6 +102,7 @@ export function wrapOpenAIStreamWithFooter(readable, footer) {
     const payload = t.slice(5).trim();
     if (payload === "[DONE]") return true;
     if (payload.includes('"tool_calls"')) { sawToolCalls = true; return false; }
+    captureUsage(payload);
     // finish_reason present and non-null → last content-bearing chunk.
     return /"finish_reason"\s*:\s*"(stop|length|content_filter|tool_calls)"/.test(payload);
   };
@@ -94,7 +110,9 @@ export function wrapOpenAIStreamWithFooter(readable, footer) {
   const emitFooter = (controller) => {
     if (injected) return;
     injected = true;
-    if (!sawToolCalls) controller.enqueue(encoder.encode(footerChunk()));
+    if (sawToolCalls) return;
+    const chunk = footerChunk();
+    if (chunk) controller.enqueue(encoder.encode(chunk));
   };
 
   const transform = new TransformStream({

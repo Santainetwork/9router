@@ -8,7 +8,7 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
-import { renderFooterText, wrapOpenAIStreamWithFooter, rewriteStreamModel } from "./responseFooter.js";
+import { wrapOpenAIStreamWithFooter, rewriteStreamModel } from "./responseFooter.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -100,8 +100,9 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // unchanged. Off by default; suppressed automatically for tool-call turns.
   if (responseFooterEnabled && responseFooterText && sourceFormat === FORMATS.OPENAI) {
     try {
-      const footer = renderFooterText(responseFooterText, { provider, model, requestedModel, durationMs: Date.now() - requestStartTime });
-      if (footer) transformedBody = wrapOpenAIStreamWithFooter(transformedBody, footer);
+      transformedBody = wrapOpenAIStreamWithFooter(transformedBody, responseFooterText, {
+        provider, model, requestedModel, durationMs: Date.now() - requestStartTime,
+      });
     } catch (e) {
       log?.line?.(reqTag, "⚠️", `[footer] stream skipped: ${e.message}`);
     }
