@@ -53,28 +53,21 @@ export async function enforceApiKeyRateLimit(apiKey, queueMeta = null) {
 
 // ─── RBAC: per-key model allowlist + total-token quota ──────────────────────
 
-// Normalize a model string for allowlist comparison. Requests may arrive as
-// "provider/model", "model", or a combo name; we compare against both the full
-// string and the part after the last "/".
-function modelVariants(model) {
-  const s = String(model || "").trim();
-  if (!s) return [];
-  const out = new Set([s]);
-  const slash = s.lastIndexOf("/");
-  if (slash >= 0) out.add(s.slice(slash + 1));
-  return [...out];
-}
-
 /**
- * Is `model` permitted by an allowlist? Same matching the request-time gate
- * uses (full id or the segment after the last "/"), so what /v1/models shows
- * always agrees with what a call is allowed to use. Empty/absent allowlist
- * means unrestricted.
+ * Is `model` permitted by an allowlist? Matching is EXACT on the model string
+ * the caller requested — listing "deepseek-v4-flash" permits only that id, not
+ * "amar/amanai/deepseek-v4-flash". Grant each id (or combo name) explicitly.
+ * An empty/absent allowlist means unrestricted.
+ *
+ * The same function backs /v1/models, so the catalog a key sees is exactly the
+ * set it may call.
  */
 export function isModelAllowedBy(allowedModels, model) {
   const allow = Array.isArray(allowedModels) ? allowedModels : [];
   if (allow.length === 0) return true;
-  return modelVariants(model).some((v) => allow.includes(v));
+  const requested = String(model || "").trim();
+  if (!requested) return false;
+  return allow.some((entry) => String(entry || "").trim() === requested);
 }
 
 /**

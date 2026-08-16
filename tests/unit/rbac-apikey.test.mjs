@@ -3,23 +3,16 @@
 //
 // The gate module (src/sse/services/rateLimitGate.js) pulls in Next path aliases,
 // so we validate the allowlist/quota decision logic here in isolation. This
-// mirrors modelVariants()/enforceApiKeyAccess() exactly; keep in sync if that
+// mirrors isModelAllowedBy()/enforceApiKeyAccess() exactly; keep in sync if that
 // logic changes.
 import assert from "node:assert";
 
-function modelVariants(model) {
-  const s = String(model || "").trim();
-  if (!s) return [];
-  const out = new Set([s]);
-  const slash = s.lastIndexOf("/");
-  if (slash >= 0) out.add(s.slice(slash + 1));
-  return [...out];
-}
-
+// EXACT match: an allowlist entry permits only that exact model string.
 function modelPermitted(allow, model) {
   if (!allow || allow.length === 0) return true; // empty allowlist = all models
-  const variants = modelVariants(model);
-  return variants.some((v) => allow.includes(v));
+  const requested = String(model || "").trim();
+  if (!requested) return false;
+  return allow.some((entry) => String(entry || "").trim() === requested);
 }
 
 function quotaExhausted(tokenQuota, used) {
@@ -34,10 +27,15 @@ function main() {
 
   // Full "provider/model" match.
   assert.equal(modelPermitted(["openai/gpt-4o"], "openai/gpt-4o"), true);
-  // Suffix match (request sends provider-prefixed, allowlist holds bare id).
-  assert.equal(modelPermitted(["gpt-4o"], "openai/gpt-4o"), true);
-  // Bare request against provider-prefixed allowlist does NOT match (different id).
+  // EXACT only: a bare allowlist id does NOT cover provider-prefixed variants.
+  assert.equal(modelPermitted(["gpt-4o"], "openai/gpt-4o"), false);
+  // ...and the reverse also does not match.
   assert.equal(modelPermitted(["openai/gpt-4o"], "gpt-4o"), false);
+  // Each variant must be granted explicitly.
+  assert.equal(modelPermitted(["gpt-4o", "openai/gpt-4o"], "openai/gpt-4o"), true);
+  // Combo name granted by exact name.
+  assert.equal(modelPermitted(["deepseek-v4-flash"], "deepseek-v4-flash"), true);
+  assert.equal(modelPermitted(["deepseek-v4-flash"], "amar/amanai/deepseek-v4-flash"), false);
   // Denied model.
   assert.equal(modelPermitted(["openai/gpt-4o"], "anthropic/claude-3"), false);
   // Multiple allowed.
