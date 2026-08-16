@@ -61,6 +61,12 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  // Response footer: append a footer to the assistant's reply text for ALL API
+  // clients (Jcode, SDKs, etc). Default off so it has zero effect until enabled.
+  responseFooterEnabled: false,
+  // Template with tokens: {provider} {model} {promptTokens} {completionTokens}
+  // {totalTokens} {durationMs}. Plain text otherwise. Newlines allowed.
+  responseFooterText: "\n\n---\n_via 9Router · {model}_",
 };
 
 async function readRaw() {

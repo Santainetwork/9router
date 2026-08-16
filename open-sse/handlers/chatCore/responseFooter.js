@@ -1,0 +1,129 @@
+// Server-side response footer: appends a short footer to the assistant's reply
+// TEXT so it shows up for every API client (Jcode, SDKs, curl…), not just the
+// dashboard. Gated by settings.responseFooterEnabled (default off).
+//
+// Supported template tokens in responseFooterText:
+//   {provider} {model} {requestedModel}
+//   {promptTokens} {completionTokens} {totalTokens} {durationMs} {durationS}
+
+export function renderFooterText(template, ctx = {}) {
+  if (!template) return "";
+  const usage = ctx.usage || {};
+  const prompt = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0;
+  const completion = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0;
+  const total = Number(usage.total_tokens ?? (prompt + completion)) || 0;
+  const durationMs = Number(ctx.durationMs || 0) || 0;
+  const map = {
+    provider: ctx.provider || "",
+    model: ctx.requestedModel || ctx.model || "",
+    requestedModel: ctx.requestedModel || ctx.model || "",
+    promptTokens: String(prompt),
+    completionTokens: String(completion),
+    totalTokens: String(total),
+    durationMs: String(durationMs),
+    durationS: (durationMs / 1000).toFixed(1) + "s",
+  };
+  return String(template).replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m));
+}
+
+// Append footer text to an OpenAI-format chat.completion body's assistant text.
+// Only touches string content on a normal stop; leaves tool_calls untouched.
+export function appendFooterToOpenAIBody(body, footer) {
+  if (!footer || !body?.choices?.length) return body;
+  for (const choice of body.choices) {
+    const msg = choice?.message;
+    if (!msg) continue;
+    // Don't corrupt tool-call turns — only append to plain text replies.
+    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) continue;
+    if (typeof msg.content === "string") {
+      msg.content = (msg.content || "") + footer;
+    }
+  }
+  return body;
+}
+
+// Append footer to a Claude-format message body (content is an array of blocks).
+export function appendFooterToClaudeBody(body, footer) {
+  if (!footer || !Array.isArray(body?.content)) return body;
+  const hasToolUse = body.content.some((b) => b?.type === "tool_use");
+  if (hasToolUse) return body;
+  // Append to the last text block, or add one.
+  for (let i = body.content.length - 1; i >= 0; i--) {
+    if (body.content[i]?.type === "text") {
+      body.content[i].text = (body.content[i].text || "") + footer;
+      return body;
+    }
+  }
+  body.content.push({ type: "text", text: footer });
+  return body;
+}
+
+// Wrap an OpenAI-format SSE ReadableStream so a single content-delta chunk
+// carrying the footer text is emitted just before the stream's terminal event.
+// The terminal event may be the finish_reason:"stop" chunk and/or `data: [DONE]`
+// — some upstreams omit [DONE], so we inject before whichever comes first, and
+// as a last resort at flush(). If the stream contained tool_calls, the footer is
+// suppressed. Fail-open: on any error the original bytes pass through.
+export function wrapOpenAIStreamWithFooter(readable, footer) {
+  if (!footer) return readable;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let sawToolCalls = false;
+  let injected = false;
+
+  const footerChunk = () =>
+    "data: " + JSON.stringify({
+      id: "chatcmpl-footer-" + Date.now(),
+      object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000),
+      choices: [{ index: 0, delta: { content: footer }, finish_reason: null }],
+    }) + "\n\n";
+
+  // Does this SSE data line carry a terminal signal (finish_reason set, or [DONE])?
+  const isTerminalLine = (line) => {
+    const t = line.trim();
+    if (!t.startsWith("data:")) return false;
+    const payload = t.slice(5).trim();
+    if (payload === "[DONE]") return true;
+    if (payload.includes('"tool_calls"')) { sawToolCalls = true; return false; }
+    // finish_reason present and non-null → last content-bearing chunk.
+    return /"finish_reason"\s*:\s*"(stop|length|content_filter|tool_calls)"/.test(payload);
+  };
+
+  const emitFooter = (controller) => {
+    if (injected) return;
+    injected = true;
+    if (!sawToolCalls) controller.enqueue(encoder.encode(footerChunk()));
+  };
+
+  const transform = new TransformStream({
+    transform(chunk, controller) {
+      try {
+        buffer += decoder.decode(chunk, { stream: true });
+        if (!sawToolCalls && buffer.includes('"tool_calls"')) sawToolCalls = true;
+
+        let idx;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, idx + 1);
+          buffer = buffer.slice(idx + 1);
+          if (!injected && isTerminalLine(line)) emitFooter(controller);
+          controller.enqueue(encoder.encode(line));
+        }
+      } catch {
+        controller.enqueue(chunk);
+      }
+    },
+    flush(controller) {
+      if (buffer) {
+        if (!injected && isTerminalLine(buffer)) emitFooter(controller);
+        controller.enqueue(encoder.encode(buffer));
+      }
+      // Last resort: stream ended with no recognizable terminal line.
+      emitFooter(controller);
+    },
+  });
+
+  return readable.pipeThrough(transform);
+}
+

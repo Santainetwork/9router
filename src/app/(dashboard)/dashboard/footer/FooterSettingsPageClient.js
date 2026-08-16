@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/shared/components";
 import useFooterStore, { FOOTER_FIELDS } from "@/store/footerStore";
 
@@ -27,6 +27,39 @@ export default function FooterSettingsPageClient() {
   const footer = useFooterStore();
   const [savedFlash, setSavedFlash] = useState(false);
 
+  // Server-side footer (applies to ALL API clients: Jcode, SDKs, curl…).
+  // Stored in server settings, not localStorage.
+  const [srvEnabled, setSrvEnabled] = useState(false);
+  const [srvText, setSrvText] = useState("");
+  const [srvLoaded, setSrvLoaded] = useState(false);
+  const [srvStatus, setSrvStatus] = useState("");
+
+  useEffect(() => {
+    fetch("/api/settings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((s) => {
+        setSrvEnabled(!!s.responseFooterEnabled);
+        setSrvText(typeof s.responseFooterText === "string" ? s.responseFooterText : "");
+        setSrvLoaded(true);
+      })
+      .catch(() => setSrvLoaded(true));
+  }, []);
+
+  const saveServer = async (patch) => {
+    setSrvStatus("Saving…");
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      setSrvStatus(res.ok ? "Saved" : "Save failed");
+    } catch {
+      setSrvStatus("Save failed");
+    }
+    setTimeout(() => setSrvStatus(""), 1200);
+  };
+
   const flash = () => {
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 900);
@@ -41,6 +74,64 @@ export default function FooterSettingsPageClient() {
           Pick which details appear and add your own custom footer text.
         </p>
         <p className="text-[11px] text-text-subtle mt-1">Modified by SantaiNetwork</p>
+      </div>
+
+      {/* Server-side footer — applies to ALL API clients */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Append to every API response</p>
+          {srvStatus ? <span className="text-xs text-text-muted">{srvStatus}</span> : null}
+        </div>
+        <p className="mt-1 text-xs text-text-muted">
+          Adds this text to the end of the assistant&apos;s reply for <strong>all</strong> API clients
+          (Jcode, SDKs, curl…), streaming and non-streaming. Skipped automatically on tool-call turns.
+        </p>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={srvEnabled}
+            disabled={!srvLoaded}
+            onChange={(e) => { setSrvEnabled(e.target.checked); saveServer({ responseFooterEnabled: e.target.checked }); }}
+            className="size-4 accent-primary"
+          />
+          Enable footer for all API responses
+        </label>
+        <div className={`mt-3 ${srvEnabled ? "" : "pointer-events-none opacity-40"}`}>
+          <p className="text-xs text-text-muted">
+            Footer text. Tokens: <code>{"{model}"}</code> <code>{"{provider}"}</code> <code>{"{promptTokens}"}</code>{" "}
+            <code>{"{completionTokens}"}</code> <code>{"{totalTokens}"}</code> <code>{"{durationS}"}</code>. Newlines allowed.
+          </p>
+          <textarea
+            value={srvText}
+            disabled={!srvLoaded}
+            onChange={(e) => setSrvText(e.target.value)}
+            onBlur={() => saveServer({ responseFooterText: srvText })}
+            rows={3}
+            maxLength={500}
+            placeholder={"\\n\\n---\\n_via 9Router · {model}_"}
+            className="mt-2 w-full rounded-[12px] border border-border bg-bg px-3 py-2 text-sm font-mono outline-none focus:border-primary/50"
+          />
+          <div className="mt-2 rounded-lg border border-border bg-bg p-3">
+            <p className="text-[11px] uppercase tracking-wide text-text-muted">Preview (appended to reply)</p>
+            <pre className="mt-1 whitespace-pre-wrap text-xs text-text-main">{
+              (srvText || "")
+                .replace(/\{model\}/g, "your-model")
+                .replace(/\{provider\}/g, "provider")
+                .replace(/\{promptTokens\}/g, "2009")
+                .replace(/\{completionTokens\}/g, "25")
+                .replace(/\{totalTokens\}/g, "2034")
+                .replace(/\{durationS\}/g, "3.1s")
+                .replace(/\{durationMs\}/g, "3100")
+                .replace(/\{requestedModel\}/g, "your-model")
+              || "(empty)"
+            }</pre>
+          </div>
+        </div>
+      </Card>
+
+      <div>
+        <p className="text-sm font-medium">Basic Chat footer</p>
+        <p className="text-xs text-text-muted">The settings below only affect the footer shown in the dashboard&apos;s Basic Chat view (stored in your browser).</p>
       </div>
 
       {/* Live preview */}

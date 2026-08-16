@@ -9,6 +9,7 @@ import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
+import { renderFooterText, appendFooterToOpenAIBody, appendFooterToClaudeBody } from "./responseFooter.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
 
 function parseToolArguments(value) {
@@ -281,7 +282,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, responseFooterEnabled, responseFooterText, requestedModel }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -369,6 +370,24 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   reqLogger.logConvertedResponse(translatedResponse);
+
+  // Server-side response footer: append to the assistant's reply text so it
+  // reaches every API client (Jcode, SDKs…). Off by default; text is templated.
+  if (responseFooterEnabled && responseFooterText) {
+    try {
+      const footer = renderFooterText(responseFooterText, {
+        provider, model, requestedModel,
+        usage: translatedResponse?.usage || responseBody?.usage,
+        durationMs: Date.now() - requestStartTime,
+      });
+      if (footer) {
+        if (isClaudeMessageResponse) appendFooterToClaudeBody(translatedResponse, footer);
+        else if (translatedResponse?.choices) appendFooterToOpenAIBody(translatedResponse, footer);
+      }
+    } catch (e) {
+      log?.line?.(reqTag, "⚠️", `[footer] skipped: ${e.message}`);
+    }
+  }
 
   const totalLatency = Date.now() - requestStartTime;
   saveRequestDetail(buildRequestDetail({
