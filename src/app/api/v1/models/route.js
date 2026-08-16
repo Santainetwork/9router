@@ -5,7 +5,8 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getApiKeyLimits } from "@/lib/localDb";
+import { isModelAllowedBy } from "@/sse/services/rateLimitGate";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -555,6 +556,27 @@ export async function OPTIONS() {
 }
 
 /**
+ * Pull the caller's API key from the request (same places the auth layer
+ * accepts it). Returns "" when the caller isn't using an API key — e.g. the
+ * dashboard session or CLI token — in which case no per-key filtering applies.
+ */
+function extractApiKeyFromRequest(request) {
+  try {
+    const auth = request?.headers?.get("authorization") || "";
+    const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
+    if (m) return m[1].trim();
+    const xk = request?.headers?.get("x-api-key");
+    if (xk) return xk.trim();
+    const goog = request?.headers?.get("x-goog-api-key");
+    if (goog) return goog.trim();
+    const qp = new URL(request.url).searchParams.get("key");
+    return qp ? qp.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * GET /v1/models - OpenAI compatible models list (LLM/chat models only by default).
  * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
  */
@@ -562,7 +584,25 @@ export async function GET(request) {
   try {
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
-    const data = await buildModelsList([LLM_KIND], { skipDynamicFetch });
+    let data = await buildModelsList([LLM_KIND], { skipDynamicFetch });
+
+    // Per-key RBAC: when the calling API key has a model allowlist, only list
+    // the models it may actually call, so the catalog matches what requests are
+    // permitted to use. Keys with no allowlist (or non-key callers such as the
+    // dashboard/CLI token) still see everything.
+    const key = extractApiKeyFromRequest(request);
+    if (key) {
+      try {
+        const limits = await getApiKeyLimits(key);
+        const allow = limits?.allowedModels || [];
+        if (allow.length > 0) {
+          data = data.filter((m) => isModelAllowedBy(allow, m?.id));
+        }
+      } catch {
+        // Fail open: a lookup problem must not break the catalog.
+      }
+    }
+
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

@@ -66,6 +66,18 @@ function modelVariants(model) {
 }
 
 /**
+ * Is `model` permitted by an allowlist? Same matching the request-time gate
+ * uses (full id or the segment after the last "/"), so what /v1/models shows
+ * always agrees with what a call is allowed to use. Empty/absent allowlist
+ * means unrestricted.
+ */
+export function isModelAllowedBy(allowedModels, model) {
+  const allow = Array.isArray(allowedModels) ? allowedModels : [];
+  if (allow.length === 0) return true;
+  return modelVariants(model).some((v) => allow.includes(v));
+}
+
+/**
  * Enforce per-key RBAC before a request runs:
  *   1. model allowlist — if the key has allowedModels set, the requested model
  *      must be in it (matched by full id or the part after "/").
@@ -84,16 +96,12 @@ export async function enforceApiKeyAccess(apiKey, model) {
 
   // 1. Model allowlist
   const allow = limits.allowedModels || [];
-  if (allow.length > 0) {
-    const variants = modelVariants(model);
-    const permitted = variants.some((v) => allow.includes(v));
-    if (!permitted) {
-      log.warn("RBAC", `API key ${log.maskKey(apiKey)} denied model ${model}`);
-      return errorResponse(
-        HTTP_STATUS.FORBIDDEN,
-        `Model not permitted for this API key: ${model}`,
-      );
-    }
+  if (allow.length > 0 && !isModelAllowedBy(allow, model)) {
+    log.warn("RBAC", `API key ${log.maskKey(apiKey)} denied model ${model}`);
+    return errorResponse(
+      HTTP_STATUS.FORBIDDEN,
+      `Model not permitted for this API key: ${model}`,
+    );
   }
 
   // 2. Token quota (all-time prompt+completion tokens)
