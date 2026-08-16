@@ -26,6 +26,15 @@ const USAGE_CHECK_HTML = (() => {
   }
 })();
 
+// Self-contained public API documentation page (also inline, no Next chunks).
+const DOCS_HTML = (() => {
+  try {
+    return fs.readFileSync(path.join(__dirname, "docs.html"), "utf8");
+  } catch {
+    return null;
+  }
+})();
+
 // Paths allowed through the public port.  Everything else gets 404.
 // NOTE: /usage-check is served locally (below), not proxied — no /_next needed.
 const ALLOW = [
@@ -57,6 +66,21 @@ const server = http.createServer((req, res) => {
       "Cache-Control": "no-store",
     });
     res.end(USAGE_CHECK_HTML);
+    return;
+  }
+
+  // Serve the self-contained API docs page locally.
+  if (reqPath === "/docs" || reqPath === "/docs/" || reqPath === "/") {
+    if (!DOCS_HTML) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("docs.html missing");
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(DOCS_HTML);
     return;
   }
 

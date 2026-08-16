@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>API Docs · 9Router</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root {
+    --bg: #0b0d12; --surface: #12151c; --surface-2: #171b24; --border: #262b36;
+    --text: #e7eaf0; --text-muted: #9aa3b2; --text-subtle: #5f6773;
+    --primary: #f59e0b; --code-bg: #0a0c11; --green: #22c55e; --blue: #38bdf8;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --border: #e2e5ea;
+      --text: #1a1d24; --text-muted: #5f6773; --text-subtle: #9aa3b2; --code-bg: #f0f2f5;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.55;
+  }
+  .layout { display: flex; max-width: 1100px; margin: 0 auto; gap: 32px; padding: 32px 16px 80px; }
+  nav.toc {
+    position: sticky; top: 32px; align-self: flex-start; width: 200px; flex-shrink: 0;
+    font-size: 13px; display: flex; flex-direction: column; gap: 6px;
+  }
+  nav.toc a { color: var(--text-muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; }
+  nav.toc a:hover { color: var(--text); background: var(--surface-2); }
+  nav.toc .grp { color: var(--text-subtle); text-transform: uppercase; font-size: 10px; letter-spacing: .08em; margin-top: 12px; padding: 0 8px; }
+  main { min-width: 0; flex: 1; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 4px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 40px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: none; }
+  h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; }
+  p, li { color: var(--text); }
+  .muted { color: var(--text-muted); }
+  .subtle { color: var(--text-subtle); font-size: 12px; }
+  a { color: var(--blue); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  p code, li code, td code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border); }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; overflow-x: auto; font-size: 13px; margin: 12px 0;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  .method { display: inline-block; font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-right: 8px; vertical-align: middle; }
+  .post { background: rgba(34,197,94,.15); color: var(--green); }
+  .get { background: rgba(56,189,248,.15); color: var(--blue); }
+  .endpoint { font-family: ui-monospace, monospace; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .note { background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: 8px; padding: 12px 14px; margin: 14px 0; font-size: 13px; }
+  .pill { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+  header.hero { margin-bottom: 8px; }
+  footer { max-width: 1100px; margin: 0 auto; padding: 24px 16px; border-top: 1px solid var(--border); color: var(--text-subtle); font-size: 12px; }
+  @media (max-width: 720px) { .layout { flex-direction: column; } nav.toc { position: static; width: auto; flex-direction: row; flex-wrap: wrap; } nav.toc .grp { width: 100%; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="toc">
+    <div class="grp">Start</div>
+    <a href="#intro">Introduction</a>
+    <a href="#auth">Authentication</a>
+    <a href="#base">Base URL</a>
+    <div class="grp">Endpoints</div>
+    <a href="#chat">Chat completions</a>
+    <a href="#models">List models</a>
+    <a href="#usage">Usage</a>
+    <div class="grp">More</div>
+    <a href="#errors">Errors</a>
+    <a href="#limits">Rate limits</a>
+    <a href="/usage-check">Usage checker →</a>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <h1>9Router API</h1>
+      <p class="muted">OpenAI-compatible gateway to many AI providers, with one key and automatic routing.</p>
+      <p class="subtle">Modified by SantaiNetwork</p>
+    </header>
+
+    <h2 id="intro">Introduction</h2>
+    <p>
+      9Router exposes an <strong>OpenAI-compatible</strong> API. Point any OpenAI SDK or tool at the
+      base URL below and use your 9Router API key. Requests are routed to the right upstream
+      provider automatically, with rotation and failover handled for you.
+    </p>
+    <div class="note">
+      This is the <strong>public</strong> surface: chat completions, the model catalog, and your own
+      usage. The admin dashboard is not reachable here.
+    </div>
+
+    <h2 id="auth">Authentication</h2>
+    <p>Send your key as a Bearer token in the <code>Authorization</code> header:</p>
+    <pre><code>Authorization: Bearer sk-your-9router-key</code></pre>
+    <p class="muted">Each key only ever sees and spends its own quota. Check yours on the
+      <a href="/usage-check">usage page</a>.</p>
+
+    <h2 id="base">Base URL</h2>
+    <pre><code>https://YOUR-DOMAIN/v1</code></pre>
+    <p class="muted">
+      Both <code>/v1/*</code> and <code>/api/v1/*</code> work. Use <code>/v1</code> as the OpenAI
+      <code>baseURL</code>.
+    </p>
+
+    <h2 id="chat"><span class="method post">POST</span><span class="endpoint">/v1/chat/completions</span></h2>
+    <p>Create a chat completion. Supports streaming via <code>"stream": true</code> (Server-Sent Events).</p>
+    <h3>Request body</h3>
+    <table>
+      <tr><th>Field</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>model</code></td><td>string</td><td>Model id, e.g. <code>amar/amanai/deepseek-v4-flash</code>. See <a href="#models">list models</a>.</td></tr>
+      <tr><td><code>messages</code></td><td>array</td><td>OpenAI chat messages (<code>role</code> + <code>content</code>).</td></tr>
+      <tr><td><code>stream</code></td><td>boolean</td><td>Optional. Stream tokens as SSE. Add <code>stream_options.include_usage</code> for token counts.</td></tr>
+      <tr><td><code>max_tokens</code></td><td>number</td><td>Optional cap on output tokens.</td></tr>
+      <tr><td><code>temperature</code></td><td>number</td><td>Optional sampling temperature.</td></tr>
+    </table>
+    <h3>Example — cURL</h3>
+    <pre><code>curl https://YOUR-DOMAIN/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-9router-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "amar/amanai/deepseek-v4-flash",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'</code></pre>
+    <h3>Example — OpenAI Python SDK</h3>
+    <pre><code>from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://YOUR-DOMAIN/v1",
+    api_key="sk-your-9router-key",
+)
+
+resp = client.chat.completions.create(
+    model="amar/amanai/deepseek-v4-flash",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(resp.choices[0].message.content)</code></pre>
+    <h3>Example — streaming (Node / fetch)</h3>
+    <pre><code>const res = await fetch("https://YOUR-DOMAIN/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer sk-your-9router-key",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "amar/amanai/deepseek-v4-flash",
+    messages: [{ role: "user", content: "Hello!" }],
+    stream: true,
+    stream_options: { include_usage: true },
+  }),
+});
+// res.body is a text/event-stream of `data: {...}` chunks</code></pre>
+
+    <h2 id="models"><span class="method get">GET</span><span class="endpoint">/v1/models</span></h2>
+    <p>List every model id you can call, in OpenAI <code>{ "data": [...] }</code> shape.</p>
+    <pre><code>curl https://YOUR-DOMAIN/v1/models \
+  -H "Authorization: Bearer sk-your-9router-key"</code></pre>
+    <pre><code>{
+  "object": "list",
+  "data": [
+    { "id": "amar/amanai/deepseek-v4-flash", "object": "model" },
+    { "id": "gemini/gemini-3.7-flash",       "object": "model" }
+  ]
+}</code></pre>
+    <p class="muted">Model ids use a <code>provider/…/name</code> shape. Pass the full id verbatim as <code>model</code>.</p>
+
+    <h2 id="usage"><span class="method get">GET</span><span class="endpoint">/api/v1/usage</span></h2>
+    <p>Return limits, access, and usage for the key in the <code>Authorization</code> header.</p>
+    <h3>Query</h3>
+    <table>
+      <tr><th>Param</th><th>Notes</th></tr>
+      <tr><td><code>period</code></td><td>Window, e.g. <code>1d</code>, <code>7d</code>, <code>14d</code>, <code>30d</code>. Default <code>7d</code>.</td></tr>
+    </table>
+    <pre><code>curl "https://YOUR-DOMAIN/api/v1/usage?period=7d" \
+  -H "Authorization: Bearer sk-your-9router-key"</code></pre>
+    <h3>Response</h3>
+    <pre><code>{
+  "key":    { "name": "my-key", "createdAt": "..." },
+  "limits": { "requestsPerMinute": 0, "queueTimeoutMs": 0, "tokenQuota": 0 },
+  "access": { "restricted": false, "allowedModels": [] },
+  "usage": {
+    "tokensUsedAllTime": 50631235,
+    "tokensRemaining": null,
+    "period": { "days": 7, "since": "..." },
+    "requests": 776,
+    "promptTokens": 50479321,
+    "completionTokens": 138857,
+    "totalTokens": 50618178,
+    "byModel": { "q/opus": { "requests": 100, "promptTokens": 1, "completionTokens": 2 } },
+    "byDay":   { "2026-08-15": { "requests": 10, "totalTokens": 123 } }
+  }
+}</code></pre>
+    <p class="muted">Prefer a UI? The <a href="/usage-check">usage checker</a> renders this for your key.</p>
+
+    <h2 id="errors">Errors</h2>
+    <p>Errors follow the OpenAI shape with an <code>error</code> object.</p>
+    <table>
+      <tr><th>Status</th><th>Meaning</th></tr>
+      <tr><td><code>401</code></td><td>Missing or invalid API key.</td></tr>
+      <tr><td><code>403</code></td><td>Model not permitted for this key (allowlist) or quota exhausted.</td></tr>
+      <tr><td><code>429</code></td><td>Rate limit / queue timeout — retry after a moment.</td></tr>
+      <tr><td><code>5xx</code></td><td>Upstream provider error; 9Router retries/fails over where possible.</td></tr>
+    </table>
+    <pre><code>{ "error": { "message": "Model not permitted for this API key: myr/q/opus",
+             "type": "permission_error", "code": "insufficient_quota" } }</code></pre>
+
+    <h2 id="limits">Rate limits &amp; quotas</h2>
+    <p>
+      Keys may have a per-minute request limit (RPM), a request queue with timeout, a total token
+      quota, and a model allowlist. When RPM is hit, requests queue up to the configured timeout
+      before returning <code>429</code>. See your current limits under <code>limits</code> in the
+      <a href="#usage">usage endpoint</a> or on the <a href="/usage-check">usage page</a>.
+    </p>
+  </main>
+</div>
+<footer>
+  9Router — OpenAI-compatible AI gateway. · Modified by SantaiNetwork ·
+  <a href="/usage-check">Usage checker</a>
+</footer>
+</body>
+</html>

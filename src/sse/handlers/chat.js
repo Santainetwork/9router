@@ -34,6 +34,7 @@ function attachBasicChatMetadata(response, metadata) {
   const headers = new Headers(response.headers);
   headers.set("x-9router-provider", metadata.provider || "");
   headers.set("x-9router-model", metadata.model || "");
+  if (metadata.requestedModel) headers.set("x-9router-requested-model", metadata.requestedModel);
   if (metadata.connectionName) headers.set("x-9router-provider-name", metadata.connectionName);
   if (metadata.apiKeyQueued) headers.set("x-9router-queue-apikey-ms", String(metadata.apiKeyWaitMs || 0));
   if (metadata.providerQueued) headers.set("x-9router-queue-provider-ms", String(metadata.providerWaitMs || 0));
@@ -246,7 +247,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const responseMetadata = isBasicChatRequest(clientRawRequest)
     ? (clientRawRequest.responseMetadata ||= {})
     : null;
-  if (responseMetadata) Object.assign(responseMetadata, { provider, model });
+  if (responseMetadata) Object.assign(responseMetadata, { provider, model, requestedModel: modelStr });
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 

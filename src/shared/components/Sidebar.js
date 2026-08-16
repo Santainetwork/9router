@@ -23,6 +23,7 @@ const navItems = [
   { href: "/dashboard/api-keys", label: "Key Access Control", icon: "tune" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
+  { href: "/dashboard/footer", label: "Response Footer", icon: "subtitles" },
   { href: "/dashboard/rpm-tester", label: "RPM Tester", icon: "speed" },
   { href: "/dashboard/combos", label: "Combo & Vision Adapter", icon: "layers" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },

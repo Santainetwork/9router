@@ -47,7 +47,7 @@ const useFooterStore = create(
           fields: { ...state.fields, [key]: !!value },
         })),
 
-      setCustomMessage: (msg) => set({ customMessage: String(msg ?? "").slice(0, 200) }),
+      setCustomMessage: (msg) => set({ customMessage: String(msg ?? "").slice(0, 500) }),
 
       resetFooter: () =>
         set({ enabled: true, fields: { ...DEFAULT_FIELDS }, customMessage: "" }),
