@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
-import { getProviderAlias } from "@/shared/constants/providers";
+import { getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { restoreSessionModel } from "./basicChatModels";
 import useFooterStore, { FOOTER_FIELDS } from "@/store/footerStore";
 
