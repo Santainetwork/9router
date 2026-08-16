@@ -5,6 +5,7 @@ import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { restoreSessionModel } from "./basicChatModels";
+import useFooterStore, { FOOTER_FIELDS } from "@/store/footerStore";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -218,6 +219,8 @@ export default function BasicChatPageClient() {
   const [customModel, setCustomModel] = useState("");
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [footerOpen, setFooterOpen] = useState(false);
+  const footerSettings = useFooterStore();
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
   const initializedRef = useRef(false);
@@ -1022,6 +1025,14 @@ export default function BasicChatPageClient() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => { setFooterOpen((value) => !value); setApiKeyOpen(false); setHistoryOpen(false); }}
+              className={`rounded-2xl border px-4 py-3 text-sm transition ${footerOpen ? "border-blue-400/40 bg-blue-500/10 text-blue-200" : "border-white/10 bg-white/5 text-white/80 hover:bg-white/8"}`}
+              title="Choose what the response footer shows"
+            >
+              <span className="material-symbols-outlined align-middle text-[18px]">tune</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setApiKeyOpen((value) => !value)}
               className={`rounded-2xl border px-4 py-3 text-sm transition ${apiKey.trim() ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15" : "border-white/10 bg-white/5 text-white/80 hover:bg-white/8"}`}
               title={apiKey.trim() ? "Using your API key" : "Set an API key to call the provider directly"}
@@ -1040,6 +1051,68 @@ export default function BasicChatPageClient() {
             </Button>
           </div>
         </div>
+
+        {footerOpen ? (
+          <div className="mx-4 mb-1 rounded-[18px] border border-white/10 bg-[#262626] p-3 lg:mx-6">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Response footer</p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => footerSettings.resetFooter()}
+                  className="text-xs text-white/45 underline hover:text-white/80"
+                >
+                  Reset
+                </button>
+                <button type="button" onClick={() => setFooterOpen(false)} className="text-white/40 hover:text-white" aria-label="Close">
+                  <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
+              </div>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-white/50">
+              Choose what appears in the small info line under each assistant reply.
+            </p>
+
+            <label className="mt-3 flex items-center gap-2 text-sm text-white/80">
+              <input
+                type="checkbox"
+                checked={footerSettings.enabled}
+                onChange={(e) => footerSettings.setEnabled(e.target.checked)}
+                className="size-4 accent-blue-500"
+              />
+              Show response footer
+            </label>
+
+            <div className={`mt-3 grid gap-2 sm:grid-cols-2 ${footerSettings.enabled ? "" : "pointer-events-none opacity-40"}`}>
+              {FOOTER_FIELDS.map((field) => (
+                <label key={field.key} className="flex items-start gap-2 rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80">
+                  <input
+                    type="checkbox"
+                    checked={!!footerSettings.fields[field.key]}
+                    onChange={() => footerSettings.toggleField(field.key)}
+                    className="mt-0.5 size-4 accent-blue-500"
+                  />
+                  <span className="min-w-0">
+                    <span className="block">{field.label}</span>
+                    <span className="block text-[11px] leading-4 text-white/40">{field.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className={`mt-3 ${footerSettings.enabled ? "" : "pointer-events-none opacity-40"}`}>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Custom note (optional)</p>
+              <input
+                type="text"
+                value={footerSettings.customMessage}
+                onChange={(e) => footerSettings.setCustomMessage(e.target.value)}
+                placeholder="e.g. Powered by SantaiNetwork"
+                maxLength={200}
+                className="mt-2 w-full rounded-[12px] border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-white/25"
+              />
+            </div>
+          </div>
+        ) : null}
 
         {apiKeyOpen ? (
           <div className="mx-4 mb-1 rounded-[18px] border border-white/10 bg-[#262626] p-3 lg:mx-6">
@@ -1163,13 +1236,14 @@ export default function BasicChatPageClient() {
 
                       {isAssistant && !isStreaming ? (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {message.responseMeta ? (
+                          {message.responseMeta && footerSettings.enabled && (footerSettings.hasVisibleField() || footerSettings.customMessage) ? (
                             <div className="mr-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/40" aria-label="Response metadata">
-                              <span title="Provider and model">{message.responseMeta.providerName || message.responseMeta.provider} · {message.responseMeta.model}</span>
-                              {message.responseMeta.usage ? <span title="Prompt / completion / total tokens">{message.responseMeta.usage.promptTokens} in · {message.responseMeta.usage.completionTokens} out · {message.responseMeta.usage.totalTokens} total</span> : null}
-                              {message.responseMeta.apiKeyQueueMs > 0 ? <span title="API key queue wait">API queue {formatDuration(message.responseMeta.apiKeyQueueMs)}</span> : null}
-                              {message.responseMeta.providerQueueMs > 0 ? <span title="Provider queue wait">Provider queue {formatDuration(message.responseMeta.providerQueueMs)}</span> : null}
-                              {message.responseMeta.durationMs != null ? <span title="Total response duration">{formatDuration(message.responseMeta.durationMs)}</span> : null}
+                              {footerSettings.fields.providerModel ? <span title="Provider and model">{message.responseMeta.providerName || message.responseMeta.provider} · {message.responseMeta.model}</span> : null}
+                              {footerSettings.fields.tokens && message.responseMeta.usage ? <span title="Prompt / completion / total tokens">{message.responseMeta.usage.promptTokens} in · {message.responseMeta.usage.completionTokens} out · {message.responseMeta.usage.totalTokens} total</span> : null}
+                              {footerSettings.fields.apiKeyQueue && message.responseMeta.apiKeyQueueMs > 0 ? <span title="API key queue wait">API queue {formatDuration(message.responseMeta.apiKeyQueueMs)}</span> : null}
+                              {footerSettings.fields.providerQueue && message.responseMeta.providerQueueMs > 0 ? <span title="Provider queue wait">Provider queue {formatDuration(message.responseMeta.providerQueueMs)}</span> : null}
+                              {footerSettings.fields.duration && message.responseMeta.durationMs != null ? <span title="Total response duration">{formatDuration(message.responseMeta.durationMs)}</span> : null}
+                              {footerSettings.customMessage ? <span className="text-white/50" title="Custom note">{footerSettings.customMessage}</span> : null}
                             </div>
                           ) : null}
                           <button
