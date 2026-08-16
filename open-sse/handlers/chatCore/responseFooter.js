@@ -74,6 +74,7 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
   let sawToolCalls = false;
   let injected = false;
   let capturedUsage = null;
+  let terminated = false;
 
   const footerChunk = () => {
     const text = renderFooterText(template, { ...baseCtx, usage: capturedUsage || baseCtx.usage });
@@ -118,6 +119,7 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
   const transform = new TransformStream({
     transform(chunk, controller) {
       try {
+        if (terminated) return; // drop anything after the first [DONE]
         buffer += decoder.decode(chunk, { stream: true });
         if (!sawToolCalls && buffer.includes('"tool_calls"')) sawToolCalls = true;
 
@@ -125,6 +127,18 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
         while ((idx = buffer.indexOf("\n")) !== -1) {
           const line = buffer.slice(0, idx + 1);
           buffer = buffer.slice(idx + 1);
+          const isDone = line.trim() === "data: [DONE]";
+          if (isDone) {
+            // Ensure the footer lands before the terminal, then emit exactly one
+            // [DONE] and stop — some paths (combo/fallback) emit several, which
+            // makes clients treat the reply as multiple segments (and appear to
+            // repeat the footer). Collapse them here.
+            if (!injected) emitFooter(controller);
+            controller.enqueue(encoder.encode(line));
+            terminated = true;
+            buffer = "";
+            return;
+          }
           if (!injected && isTerminalLine(line)) emitFooter(controller);
           controller.enqueue(encoder.encode(line));
         }
@@ -133,6 +147,7 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
       }
     },
     flush(controller) {
+      if (terminated) return;
       if (buffer) {
         if (!injected && isTerminalLine(buffer)) emitFooter(controller);
         controller.enqueue(encoder.encode(buffer));
