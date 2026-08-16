@@ -9,34 +9,58 @@
 //   PORT=20141 UPSTREAM=127.0.0.1:20130 node deploy/public-proxy.js
 
 const http = require("http");
-const httpProxy = require("http");
 const url = require("url");
+const fs = require("fs");
+const path = require("path");
 
 const PORT = parseInt(process.env.PORT || "20140", 10);
 const UPSTREAM = process.env.UPSTREAM || "127.0.0.1:20128";
 
+// Self-contained usage-check page (inline CSS/JS, no Next chunks). Served
+// directly by this proxy so the public port never has to expose /_next/static.
+const USAGE_CHECK_HTML = (() => {
+  try {
+    return fs.readFileSync(path.join(__dirname, "usage-check.html"), "utf8");
+  } catch {
+    return null;
+  }
+})();
+
 // Paths allowed through the public port.  Everything else gets 404.
+// NOTE: /usage-check is served locally (below), not proxied — no /_next needed.
 const ALLOW = [
-  "/usage-check",
   "/favicon.ico",
   "/favicon.svg",
   "/manifest.webmanifest",
-  "/_next/static/",
-  "/_next/image/",
   "/api/v1/",
   "/v1/",
   "/v1beta/",
 ];
 
-function isAllowed(path) {
-  return ALLOW.some((prefix) => path === prefix || path.startsWith(prefix));
+function isAllowed(p) {
+  return ALLOW.some((prefix) => p === prefix || p.startsWith(prefix));
 }
 
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url);
-  const path = parsed.pathname;
+  const reqPath = parsed.pathname;
 
-  if (!isAllowed(path)) {
+  // Serve the self-contained usage-check page locally.
+  if (reqPath === "/usage-check" || reqPath === "/usage-check/") {
+    if (!USAGE_CHECK_HTML) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("usage-check.html missing");
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(USAGE_CHECK_HTML);
+    return;
+  }
+
+  if (!isAllowed(reqPath)) {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("404 Not Found");
     return;

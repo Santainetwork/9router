@@ -5,9 +5,10 @@
 #   sudo bash deploy/install-public-nginx.sh
 #
 # After this, point Safeline's upstream at this host:8443 (not :20128).
-# PREREQUISITE: the usage-check feature must already be live on prod :20128
-# (otherwise the public routes will 404). Check with:
-#   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:20128/usage-check   # want 200
+# The usage-check page is served from disk (deploy/usage-check.html); only the
+# /api/v1/usage endpoint must exist on prod :20128. Check with:
+#   curl -s -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer sk-...' \
+#     'http://127.0.0.1:20128/api/v1/usage?period=1d'   # want 200
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)/nginx-9router-public.conf"
@@ -19,11 +20,13 @@ if ! command -v nginx >/dev/null 2>&1; then
   apt-get update -y && apt-get install -y nginx
 fi
 
-echo "== 2. Warn if usage-check not yet on prod =="
-code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:20128/usage-check || echo 000)
-if [ "$code" != "200" ]; then
-  echo "  WARNING: /usage-check on :20128 returned $code (want 200)."
-  echo "  Public routes will 404 until the feature is deployed to prod. Continuing anyway."
+echo "== 2. Warn if /api/v1/usage not reachable on prod =="
+code=$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:20128/api/v1/usage?period=1d' || echo 000)
+if [ "$code" = "404" ]; then
+  echo "  WARNING: /api/v1/usage on :20128 returned 404 — endpoint not deployed to prod yet."
+  echo "  The usage-check page will render but the lookup will fail. Continuing anyway."
+else
+  echo "  /api/v1/usage on :20128 -> $code (401/200 both mean the route exists)."
 fi
 
 echo "== 3. Install config =="
@@ -40,7 +43,9 @@ echo "== 5. Verify allowlist locally (via nginx :8443) =="
 pub=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8443/usage-check || echo 000)
 adm=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8443/dashboard || echo 000)
 key=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8443/api/keys || echo 000)
-echo "  /usage-check -> $pub (want 200 once deployed)"
+nxt=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8443/_next/static/chunks/webpack.js || echo 000)
+echo "  /usage-check -> $pub (want 200; served from disk)"
 echo "  /dashboard   -> $adm (want 404 = blocked)"
 echo "  /api/keys    -> $key (want 404 = blocked)"
+echo "  /_next/...   -> $nxt (want 404 = blocked; page is self-contained)"
 echo "Done. Point Safeline upstream at this host:8443."

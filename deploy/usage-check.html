@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Usage Check · 9Router</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root {
+    --bg: #0b0d12;
+    --surface: #12151c;
+    --surface-2: #171b24;
+    --border: #262b36;
+    --text: #e7eaf0;
+    --text-muted: #9aa3b2;
+    --text-subtle: #5f6773;
+    --primary: #f59e0b;
+    --primary-700: #b45309;
+    --red: #ef4444;
+    --orange: #f97316;
+    --green: #22c55e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --surface-2: #f0f2f5;
+      --border: #e2e5ea;
+      --text: #1a1d24;
+      --text-muted: #5f6773;
+      --text-subtle: #9aa3b2;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 16px;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  h1 { font-size: 24px; font-weight: 600; margin: 0; }
+  .muted { color: var(--text-muted); }
+  .subtle { color: var(--text-subtle); }
+  .sm { font-size: 14px; }
+  .xs { font-size: 12px; }
+  .tiny { font-size: 11px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+  }
+  .col { display: flex; flex-direction: column; }
+  .gap-1 { gap: 4px; }
+  .gap-2 { gap: 8px; }
+  .gap-3 { gap: 12px; }
+  .row { display: flex; align-items: center; }
+  .wrap-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .between { justify-content: space-between; }
+  .ml-auto { margin-left: auto; }
+  input {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    outline: none;
+  }
+  input:focus { border-color: var(--primary); }
+  button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  .btn {
+    background: var(--primary);
+    color: #1a1204;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:disabled { opacity: 0.6; cursor: default; }
+  .seg { display: inline-flex; background: rgba(127,127,127,0.12); border-radius: 10px; padding: 4px; }
+  .seg button {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: all .15s;
+  }
+  .seg button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  @media (min-width: 560px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+  .stat {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 12px;
+  }
+  .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+  .stat .value { margin-top: 4px; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .sub { margin-top: 2px; font-size: 11px; color: var(--text-muted); }
+  .err {
+    border: 1px solid rgba(239,68,68,.3);
+    background: rgba(239,68,68,.06);
+    color: #f87171;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 14px;
+  }
+  .bar { height: 8px; width: 100%; overflow: hidden; border-radius: 999px; background: rgba(127,127,127,.18); }
+  .bar > div { height: 100%; border-radius: 999px; }
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-family: ui-monospace, monospace;
+  }
+  .divide > div + div { border-top: 1px solid var(--border); }
+  .modelrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hidden { display: none; }
+  .spin {
+    width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.3);
+    border-top-color: transparent; border-radius: 50%;
+    animation: sp .6s linear infinite;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <h1>Usage Check</h1>
+      <p class="sm muted" style="margin:4px 0 0">Paste your API key to see your limits and usage. Only your own key's data is shown.</p>
+      <p class="tiny subtle" style="margin:4px 0 0">Modified by SantaiNetwork</p>
+    </div>
+
+    <div class="card">
+      <div class="col gap-3">
+        <input id="key" type="password" placeholder="sk-..." aria-label="API key" autocomplete="off" />
+        <div class="wrap-row">
+          <div class="seg" id="periods"></div>
+          <button class="btn ml-auto" id="checkBtn">
+            <span id="checkSpin" class="spin hidden"></span>
+            <span>Check</span>
+          </button>
+        </div>
+        <div id="error" class="err hidden"></div>
+      </div>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+<script>
+(function () {
+  var PERIODS = [
+    { d: 1, label: "1 day" },
+    { d: 7, label: "7 days" },
+    { d: 14, label: "14 days" },
+    { d: 30, label: "30 days" }
+  ];
+  var days = 7;
+  var lastData = null;
+
+  var keyEl = document.getElementById("key");
+  var errEl = document.getElementById("error");
+  var resEl = document.getElementById("results");
+  var checkBtn = document.getElementById("checkBtn");
+  var checkSpin = document.getElementById("checkSpin");
+  var periodsEl = document.getElementById("periods");
+
+  function fmt(n) {
+    var v = Number(n) || 0;
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + "M";
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + "k";
+    return String(Math.round(v));
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderPeriods() {
+    periodsEl.innerHTML = "";
+    PERIODS.forEach(function (p) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = p.label;
+      if (p.d === days) b.className = "active";
+      b.onclick = function () {
+        days = p.d;
+        renderPeriods();
+        if (lastData) check(p.d);
+      };
+      periodsEl.appendChild(b);
+    });
+  }
+
+  function setLoading(on) {
+    checkBtn.disabled = on;
+    checkSpin.classList.toggle("hidden", !on);
+  }
+  function showError(msg) {
+    if (!msg) { errEl.classList.add("hidden"); errEl.textContent = ""; return; }
+    errEl.classList.remove("hidden");
+    errEl.textContent = msg;
+  }
+
+  function stat(label, value, sub) {
+    return '<div class="stat"><p class="label">' + esc(label) + '</p>' +
+      '<p class="value">' + esc(value) + '</p>' +
+      (sub ? '<p class="sub">' + esc(sub) + '</p>' : '') + '</div>';
+  }
+
+  function render(data) {
+    lastData = data;
+    if (!data) { resEl.innerHTML = ""; return; }
+    var quota = (data.limits && data.limits.tokenQuota) || 0;
+    var used = (data.usage && data.usage.tokensUsedAllTime) || 0;
+    var remaining = data.usage ? data.usage.tokensRemaining : null;
+    var pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+    var barColor = pct >= 100 ? "var(--red)" : pct >= 80 ? "var(--orange)" : "var(--green)";
+    var models = (data.usage && data.usage.byModel) ? Object.entries(data.usage.byModel) : [];
+    var pdays = data.usage.period.days;
+
+    var html = "";
+
+    // Summary card
+    html += '<div class="card" style="margin-bottom:24px">';
+    html += '<div class="row between" style="margin-bottom:12px">';
+    html += '<p class="sm" style="font-weight:500;margin:0">' + esc((data.key && data.key.name) || "Your key") + '</p>';
+    html += '<span class="xs muted">last ' + esc(pdays) + 'd</span></div>';
+    html += '<div class="grid">';
+    html += stat("Requests / min", data.limits.requestsPerMinute > 0 ? data.limits.requestsPerMinute : "Unlimited");
+    html += stat("Requests", fmt(data.usage.requests), "in " + pdays + "d");
+    html += stat("Tokens", fmt(data.usage.totalTokens), "in " + pdays + "d");
+    html += stat("Quota", quota > 0 ? fmt(quota) : "Unlimited", quota > 0 ? (fmt(remaining) + " left") : "no cap");
+    html += '</div>';
+    if (quota > 0) {
+      html += '<div style="margin-top:12px">';
+      html += '<div class="bar"><div style="width:' + pct + '%;background:' + barColor + '"></div></div>';
+      html += '<p class="xs muted" style="margin:4px 0 0">' + fmt(used) + ' / ' + fmt(quota) + ' tokens used all-time (' + pct + '%)</p>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Access card
+    html += '<div class="card" style="margin-bottom:24px">';
+    html += '<p class="sm" style="font-weight:500;margin:0 0 8px">Models you can use</p>';
+    if (data.access && data.access.restricted) {
+      html += '<div class="wrap-row">';
+      (data.access.allowedModels || []).forEach(function (m) {
+        html += '<span class="chip">' + esc(m) + '</span>';
+      });
+      html += '</div>';
+    } else {
+      html += '<p class="sm muted" style="margin:0">✓ All models are available (no restriction).</p>';
+    }
+    html += '</div>';
+
+    // By-model card
+    if (models.length > 0) {
+      models.sort(function (a, b) {
+        return (b[1].promptTokens + b[1].completionTokens) - (a[1].promptTokens + a[1].completionTokens);
+      });
+      html += '<div class="card">';
+      html += '<p class="sm" style="font-weight:500;margin:0 0 8px">Usage by model (last ' + esc(pdays) + 'd)</p>';
+      html += '<div class="divide">';
+      models.forEach(function (pair) {
+        var m = pair[0], v = pair[1];
+        html += '<div class="modelrow">';
+        html += '<p class="mono xs truncate" style="margin:0">' + esc(m) + '</p>';
+        html += '<p class="xs muted" style="margin:0;flex-shrink:0;font-variant-numeric:tabular-nums">' +
+          fmt(v.requests) + ' req · ' + fmt(v.promptTokens + v.completionTokens) + ' tok</p>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    resEl.innerHTML = html;
+  }
+
+  function check(period) {
+    period = period || days;
+    var k = keyEl.value.trim();
+    if (!k) { showError("Enter your API key."); return; }
+    setLoading(true);
+    showError("");
+    fetch("/api/v1/usage?period=" + period + "d", {
+      headers: { Authorization: "Bearer " + k },
+      cache: "no-store"
+    })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (body) {
+          return { ok: res.ok, status: res.status, body: body };
+        });
+      })
+      .then(function (r) {
+        if (!r.ok) { showError((r.body && r.body.error) || ("Request failed (" + r.status + ")")); render(null); }
+        else { render(r.body); }
+      })
+      .catch(function (e) { showError((e && e.message) || "Network error"); render(null); })
+      .finally(function () { setLoading(false); });
+  }
+
+  checkBtn.onclick = function () { check(); };
+  keyEl.addEventListener("keydown", function (e) { if (e.key === "Enter") check(); });
+  renderPeriods();
+})();
+</script>
+</body>
+</html>
