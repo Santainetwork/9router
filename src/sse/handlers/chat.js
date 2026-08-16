@@ -138,7 +138,7 @@ export async function handleChat(request, clientRawRequest = null) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, modelStr);
         },
         log,
         comboName: modelStr,
@@ -153,7 +153,7 @@ export async function handleChat(request, clientRawRequest = null) {
       body,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, modelStr),
         adapterAdded
       ),
       log,
@@ -173,7 +173,7 @@ export async function handleChat(request, clientRawRequest = null) {
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, modelStr),
         adapterAdded
       ),
       log,
@@ -188,7 +188,10 @@ export async function handleChat(request, clientRawRequest = null) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, displayModel = null) {
+  // The model id to REPORT to the client (response.model + footer). For combos
+  // this is the combo name the caller sent, not the resolved member model.
+  const reportModel = displayModel || modelStr;
   const modelInfo = await getModelInfo(modelStr);
 
   // If provider is null, this might be a combo name - check and handle
@@ -215,7 +218,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
               cleanRawReq = { ...clientRawRequest, body: cleanBody };
             }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
+            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, modelStr);
           },
           log,
           comboName: modelStr,
@@ -230,7 +233,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         body,
         models: augmentedModels,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, modelStr),
           adapterAdded
         ),
         log,
@@ -247,7 +250,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const responseMetadata = isBasicChatRequest(clientRawRequest)
     ? (clientRawRequest.responseMetadata ||= {})
     : null;
-  if (responseMetadata) Object.assign(responseMetadata, { provider, model, requestedModel: modelStr });
+  if (responseMetadata) Object.assign(responseMetadata, { provider, model, requestedModel: reportModel });
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 
@@ -344,7 +347,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       providerThinking,
       responseFooterEnabled: !!chatSettings.responseFooterEnabled,
       responseFooterText: chatSettings.responseFooterText || "",
-      requestedModel: modelStr,
+      requestedModel: reportModel,
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onCredentialsRefreshed: async (newCreds) => {
