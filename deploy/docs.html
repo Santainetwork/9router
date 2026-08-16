@@ -106,8 +106,7 @@
     <h2 id="base">Base URL</h2>
     <pre><code>https://YOUR-DOMAIN/v1</code></pre>
     <p class="muted">
-      Both <code>/v1/*</code> and <code>/api/v1/*</code> work. Use <code>/v1</code> as the OpenAI
-      <code>baseURL</code>.
+      Use <code>/v1</code> as the OpenAI <code>baseURL</code>. All endpoints below live under it.
     </p>
 
     <h2 id="chat"><span class="method post">POST</span><span class="endpoint">/v1/chat/completions</span></h2>
@@ -115,7 +114,7 @@
     <h3>Request body</h3>
     <table>
       <tr><th>Field</th><th>Type</th><th>Notes</th></tr>
-      <tr><td><code>model</code></td><td>string</td><td>Model id, e.g. <code>amar/amanai/deepseek-v4-flash</code>. See <a href="#models">list models</a>.</td></tr>
+      <tr><td><code>model</code></td><td>string</td><td>Model id, e.g. <code>your-model</code>. See <a href="#models">list models</a>.</td></tr>
       <tr><td><code>messages</code></td><td>array</td><td>OpenAI chat messages (<code>role</code> + <code>content</code>).</td></tr>
       <tr><td><code>stream</code></td><td>boolean</td><td>Optional. Stream tokens as SSE. Add <code>stream_options.include_usage</code> for token counts.</td></tr>
       <tr><td><code>max_tokens</code></td><td>number</td><td>Optional cap on output tokens.</td></tr>
@@ -126,7 +125,7 @@
   -H "Authorization: Bearer sk-your-9router-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "amar/amanai/deepseek-v4-flash",
+    "model": "your-model",
     "messages": [{"role": "user", "content": "Hello!"}],
     "max_tokens": 100
   }'</code></pre>
@@ -139,7 +138,7 @@ client = OpenAI(
 )
 
 resp = client.chat.completions.create(
-    model="amar/amanai/deepseek-v4-flash",
+    model="your-model",
     messages=[{"role": "user", "content": "Hello!"}],
 )
 print(resp.choices[0].message.content)</code></pre>
@@ -151,7 +150,7 @@ print(resp.choices[0].message.content)</code></pre>
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "amar/amanai/deepseek-v4-flash",
+    model: "your-model",
     messages: [{ role: "user", content: "Hello!" }],
     stream: true,
     stream_options: { include_usage: true },
@@ -166,20 +165,32 @@ print(resp.choices[0].message.content)</code></pre>
     <pre><code>{
   "object": "list",
   "data": [
-    { "id": "amar/amanai/deepseek-v4-flash", "object": "model" },
-    { "id": "gemini/gemini-3.7-flash",       "object": "model" }
+    { "id": "your-model", "object": "model" },
+    { "id": "another-model", "object": "model" }
   ]
 }</code></pre>
-    <p class="muted">Model ids use a <code>provider/…/name</code> shape. Pass the full id verbatim as <code>model</code>.</p>
+    <p class="muted">Call this endpoint to get the exact ids available to your key, then pass an id verbatim as <code>model</code>.</p>
 
-    <h2 id="usage"><span class="method get">GET</span><span class="endpoint">/api/v1/usage</span></h2>
+    <h3>Browse available models</h3>
+    <p class="muted">Paste your key to list the models you can call. Read-only — nothing is sent anywhere except this gateway.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <input id="mdlKey" type="password" placeholder="sk-your-9router-key" autocomplete="off"
+        style="flex:1;min-width:220px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;outline:none" />
+      <input id="mdlFilter" type="text" placeholder="Filter…"
+        style="width:140px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;outline:none" />
+      <button id="mdlBtn" style="background:var(--primary);color:#1a1204;font-weight:600;font-size:13px;padding:8px 16px;border-radius:8px;border:none;cursor:pointer">List models</button>
+    </div>
+    <div id="mdlStatus" class="subtle"></div>
+    <div id="mdlList" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+
+    <h2 id="usage"><span class="method get">GET</span><span class="endpoint">/v1/usage</span></h2>
     <p>Return limits, access, and usage for the key in the <code>Authorization</code> header.</p>
     <h3>Query</h3>
     <table>
       <tr><th>Param</th><th>Notes</th></tr>
       <tr><td><code>period</code></td><td>Window, e.g. <code>1d</code>, <code>7d</code>, <code>14d</code>, <code>30d</code>. Default <code>7d</code>.</td></tr>
     </table>
-    <pre><code>curl "https://YOUR-DOMAIN/api/v1/usage?period=7d" \
+    <pre><code>curl "https://YOUR-DOMAIN/v1/usage?period=7d" \
   -H "Authorization: Bearer sk-your-9router-key"</code></pre>
     <h3>Response</h3>
     <pre><code>{
@@ -194,7 +205,7 @@ print(resp.choices[0].message.content)</code></pre>
     "promptTokens": 50479321,
     "completionTokens": 138857,
     "totalTokens": 50618178,
-    "byModel": { "q/opus": { "requests": 100, "promptTokens": 1, "completionTokens": 2 } },
+    "byModel": { "your-model": { "requests": 100, "promptTokens": 1, "completionTokens": 2 } },
     "byDay":   { "2026-08-15": { "requests": 10, "totalTokens": 123 } }
   }
 }</code></pre>
@@ -209,7 +220,7 @@ print(resp.choices[0].message.content)</code></pre>
       <tr><td><code>429</code></td><td>Rate limit / queue timeout — retry after a moment.</td></tr>
       <tr><td><code>5xx</code></td><td>Upstream provider error; 9Router retries/fails over where possible.</td></tr>
     </table>
-    <pre><code>{ "error": { "message": "Model not permitted for this API key: myr/q/opus",
+    <pre><code>{ "error": { "message": "Model not permitted for this API key: your-model",
              "type": "permission_error", "code": "insufficient_quota" } }</code></pre>
 
     <h2 id="limits">Rate limits &amp; quotas</h2>
@@ -225,5 +236,52 @@ print(resp.choices[0].message.content)</code></pre>
   9Router — OpenAI-compatible AI gateway. · Modified by SantaiNetwork ·
   <a href="/usage-check">Usage checker</a>
 </footer>
+<script>
+(function () {
+  var keyEl = document.getElementById("mdlKey");
+  var filterEl = document.getElementById("mdlFilter");
+  var btn = document.getElementById("mdlBtn");
+  var statusEl = document.getElementById("mdlStatus");
+  var listEl = document.getElementById("mdlList");
+  var allIds = [];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function render() {
+    var q = filterEl.value.trim().toLowerCase();
+    var ids = q ? allIds.filter(function (id) { return id.toLowerCase().indexOf(q) !== -1; }) : allIds;
+    if (!allIds.length) { listEl.innerHTML = ""; return; }
+    statusEl.textContent = ids.length + " of " + allIds.length + " model" + (allIds.length === 1 ? "" : "s");
+    listEl.innerHTML = ids.slice(0, 500).map(function (id) {
+      return '<span class="pill" style="font-family:ui-monospace,monospace">' + esc(id) + "</span>";
+    }).join("");
+  }
+
+  function load() {
+    var k = keyEl.value.trim();
+    if (!k) { statusEl.textContent = "Enter your API key first."; return; }
+    statusEl.textContent = "Loading…";
+    listEl.innerHTML = "";
+    fetch("/v1/models", { headers: { Authorization: "Bearer " + k }, cache: "no-store" })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
+      })
+      .then(function (res) {
+        if (!res.ok) { statusEl.textContent = (res.j && res.j.error && res.j.error.message) || ("Request failed (" + res.status + ")"); return; }
+        allIds = ((res.j && res.j.data) || []).map(function (m) { return typeof m === "string" ? m : m.id; }).filter(Boolean).sort();
+        render();
+      })
+      .catch(function (e) { statusEl.textContent = (e && e.message) || "Network error"; });
+  }
+
+  btn.onclick = load;
+  keyEl.addEventListener("keydown", function (e) { if (e.key === "Enter") load(); });
+  filterEl.addEventListener("input", render);
+})();
+</script>
 </body>
 </html>

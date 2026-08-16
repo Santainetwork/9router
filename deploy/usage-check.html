@@ -298,7 +298,7 @@
     if (!k) { showError("Enter your API key."); return; }
     setLoading(true);
     showError("");
-    fetch("/api/v1/usage?period=" + period + "d", {
+    fetch("/v1/usage?period=" + period + "d", {
       headers: { Authorization: "Bearer " + k },
       cache: "no-store"
     })
