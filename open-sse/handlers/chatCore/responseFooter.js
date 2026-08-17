@@ -208,3 +208,36 @@ export function rewriteStreamModel(readable, requestedModel) {
   return readable.pipeThrough(transform);
 }
 
+
+// Provider self-branding / referral lines some upstreams inject into replies
+// (e.g. Amanai's "This response was delivered by ai.amanai.dev"). We only LOG
+// when detected — the reply is left untouched. Extend PROVIDER_FOOTER_PATTERNS
+// as new ones surface.
+const PROVIDER_FOOTER_PATTERNS = [
+  /this response was delivered by ai\.amanai\.dev/i,
+  /delivered by ai\.amanai\.dev/i,
+];
+
+// Return the matched provider-footer snippet from a reply text, or null.
+export function detectProviderFooter(text) {
+  if (!text || typeof text !== "string") return null;
+  for (const re of PROVIDER_FOOTER_PATTERNS) {
+    const m = re.exec(text);
+    if (m) return m[0];
+  }
+  return null;
+}
+
+// Scan a reply and log (once) if the provider embedded its own footer/referral.
+// Non-fatal, fail-open. `emit` is a (tag, icon, msg) logger like log.line.
+export function logProviderFooter({ text, provider, model, reqTag, emit }) {
+  try {
+    const hit = detectProviderFooter(text);
+    if (hit && typeof emit === "function") {
+      emit(reqTag, "🏷️", `[provider-footer] ${provider}/${model} embedded: ${JSON.stringify(hit)}`);
+    }
+    return hit;
+  } catch {
+    return null;
+  }
+}

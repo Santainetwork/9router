@@ -9,7 +9,7 @@ import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { renderFooterText, appendFooterToOpenAIBody, appendFooterToClaudeBody } from "./responseFooter.js";
+import { renderFooterText, appendFooterToOpenAIBody, appendFooterToClaudeBody, logProviderFooter } from "./responseFooter.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
 
 function parseToolArguments(value) {
@@ -382,6 +382,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   reqLogger.logConvertedResponse(translatedResponse);
+
+  // Log (only) when the upstream provider embedded its own footer/referral in
+  // the reply text (e.g. Amanai). The reply itself is left untouched.
+  logProviderFooter({
+    text: translatedResponse?.choices?.[0]?.message?.content
+      || (Array.isArray(translatedResponse?.content)
+          ? translatedResponse.content.map((b) => b?.text || "").join("")
+          : ""),
+    provider, model, reqTag, emit: log?.line,
+  });
 
   // Server-side response footer: append to the assistant's reply text so it
   // reaches every API client (Jcode, SDKs…). Off by default; text is templated.
