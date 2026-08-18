@@ -234,6 +234,17 @@ export default function BasicChatPageClient() {
 
   useEffect(() => {
     let cancelled = false;
+    fetch("/api/settings", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((settings) => {
+        if (!cancelled && settings) footerSettings.setSettings(settings);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [footerSettings.setSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     async function loadData() {
       setLoadingData(true);
@@ -1173,7 +1184,7 @@ export default function BasicChatPageClient() {
 
                       {isAssistant && !isStreaming ? (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {message.responseMeta && footerSettings.enabled && (footerSettings.hasVisibleField() || footerSettings.customMessage) ? (
+                          {message.responseMeta && footerSettings.loaded && footerSettings.enabled && (footerSettings.hasVisibleField() || footerSettings.customMessage) ? (
                             <div className="mr-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/40" aria-label="Response metadata">
                               {footerSettings.fields.providerModel ? <span title="Provider and model">{message.responseMeta.providerName || message.responseMeta.provider} · {message.responseMeta.model}</span> : null}
                               {footerSettings.fields.tokens && message.responseMeta.usage ? <span title="Prompt / completion / total tokens">{message.responseMeta.usage.promptTokens} in · {message.responseMeta.usage.completionTokens} out · {message.responseMeta.usage.totalTokens} total</span> : null}

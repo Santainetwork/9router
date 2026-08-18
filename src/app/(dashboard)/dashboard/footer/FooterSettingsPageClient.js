@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/shared/components";
 import useFooterStore, { FOOTER_FIELDS } from "@/store/footerStore";
+import { DEFAULT_FOOTER_FIELDS, footerSettingsPatch } from "@/shared/utils/footerSettings";
 
 // Dedicated page for the Basic Chat response-footer settings. Split out of the
 // chat header so footer governance lives in one focused place. The same zustand
@@ -54,18 +55,23 @@ export default function FooterSettingsPageClient() {
       .then((s) => {
         setSrvEnabled(!!s.responseFooterEnabled);
         setSrvText(typeof s.responseFooterText === "string" ? s.responseFooterText : "");
+        footer.setSettings(s);
         setSrvLoaded(true);
       })
       .catch(() => setSrvLoaded(true));
   }, []);
 
   const saveServer = async (patch) => {
-    const res = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    setSrvStatus(res.ok ? "Saved" : `Failed ${res.status}`);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      setSrvStatus(res.ok ? "Saved" : `Failed ${res.status}`);
+    } catch {
+      setSrvStatus("Save failed");
+    }
     setTimeout(() => setSrvStatus(""), 1200);
   };
 
@@ -188,7 +194,7 @@ export default function FooterSettingsPageClient() {
 
       <div>
         <p className="text-sm font-medium">Basic Chat footer</p>
-        <p className="text-xs text-text-muted">The settings below only affect footer shown in dashboard&apos;s Basic Chat view (stored in browser).</p>
+        <p className="text-xs text-text-muted">Admin-controlled global settings. Every Basic Chat user sees the same footer after reload.</p>
       </div>
 
       {/* Live preview */}
@@ -199,7 +205,7 @@ export default function FooterSettingsPageClient() {
         </div>
         <div className="mt-3 rounded-xl border border-border bg-bg p-4">
           <p className="text-sm">Hello! How can I help you with your coding today?</p>
-          {footer.enabled && (footer.hasVisibleField() || footer.customMessage) ? (
+          {footer.loaded && footer.enabled && (footer.hasVisibleField() || footer.customMessage) ? (
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
               {footer.fields.providerModel ? <span>{SAMPLE.providerName} · {SAMPLE.model}</span> : null}
               {footer.fields.tokens ? <span>{SAMPLE.usage.promptTokens} in · {SAMPLE.usage.completionTokens} out · {SAMPLE.usage.totalTokens} total</span> : null}
@@ -219,20 +225,31 @@ export default function FooterSettingsPageClient() {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={footer.enabled}
-            onChange={(e) => { footer.setEnabled(e.target.checked); flash(); }}
+            checked={footer.loaded && footer.enabled}
+            disabled={!footer.loaded}
+            onChange={(e) => {
+              const enabled = e.target.checked;
+              footer.setEnabled(enabled);
+              saveServer({ responseFooterBasicChatEnabled: enabled });
+              flash();
+            }}
             className="size-4 accent-primary"
           />
           Show response footer
         </label>
 
-        <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${footer.enabled ? "" : "pointer-events-none opacity-40"}`}>
+        <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${footer.loaded && footer.enabled ? "" : "pointer-events-none opacity-40"}`}>
           {FOOTER_FIELDS.map((field) => (
             <label key={field.key} className="flex items-start gap-2 rounded-[12px] border border-border bg-bg px-3 py-2 text-sm">
               <input
                 type="checkbox"
                 checked={!!footer.fields[field.key]}
-                onChange={() => { footer.toggleField(field.key); flash(); }}
+                onChange={() => {
+                  const fields = { ...DEFAULT_FOOTER_FIELDS, ...footer.fields, [field.key]: !footer.fields[field.key] };
+                  footer.setField(field.key, fields[field.key]);
+                  saveServer({ responseFooterBasicChatFields: fields });
+                  flash();
+                }}
                 className="mt-0.5 size-4 accent-primary"
               />
               <span className="min-w-0">
@@ -250,7 +267,11 @@ export default function FooterSettingsPageClient() {
           <p className="text-sm font-medium">Your custom footer</p>
           <button
             type="button"
-            onClick={() => { footer.resetFooter(); flash(); }}
+            onClick={() => {
+              footer.resetFooter();
+              saveServer(footerSettingsPatch({ enabled: true, fields: DEFAULT_FOOTER_FIELDS, customMessage: "" }));
+              flash();
+            }}
             className="text-xs text-text-muted underline hover:text-text-main"
           >
             Reset all
@@ -261,12 +282,16 @@ export default function FooterSettingsPageClient() {
         </p>
         <textarea
           value={footer.customMessage}
+          disabled={!footer.loaded}
           onChange={(e) => footer.setCustomMessage(e.target.value)}
-          onBlur={flash}
+          onBlur={() => {
+            saveServer({ responseFooterBasicChatText: footer.customMessage });
+            flash();
+          }}
           rows={3}
           maxLength={500}
           placeholder="e.g. Powered by SantaiNetwork"
-          className={`mt-2 w-full rounded-[12px] border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary/50 ${footer.enabled ? "" : "opacity-40"}`}
+          className={`mt-2 w-full rounded-[12px] border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary/50 ${footer.loaded && footer.enabled ? "" : "opacity-40"}`}
         />
         <p className="mt-1 text-right text-[11px] text-text-subtle">{footer.customMessage.length}/500</p>
       </Card>

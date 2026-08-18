@@ -165,7 +165,7 @@ export const TABLES = {
       referral_text: "TEXT NOT NULL",
     },
     indexes: [
-      "CREATE INDEX IF NOT EXISTS idx_pfl_ts ON provider_footer_logs(timestamp DESC) LIMIT 200",
+      "CREATE INDEX IF NOT EXISTS idx_pfl_ts ON provider_footer_logs(timestamp DESC)",
       "CREATE INDEX IF NOT EXISTS idx_pfl_provider ON provider_footer_logs(provider)",
     ],
   },

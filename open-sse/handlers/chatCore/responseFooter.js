@@ -209,23 +209,13 @@ export function rewriteStreamModel(readable, requestedModel) {
 }
 
 
-// Provider self-branding / referral lines some upstreams inject into replies
-// (e.g. Amanai's "This response was delivered by ai.amanai.dev"). We only LOG
-// when detected — the reply is left untouched. Extend PROVIDER_FOOTER_PATTERNS
-// as new ones surface.
-const PROVIDER_FOOTER_PATTERNS = [
-  /this response was delivered by ai\.amanai\.dev/i,
-  /delivered by ai\.amanai\.dev/i,
-];
+import { redactProviderFooterText, detectProviderFooter as detectAmanaiFooter } from "@/shared/utils/providerFooter.js";
 
+// Provider self-branding / referral lines some upstreams inject into replies.
+// Scope intentionally stays Amanai-only.
 // Return the matched provider-footer snippet from a reply text, or null.
 export function detectProviderFooter(text) {
-  if (!text || typeof text !== "string") return null;
-  for (const re of PROVIDER_FOOTER_PATTERNS) {
-    const m = re.exec(text);
-    if (m) return m[0];
-  }
-  return null;
+  return detectAmanaiFooter(text);
 }
 
 // Scan a reply and log (once) if the provider embedded its own footer/referral.
@@ -243,7 +233,7 @@ export function logProviderFooter({ text, provider, model, reqTag, emit }) {
       // Use dynamic import to avoid circular dependencies
       import("@/lib/db/repos/providerFooterLogsRepo.js")
         .then(({ addProviderFooterLog }) => {
-          return addProviderFooterLog(provider, model, hit, new Date().toISOString());
+          return addProviderFooterLog(provider, model, redactProviderFooterText(hit), new Date().toISOString());
         })
         .catch((dbError) => {
           // Don't fail the request if DB logging fails

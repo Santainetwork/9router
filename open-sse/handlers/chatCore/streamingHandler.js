@@ -8,7 +8,7 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
-import { wrapOpenAIStreamWithFooter, rewriteStreamModel } from "./responseFooter.js";
+import { wrapOpenAIStreamWithFooter, rewriteStreamModel, logProviderFooter } from "./responseFooter.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -141,6 +141,16 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     };
     const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
+
+    // Streaming content is the authoritative complete reply. Scan it too so
+    // provider self-branding is logged consistently with non-streaming calls.
+    logProviderFooter({
+      text: safeContent,
+      provider,
+      model,
+      reqTag,
+      emit: log?.line,
+    });
 
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,

@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
+import { footerSettingsPatch } from "@/shared/utils/footerSettings.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -41,6 +42,19 @@ export async function PATCH(request) {
 
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
+
+    // Normalize admin-controlled Basic Chat footer values at the API boundary.
+    if (Object.prototype.hasOwnProperty.call(body, "responseFooterBasicChatEnabled")) {
+      body.responseFooterBasicChatEnabled = body.responseFooterBasicChatEnabled !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "responseFooterBasicChatFields")) {
+      body.responseFooterBasicChatFields = footerSettingsPatch({
+        fields: body.responseFooterBasicChatFields,
+      }).responseFooterBasicChatFields;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "responseFooterBasicChatText")) {
+      body.responseFooterBasicChatText = String(body.responseFooterBasicChatText ?? "").slice(0, 500);
+    }
 
     // If updating password, hash it
     if (body.newPassword) {

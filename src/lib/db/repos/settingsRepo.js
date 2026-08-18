@@ -1,5 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { DEFAULT_FOOTER_FIELDS } from "@/shared/utils/footerSettings.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
@@ -61,12 +62,14 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
-  // Response footer: append a footer to the assistant's reply text for ALL API
-  // clients (Jcode, SDKs, etc). Default off so it has zero effect until enabled.
+  // Response footer: append a footer to assistant reply text for ALL API
+  // clients. Default off so it has zero effect until enabled.
   responseFooterEnabled: false,
-  // Template with tokens: {provider} {model} {promptTokens} {completionTokens}
-  // {totalTokens} {durationMs}. Plain text otherwise. Newlines allowed.
   responseFooterText: "\n\n---\n_via 9Router · {model}_",
+  // Basic Chat metadata footer. Admin-controlled and shared by every dashboard user.
+  responseFooterBasicChatEnabled: true,
+  responseFooterBasicChatFields: { ...DEFAULT_FOOTER_FIELDS },
+  responseFooterBasicChatText: "",
 };
 
 async function readRaw() {
