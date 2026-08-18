@@ -230,12 +230,27 @@ export function detectProviderFooter(text) {
 
 // Scan a reply and log (once) if the provider embedded its own footer/referral.
 // Non-fatal, fail-open. `emit` is a (tag, icon, msg) logger like log.line.
+// Also persists logs to database for dashboard monitoring.
 export function logProviderFooter({ text, provider, model, reqTag, emit }) {
   try {
     const hit = detectProviderFooter(text);
     if (hit && typeof emit === "function") {
       emit(reqTag, "🏷️", `[provider-footer] ${provider}/${model} embedded: ${JSON.stringify(hit)}`);
     }
+    
+    // Persist to database if footer detected
+    if (hit) {
+      // Use dynamic import to avoid circular dependencies
+      import("@/lib/db/repos/providerFooterLogsRepo.js")
+        .then(({ addProviderFooterLog }) => {
+          return addProviderFooterLog(provider, model, hit, new Date().toISOString());
+        })
+        .catch((dbError) => {
+          // Don't fail the request if DB logging fails
+          console.warn("[ProviderFooterLog] Failed to persist log:", dbError.message);
+        });
+    }
+    
     return hit;
   } catch {
     return null;

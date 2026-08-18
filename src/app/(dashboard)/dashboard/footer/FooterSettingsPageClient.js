@@ -12,7 +12,16 @@ function formatDuration(ms) {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 }
 
-// A representative sample reply so users see exactly how their choices render.
+function formatTime(timestamp) {
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  } catch {
+    return timestamp;
+  }
+}
+
+// representative sample reply users see exactly how choices render. 
 const SAMPLE = {
   provider: "anthropic-compatible-xxxx",
   providerName: "UTAMA",
@@ -34,6 +43,11 @@ export default function FooterSettingsPageClient() {
   const [srvLoaded, setSrvLoaded] = useState(false);
   const [srvStatus, setSrvStatus] = useState("");
 
+  // Provider footer detection logs state
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [providerLogs, setProviderLogs] = useState([]);
+  const [logsError, setLogsError] = useState("");
+
   useEffect(() => {
     fetch("/api/settings", { cache: "no-store" })
       .then((r) => r.json())
@@ -46,17 +60,12 @@ export default function FooterSettingsPageClient() {
   }, []);
 
   const saveServer = async (patch) => {
-    setSrvStatus("Saving…");
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      setSrvStatus(res.ok ? "Saved" : "Save failed");
-    } catch {
-      setSrvStatus("Save failed");
-    }
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    setSrvStatus(res.ok ? "Saved" : `Failed ${res.status}`);
     setTimeout(() => setSrvStatus(""), 1200);
   };
 
@@ -65,13 +74,63 @@ export default function FooterSettingsPageClient() {
     setTimeout(() => setSavedFlash(false), 900);
   };
 
+  // Provider footer logs functions
+  const loadProviderLogs = async () => {
+    setLogsLoading(true);
+    setLogsError("");
+    
+    try {
+      const response = await fetch("/api/provider-footer-logs?limit=30");
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setProviderLogs(data.logs || []);
+    } catch (error) {
+      setLogsError(`Failed to load logs: ${error.message}`);
+      setProviderLogs([]);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const clearLogs = async () => {
+    if (!confirm("Clear all provider footer detection logs? This cannot be undone.")) {
+      return;
+    }
+    
+    setLogsLoading(true);
+    setLogsError("");
+    
+    try {
+      const response = await fetch("/api/provider-footer-logs", {
+        method: "DELETE",
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      setProviderLogs([]);
+    } catch (error) {
+      setLogsError(`Failed to clear logs: ${error.message}`);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  // Auto-load logs on component mount
+  useEffect(() => {
+    loadProviderLogs();
+  }, []);
+
   return (
-    <div className="max-w-3xl mx-auto px-1 sm:px-0 flex flex-col gap-6">
+    <div className="max-w-3xl mx-auto px-1 sm:px-0 flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Response Footer</h1>
         <p className="text-sm text-text-muted mt-1">
-          Control the small info line shown under each assistant reply in Basic Chat.
-          Pick which details appear and add your own custom footer text.
+          Shown under each assistant reply in Basic Chat. Toggle details or add your own custom footer text.
         </p>
         <p className="text-[11px] text-text-subtle mt-1">Modified by SantaiNetwork</p>
       </div>
@@ -108,13 +167,12 @@ export default function FooterSettingsPageClient() {
             onBlur={() => saveServer({ responseFooterText: srvText })}
             rows={3}
             maxLength={500}
-            placeholder={"\\n\\n---\\n_via 9Router · {model}_"}
+            placeholder={"\n\n---\n_via 9Router · {model}_"}
             className="mt-2 w-full rounded-[12px] border border-border bg-bg px-3 py-2 text-sm font-mono outline-none focus:border-primary/50"
           />
           <div className="mt-2 rounded-lg border border-border bg-bg p-3">
             <p className="text-[11px] uppercase tracking-wide text-text-muted">Preview (appended to reply)</p>
-            <pre className="mt-1 whitespace-pre-wrap text-xs text-text-main">{
-              (srvText || "")
+            <pre className="mt-1 whitespace-pre-wrap text-xs text-text-main">{(srvText || "")
                 .replace(/\{model\}/g, "your-model")
                 .replace(/\{provider\}/g, "provider")
                 .replace(/\{promptTokens\}/g, "2009")
@@ -123,15 +181,14 @@ export default function FooterSettingsPageClient() {
                 .replace(/\{durationS\}/g, "3.1s")
                 .replace(/\{durationMs\}/g, "3100")
                 .replace(/\{requestedModel\}/g, "your-model")
-              || "(empty)"
-            }</pre>
+              || "(empty)"}</pre>
           </div>
         </div>
       </Card>
 
       <div>
         <p className="text-sm font-medium">Basic Chat footer</p>
-        <p className="text-xs text-text-muted">The settings below only affect the footer shown in the dashboard&apos;s Basic Chat view (stored in your browser).</p>
+        <p className="text-xs text-text-muted">The settings below only affect footer shown in dashboard&apos;s Basic Chat view (stored in browser).</p>
       </div>
 
       {/* Live preview */}
@@ -212,6 +269,76 @@ export default function FooterSettingsPageClient() {
           className={`mt-2 w-full rounded-[12px] border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary/50 ${footer.enabled ? "" : "opacity-40"}`}
         />
         <p className="mt-1 text-right text-[11px] text-text-subtle">{footer.customMessage.length}/500</p>
+      </Card>
+
+      {/* Provider Footer Detection Logs - Amanai only */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Amanai Footer Detection Log</p>
+            <p className="text-xs text-text-muted">Monitors when provider embeds Amanai referral text in responses.</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={loadProviderLogs}
+              disabled={logsLoading}
+              className="px-3 py-1 text-xs bg-border text-text-main rounded border hover:bg-bg disabled:opacity-50"
+            >
+              Refresh
+            </button>
+            <button
+              onClick={clearLogs}
+              disabled={logsLoading}
+              className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {logsError && (
+          <div className="mt-3 p-2 text-xs text-red-600 bg-red-100 rounded">
+            {logsError}
+          </div>
+        )}
+
+        <div className="mt-3 rounded-xl border border-border bg-bg">
+          {logsLoading ? (
+            <div className="p-4 text-center text-sm text-text-muted">
+              Loading logs...
+            </div>
+          ) : providerLogs.length === 0 ? (
+            <div className="p-4 text-center text-sm text-text-muted italic">
+              No Amanai footer detections found
+            </div>
+          ) : (
+            <div className="divide-y divide-border max-h-80 overflow-y-auto">
+              {providerLogs.map((log, index) => (
+                <div key={log.id || index + 1} className="p-3 text-sm">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-text-main">
+                          {log.provider}
+                        </span>
+                        <span className="text-xs text-text-muted">·</span>
+                        <span className="text-xs text-text-main font-mono">
+                          {log.model}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-subtle mb-2 italic">
+                        "{log.referral_text}"
+                      </p>
+                      <p className="text-[11px] text-text-muted">
+                        {formatTime(log.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   );
