@@ -296,12 +296,12 @@ export default function FooterSettingsPageClient() {
         <p className="mt-1 text-right text-[11px] text-text-subtle">{footer.customMessage.length}/500</p>
       </Card>
 
-      {/* Provider Footer Detection Logs - Amanai only */}
+      {/* Provider Footer Detection Logs */}
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium">Amanai Footer Detection Log</p>
-            <p className="text-xs text-text-muted">Monitors when provider embeds Amanai referral text in responses.</p>
+            <p className="text-sm font-medium">Provider Footer Detection Log</p>
+            <p className="text-xs text-text-muted">Monitors when a provider embeds referral text in responses.</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -334,7 +334,7 @@ export default function FooterSettingsPageClient() {
             </div>
           ) : providerLogs.length === 0 ? (
             <div className="p-4 text-center text-sm text-text-muted italic">
-              No Amanai footer detections found
+              No provider footer detections found
             </div>
           ) : (
             <div className="divide-y divide-border max-h-80 overflow-y-auto">

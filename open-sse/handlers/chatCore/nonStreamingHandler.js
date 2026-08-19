@@ -384,7 +384,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   reqLogger.logConvertedResponse(translatedResponse);
 
   // Log (only) when the upstream provider embedded its own footer/referral in
-  // the reply text (e.g. Amanai). The reply itself is left untouched.
+  // the reply text. The reply itself is left untouched.
   logProviderFooter({
     text: translatedResponse?.choices?.[0]?.message?.content
       || (Array.isArray(translatedResponse?.content)

@@ -209,13 +209,12 @@ export function rewriteStreamModel(readable, requestedModel) {
 }
 
 
-import { redactProviderFooterText, detectProviderFooter as detectAmanaiFooter } from "@/shared/utils/providerFooter.js";
+import { redactProviderFooterText, detectProviderFooter as detectGenericFooter } from "@/shared/utils/providerFooter.js";
 
 // Provider self-branding / referral lines some upstreams inject into replies.
-// Scope intentionally stays Amanai-only.
 // Return the matched provider-footer snippet from a reply text, or null.
 export function detectProviderFooter(text) {
-  return detectAmanaiFooter(text);
+  return detectGenericFooter(text);
 }
 
 // Scan a reply and log (once) if the provider embedded its own footer/referral.

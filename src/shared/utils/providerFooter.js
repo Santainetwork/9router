@@ -12,8 +12,7 @@ export function redactProviderFooterText(text) {
 }
 
 const PROVIDER_FOOTER_PATTERNS = [
-  /this response was delivered by ai\.amanai\.dev/i,
-  /delivered by ai\.amanai\.dev/i,
+  /^\s*this response was delivered by\s+[^\r\n]+\s*$/im,
 ];
 
 export function detectProviderFooter(text) {

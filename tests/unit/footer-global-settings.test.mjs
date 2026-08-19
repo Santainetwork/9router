@@ -11,12 +11,12 @@ test("global footer settings merge server values with default fields", () => {
     footerSettingsFromServer({
       responseFooterBasicChatEnabled: false,
       responseFooterBasicChatFields: { tokens: false },
-      responseFooterBasicChatText: "Powered by Amanai",
+      responseFooterBasicChatText: "Powered by provider",
     }),
     {
       enabled: false,
       fields: { ...DEFAULT_FOOTER_FIELDS, tokens: false },
-      customMessage: "Powered by Amanai",
+      customMessage: "Powered by provider",
     },
   );
 });
