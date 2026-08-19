@@ -5,6 +5,41 @@ const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
 const origCreate = http.createServer.bind(http);
+const DRAIN_TIMEOUT_MS = Number(process.env.NINEROUTER_DRAIN_TIMEOUT_MS || 300000);
+let gracefulShutdownInstalled = false;
+let gracefulShutdownStarted = false;
+
+// Next's default SIGTERM handler exits after its own cleanup path. The wrapper
+// owns the signal instead so the actual HTTP server drains active streams first.
+process.env.NEXT_MANUAL_SIG_HANDLE = "1";
+
+function installGracefulShutdown(server) {
+  if (gracefulShutdownInstalled) return;
+  gracefulShutdownInstalled = true;
+
+  const shutdown = (signal, exitCode) => {
+    if (gracefulShutdownStarted) return;
+    gracefulShutdownStarted = true;
+    console.log(`[9Router] ${signal}: draining active connections (timeout ${DRAIN_TIMEOUT_MS}ms)`);
+
+    const forceExit = setTimeout(() => {
+      console.error(`[9Router] ${signal}: drain timeout reached, forcing exit`);
+      process.exit(exitCode);
+    }, DRAIN_TIMEOUT_MS);
+    forceExit.unref();
+
+    server.close((error) => {
+      clearTimeout(forceExit);
+      if (error && error.code !== "ERR_SERVER_NOT_RUNNING") {
+        console.error(`[9Router] ${signal}: server drain failed:`, error.message);
+      }
+      process.exit(exitCode);
+    });
+  };
+
+  process.once("SIGTERM", () => shutdown("SIGTERM", 143));
+  process.once("SIGINT", () => shutdown("SIGINT", 130));
+}
 
 // Per-process secret proving x-9r-real-ip was stamped below rather than sent by the client.
 // A bare `next start` / `next dev` never loads this file, so it cannot produce a matching
@@ -73,6 +108,7 @@ http.createServer = (...args) => {
     return handler(req, res);
   };
   const server = origCreate(...rest, wrapped);
+  installGracefulShutdown(server);
   server.once("listening", () => {
     startBackgroundTokenRefreshFromCustomServer();
   });
