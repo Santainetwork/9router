@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/shared/components";
 import useFooterStore, { FOOTER_FIELDS } from "@/store/footerStore";
 import { DEFAULT_FOOTER_FIELDS, footerSettingsPatch } from "@/shared/utils/footerSettings";
+import { providerFooterDisplayText } from "@/shared/utils/providerFooter";
 
 // Dedicated page for the Basic Chat response-footer settings. Split out of the
 // chat header so footer governance lives in one focused place. The same zustand
@@ -342,17 +343,8 @@ export default function FooterSettingsPageClient() {
                 <div key={log.id || index + 1} className="p-3 text-sm">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-text-main">
-                          {log.provider}
-                        </span>
-                        <span className="text-xs text-text-muted">·</span>
-                        <span className="text-xs text-text-main font-mono">
-                          {log.model}
-                        </span>
-                      </div>
-                      <p className="text-xs text-text-subtle mb-2 italic">
-                        "{log.referral_text}"
+                      <p className="text-sm text-text-main mb-2 whitespace-pre-wrap break-words">
+                        {providerFooterDisplayText(log)}
                       </p>
                       <p className="text-[11px] text-text-muted">
                         {formatTime(log.timestamp)}

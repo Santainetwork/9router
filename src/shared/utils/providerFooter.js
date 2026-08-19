@@ -37,3 +37,7 @@ export function extractProviderFooterChunkText(line) {
     return "";
   }
 }
+
+export function providerFooterDisplayText(log) {
+  return typeof log?.referral_text === "string" ? log.referral_text : "";
+}

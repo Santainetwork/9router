@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   detectProviderFooter,
   extractProviderFooterChunkText,
+  providerFooterDisplayText,
   redactProviderFooterText,
 } from "../../src/shared/utils/providerFooter.js";
 
@@ -23,6 +24,17 @@ test("detects generic provider referral footer lines", () => {
 test("extracts footer text from OpenAI SSE content chunks", () => {
   assert.equal(
     extractProviderFooterChunkText('data: {"choices":[{"delta":{"content":"Powered by provider.example"}}]}'),
+    "Powered by provider.example",
+  );
+});
+
+test("presents detected footer text without internal provider metadata", () => {
+  assert.equal(
+    providerFooterDisplayText({
+      provider: "openai-compatible-chat-internal-id",
+      model: "internal-model-id",
+      referral_text: "Powered by provider.example",
+    }),
     "Powered by provider.example",
   );
 });
