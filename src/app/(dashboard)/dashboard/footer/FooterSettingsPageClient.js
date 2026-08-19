@@ -26,7 +26,7 @@ function formatTime(timestamp) {
 const SAMPLE = {
   provider: "anthropic-compatible-xxxx",
   providerName: "UTAMA",
-  model: "amar/amanai/deepseek-v4-flash",
+  model: "provider/model",
   usage: { promptTokens: 2009, completionTokens: 25, totalTokens: 2034 },
   apiKeyQueueMs: 1200,
   providerQueueMs: 350,

@@ -13,6 +13,7 @@ export function redactProviderFooterText(text) {
 
 const PROVIDER_FOOTER_PATTERNS = [
   /^\s*this response was delivered by\s+[^\r\n]+\s*$/im,
+  /^\s*(?:powered by|via)\s+[^\r\n]+\s*$/im,
 ];
 
 export function detectProviderFooter(text) {
@@ -22,4 +23,17 @@ export function detectProviderFooter(text) {
     if (match) return match[0];
   }
   return null;
+}
+
+export function extractProviderFooterChunkText(line) {
+  if (!line || typeof line !== "string") return "";
+  const payload = line.trim().startsWith("data:") ? line.trim().slice(5).trim() : line.trim();
+  if (!payload || payload === "[DONE]") return "";
+  try {
+    const value = JSON.parse(payload);
+    const delta = value?.choices?.[0]?.delta;
+    return typeof delta?.content === "string" ? delta.content : "";
+  } catch {
+    return "";
+  }
 }

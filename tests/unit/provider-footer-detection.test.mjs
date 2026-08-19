@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   detectProviderFooter,
+  extractProviderFooterChunkText,
   redactProviderFooterText,
 } from "../../src/shared/utils/providerFooter.js";
 
@@ -14,7 +15,16 @@ test("detects generic provider referral footer lines", () => {
     detectProviderFooter("Answer\nThis response was delivered by another.example"),
     "This response was delivered by another.example",
   );
+  assert.equal(detectProviderFooter("Powered by provider.example"), "Powered by provider.example");
+  assert.equal(detectProviderFooter("via provider.example"), "via provider.example");
   assert.equal(detectProviderFooter("The answer mentions delivered by another.example in prose"), null);
+});
+
+test("extracts footer text from OpenAI SSE content chunks", () => {
+  assert.equal(
+    extractProviderFooterChunkText('data: {"choices":[{"delta":{"content":"Powered by provider.example"}}]}'),
+    "Powered by provider.example",
+  );
 });
 
 test("redacts key-like values before persistence", () => {

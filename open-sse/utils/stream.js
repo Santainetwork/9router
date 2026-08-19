@@ -5,6 +5,7 @@ import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBu
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { extractProviderFooterChunkText } from "@/shared/utils/providerFooter.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -64,6 +65,7 @@ export function createSSEStream(options = {}) {
 
   let totalContentLength = 0;
   let accumulatedContent = "";
+  let providerContent = "";
   let accumulatedThinking = "";
   let ttftAt = null;
   let sseLineCount = 0;
@@ -88,6 +90,7 @@ export function createSSEStream(options = {}) {
 
       for (const line of lines) {
         const trimmed = line.trim();
+        providerContent += extractProviderFooterChunkText(trimmed);
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
           if (trimmed.startsWith("event:")) {
@@ -329,6 +332,7 @@ export function createSSEStream(options = {}) {
             }
 
             const output = formatSSE(item, sourceFormat);
+            providerContent += extractProviderFooterChunkText(output);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             sseEmittedCount++;
@@ -380,6 +384,7 @@ export function createSSEStream(options = {}) {
           if (onStreamComplete) {
             onStreamComplete({
               content: accumulatedContent,
+              providerContent,
               thinking: accumulatedThinking
             }, usage, ttftAt);
           }
@@ -402,6 +407,7 @@ export function createSSEStream(options = {}) {
               for (const item of translated) {
                 if (item === null || item === undefined) continue;
                 const output = formatSSE(item, sourceFormat);
+                providerContent += extractProviderFooterChunkText(output);
                 reqLogger?.appendConvertedChunk?.(output);
                 controller.enqueue(sharedEncoder.encode(output));
               }
@@ -422,6 +428,7 @@ export function createSSEStream(options = {}) {
           for (const item of flushed) {
             if (item === null || item === undefined) continue;
             const output = formatSSE(item, sourceFormat);
+            providerContent += extractProviderFooterChunkText(output);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
           }
@@ -457,6 +464,7 @@ export function createSSEStream(options = {}) {
         if (onStreamComplete) {
           onStreamComplete({
             content: accumulatedContent,
+            providerContent,
             thinking: accumulatedThinking
           }, state?.usage, ttftAt);
         }

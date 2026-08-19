@@ -139,7 +139,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
     };
-    const safeContent = contentObj?.content || "[Empty streaming response]";
+    const safeContent = contentObj?.content || contentObj?.providerContent || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
     // Streaming content is the authoritative complete reply. Scan it too so
