@@ -6,6 +6,17 @@ import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { restoreSessionModel } from "./basicChatModels";
+import { streamChatCompletion } from "./basicChatStream";
+import {
+  MAX_COMPARE_MODELS,
+  addCompareModel,
+  removeCompareModel,
+  canStartCompare,
+  createCompareRun,
+  updateCompareResult,
+  resetCompareResult,
+  markCompareStopped,
+} from "./basicChatCompare";
 import useFooterStore from "@/store/footerStore";
 
 const STORAGE_KEYS = {
@@ -180,6 +191,9 @@ function dedupeModels(models) {
 }
 
 export default function BasicChatPageClient() {
+  const [mode, setMode] = useState("chat");
+  const [compareModels, setCompareModels] = useState([]);
+  const [compareRun, setCompareRun] = useState(null);
   const [providerGroups, setProviderGroups] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -227,6 +241,7 @@ export default function BasicChatPageClient() {
   const modelMenuRef = useRef(null);
   const providerMenuRef = useRef(null);
   const historyMenuRef = useRef(null);
+  const compareAbortControllersRef = useRef(new Map());
 
   useEffect(() => {
     setIsHydrated(true);
@@ -422,6 +437,13 @@ export default function BasicChatPageClient() {
   const currentMessages = currentSession?.messages || [];
   const sessionItems = useMemo(() => [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [sessions]);
   const canSend = !isSending && !!activeModel && (draft.trim().length > 0 || attachments.length > 0);
+  const compareModeCanSend = canStartCompare(compareModels, draft, attachments);
+  const compareRunning = !!compareRun?.results.some((result) => result.status === "pending" || result.status === "streaming");
+
+  useEffect(() => () => {
+    for (const controller of compareAbortControllersRef.current.values()) controller.abort();
+    compareAbortControllersRef.current.clear();
+  }, []);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -538,6 +560,10 @@ export default function BasicChatPageClient() {
     const group = providerGroups.find((item) => item.providerId === providerId);
     if (!group) return;
     setActiveProviderId(group.providerId);
+    if (mode === "compare") {
+      setProviderMenuOpen(false);
+      return;
+    }
     if (group.models.length === 0) {
       setActiveModelId("");
       setSessions((prev) => prev.map((item) => item.id === activeSessionId && item.messages.length === 0 ? {
@@ -576,6 +602,13 @@ export default function BasicChatPageClient() {
   const handleSelectModel = (modelId) => {
     const model = modelIndex.get(modelId);
     if (!model) return;
+
+    if (mode === "compare") {
+      setCompareModels((current) => current.some((item) => item.id === model.id)
+        ? removeCompareModel(current, model.id)
+        : addCompareModel(current, model));
+      return;
+    }
 
     const current = sessions.find((session) => session.id === activeSessionId);
     if (current && current.messages.length > 0) {
@@ -621,6 +654,10 @@ export default function BasicChatPageClient() {
       ? { ...group, models: dedupeModels([...group.models, model]) }
       : group));
     setCustomModel("");
+    if (mode === "compare") {
+      setCompareModels((current) => addCompareModel(current, model));
+      return;
+    }
     setModelMenuOpen(false);
 
     const current = sessions.find((session) => session.id === activeSessionId);
@@ -903,10 +940,110 @@ export default function BasicChatPageClient() {
     await runStream(sessionId, model, requestMessages, assistantId, null);
   };
 
+  const updateCompareRun = (runId, modelId, patch) => {
+    setCompareRun((current) => current?.runId === runId ? updateCompareResult(current, modelId, patch) : current);
+  };
+
+  const compareMessages = (prompt, runAttachments) => [{
+    role: "user",
+    content: buildUserContent({ content: prompt, attachments: runAttachments }),
+  }];
+
+  const streamCompareResult = async (run, result, requestApiKey) => {
+    const controller = new AbortController();
+    compareAbortControllersRef.current.set(result.modelId, controller);
+    updateCompareRun(run.runId, result.modelId, { status: "pending", error: null });
+
+    try {
+      const response = await streamChatCompletion({
+        model: result.model,
+        messages: compareMessages(run.prompt, run.attachments),
+        apiKey: requestApiKey,
+        signal: controller.signal,
+        onText: (text) => setCompareRun((current) => {
+          if (current?.runId !== run.runId) return current;
+          const currentResult = current.results.find((item) => item.modelId === result.modelId);
+          return updateCompareResult(current, result.modelId, {
+            status: "streaming",
+            text: `${currentResult?.text || ""}${text}`,
+          });
+        }),
+      });
+
+      updateCompareRun(run.runId, result.modelId, response.text
+        ? { status: "done", text: response.text, responseMeta: response.responseMeta }
+        : { status: "error", error: "Empty response.", responseMeta: response.responseMeta });
+    } catch (error) {
+      updateCompareRun(run.runId, result.modelId, error?.name === "AbortError"
+        ? { status: "stopped" }
+        : { status: "error", error: textValue(error?.message || error) || "Request failed." });
+    } finally {
+      if (compareAbortControllersRef.current.get(result.modelId) === controller) {
+        compareAbortControllersRef.current.delete(result.modelId);
+      }
+    }
+  };
+
+  const addCompareModeModel = (model) => setCompareModels((current) => addCompareModel(current, model));
+
+  const removeCompareModeModel = (modelId) => {
+    compareAbortControllersRef.current.get(modelId)?.abort();
+    compareAbortControllersRef.current.delete(modelId);
+    setCompareModels((current) => removeCompareModel(current, modelId));
+  };
+
+  const startCompareRun = async () => {
+    const selectedModels = compareModels.map((model) => modelIndex.get(model.id)).filter(Boolean);
+    if (!canStartCompare(selectedModels, draft, attachments)) return;
+
+    for (const controller of compareAbortControllersRef.current.values()) controller.abort();
+    compareAbortControllersRef.current.clear();
+    const run = { ...createCompareRun(draft.trim(), attachments.map((attachment) => ({ ...attachment })), selectedModels), runId: createId() };
+    setCompareRun(run);
+    setDraft("");
+    setAttachments([]);
+    await Promise.allSettled(run.results.map((result) => streamCompareResult(run, result, apiKey)));
+  };
+
+  const stopCompareRun = (modelId) => {
+    const controller = compareAbortControllersRef.current.get(modelId);
+    if (!controller) return;
+    controller.abort();
+    updateCompareRun(compareRun?.runId, modelId, { status: "stopped" });
+  };
+
+  const stopAllCompareRuns = () => {
+    for (const [modelId, controller] of compareAbortControllersRef.current) {
+      controller.abort();
+      updateCompareRun(compareRun?.runId, modelId, { status: "stopped" });
+    }
+  };
+
+  const retryCompareModel = (modelId) => {
+    const run = compareRun;
+    const result = run?.results.find((item) => item.modelId === modelId);
+    if (!run || !result || compareAbortControllersRef.current.has(modelId)) return;
+    setCompareRun(resetCompareResult(run, modelId));
+    void streamCompareResult(run, result, apiKey);
+  };
+
+  const changeMode = (nextMode) => {
+    if (nextMode === mode) return;
+    if (nextMode === "chat") {
+      stopAllCompareRuns();
+      compareAbortControllersRef.current.clear();
+      setCompareRun(null);
+      setCompareModels([]);
+    }
+    setMode(nextMode);
+    setModelMenuOpen(false);
+  };
+
   const handleKeyDown = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      if (canSend) sendMessage();
+      if (mode === "chat" && canSend) sendMessage();
+      if (mode === "compare" && compareModeCanSend) startCompareRun();
     }
   };
 
