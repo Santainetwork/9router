@@ -15,7 +15,6 @@ import {
   createCompareRun,
   updateCompareResult,
   resetCompareResult,
-  markCompareStopped,
 } from "./basicChatCompare";
 import useFooterStore from "@/store/footerStore";
 
@@ -188,6 +187,73 @@ function dedupeModels(models) {
     if (!map.has(model.id)) map.set(model.id, model);
   }
   return Array.from(map.values());
+}
+
+function CompareModelCard({ index, model, loading, result, onRetry, onStop }) {
+  const isRunning = loading;
+  const isDone = result?.status === "done";
+  const isError = result?.status === "error";
+  const isStopped = result?.status === "stopped";
+
+  return (
+    <article className={`rounded-[26px] border ${isError ? "border-rose-500/30 bg-rose-500/5" : "border-white/10 bg-[#1f1f1f]"} p-4`}>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-white">
+            {index}
+          </span>
+          <div>
+            <p className="text-sm font-medium text-white">{model.name}</p>
+            <p className="text-xs text-white/40">
+              {model.providerName || model.providerId || model.requestModel}
+            </p>
+          </div>
+        </div>
+
+        <Badge size="sm" variant="default">
+          {isError ? "Failed" : isStopped ? "Stopped" : isRunning ? (result?.status === "streaming" ? "Streaming" : "Waiting") : isDone ? "Done" : humanize(result?.status)}
+        </Badge>
+      </div>
+
+      <div className="min-h-24 whitespace-pre-wrap break-words text-[15px] leading-7 text-white/90">
+        {result?.data || (isRunning ? <span className="animate-pulse">▋</span> : null)}
+      </div>
+
+      {isError ? (
+        <div className="mt-3 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {result?.error || "Failed to generate response"}
+        </div>
+      ) : null}
+
+      {result?.responseMeta ? (
+        <div className="mt-3 flex flex-wrap gap-3 text-xs text-white/40" aria-label="Response metadata">
+          <span>{result.responseMeta.providerName || result.responseMeta.provider} · {result.responseMeta.model}</span>
+          {result.responseMeta.usage ? <span>{result.responseMeta.usage.promptTokens} in · {result.responseMeta.usage.completionTokens} out · {result.responseMeta.usage.totalTokens} total</span> : null}
+          {result.responseMeta.apiKeyQueueMs > 0 ? <span>API queue {formatDuration(result.responseMeta.apiKeyQueueMs)}</span> : null}
+          {result.responseMeta.providerQueueMs > 0 ? <span>Provider queue {formatDuration(result.responseMeta.providerQueueMs)}</span> : null}
+          {result.responseMeta.durationMs != null ? <span>{formatDuration(result.responseMeta.durationMs)}</span> : null}
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex items-center justify-between">
+        {isRunning ? (
+          <button type="button" onClick={onStop} className="rounded-full bg-white/10 px-2 py-1 text-xs text-white/70 hover:bg-white/20" aria-label={`Stop ${model.name}`}>
+            Stop
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+            aria-label={`Retry ${model.name}`}
+          >
+            <span className="material-symbols-outlined text-[15px]">refresh</span>
+            Retry
+          </button>
+        )}
+      </div>
+    </article>
+  );
 }
 
 export default function BasicChatPageClient() {
@@ -984,11 +1050,7 @@ export default function BasicChatPageClient() {
     }
   };
 
-  const addCompareModeModel = (model) => setCompareModels((current) => addCompareModel(current, model));
-
   const removeCompareModeModel = (modelId) => {
-    compareAbortControllersRef.current.get(modelId)?.abort();
-    compareAbortControllersRef.current.delete(modelId);
     setCompareModels((current) => removeCompareModel(current, modelId));
   };
 
@@ -1055,6 +1117,21 @@ export default function BasicChatPageClient() {
       <div className="relative mx-auto flex flex-1 h-full min-h-0 w-full max-w-4xl flex-col">
         <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 lg:px-6">
           <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-2xl border border-white/10 bg-white/5 p-1" role="group" aria-label="Chat mode">
+              <button type="button" aria-pressed={mode === "chat"} onClick={() => changeMode("chat")} className={`rounded-xl px-3 py-2 text-sm transition ${mode === "chat" ? "bg-white/20 text-white" : "text-white/55 hover:text-white"}`}>Chat</button>
+              <button type="button" aria-pressed={mode === "compare"} onClick={() => changeMode("compare")} className={`rounded-xl px-3 py-2 text-sm transition ${mode === "compare" ? "bg-white/20 text-white" : "text-white/55 hover:text-white"}`}>Compare</button>
+            </div>
+            {mode === "compare" ? (
+              <div className="flex items-center gap-2">
+                {compareModels.map((model) => (
+                  <button key={model.id} type="button" onClick={() => removeCompareModeModel(model.id)} className="group flex max-w-[9rem] items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs text-white/80" aria-label={`Remove ${model.name} from comparison`}>
+                    <span className="truncate">{model.name}</span>
+                    <span className="material-symbols-outlined text-[14px] text-white/45 group-hover:text-white">close</span>
+                  </button>
+                ))}
+                <span className="text-xs text-white/45">{compareModels.length}/{MAX_COMPARE_MODELS}</span>
+              </div>
+            ) : null}
           {/* Provider selector */}
           <div ref={providerMenuRef} className="relative">
             <button
@@ -1150,15 +1227,18 @@ export default function BasicChatPageClient() {
                         <button
                           key={model.id}
                           type="button"
-                          onClick={() => { handleSelectModel(model.id); setModelMenuOpen(false); }}
-                          className={`rounded-[14px] border px-3 py-3 text-left transition ${isActive ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
+              onClick={() => { handleSelectModel(model.id); if (mode === "chat") setModelMenuOpen(false); }}
+              role={mode === "compare" ? "checkbox" : undefined}
+              aria-checked={mode === "compare" ? compareModels.some((item) => item.id === model.id) : undefined}
+              aria-label={`${model.name} from ${model.providerName}`}
+                          className={`rounded-[14px] border px-3 py-3 text-left transition ${(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium text-white">{model.name}</p>
                               <p className="truncate text-[11px] text-white/45">{model.requestModel}</p>
                             </div>
-                            {isActive ? <span className="material-symbols-outlined text-[18px] text-blue-300">check_circle</span> : null}
+                            {(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? <span className="material-symbols-outlined text-[18px] text-blue-300">check_circle</span> : null}
                           </div>
                         </button>
                       );
@@ -1273,6 +1353,50 @@ export default function BasicChatPageClient() {
         ) : null}
 
         <div className="flex flex-1 flex-col min-h-0">
+          {mode === "compare" ? (
+            <div className="flex-1 overflow-y-auto py-4 custom-scrollbar" aria-live="polite">
+              <div className="mx-auto w-full max-w-4xl px-4">
+                {compareRun ? (
+                  <>
+                    <div className="mb-4 rounded-[18px] border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-white/45">Prompt</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/85">{compareRun.prompt || `${compareRun.attachments.length} image attachment(s)`}</p>
+                        </div>
+                        {compareRunning ? <button type="button" onClick={stopAllCompareRuns} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 hover:bg-white/10" aria-label="Stop all model responses">Stop all</button> : null}
+                      </div>
+                    </div>
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {compareRun.results.map((result, index) => (
+                        <CompareModelCard
+                          key={result.modelId}
+                          index={index + 1}
+                          model={result.model}
+                          loading={result.status === "pending" || result.status === "streaming"}
+                          result={{
+                            status: result.status,
+                            data: result.text,
+                            error: result.error,
+                            responseMeta: result.responseMeta,
+                          }}
+                          onRetry={() => retryCompareModel(result.modelId)}
+                          onStop={() => stopCompareRun(result.modelId)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex min-h-[50vh] items-center justify-center text-center">
+                    <div className="max-w-lg">
+                      <h2 className="text-2xl font-semibold">Compare model responses</h2>
+                      <p className="mt-2 text-sm leading-6 text-white/55">Choose 2–4 models, then send one prompt. Results stay ephemeral and never change chat history.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
           <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
             {currentMessages.length === 0 ? (
               <div className="flex min-h-[50vh] items-center justify-center px-4 text-center">
@@ -1352,6 +1476,7 @@ export default function BasicChatPageClient() {
               })}
             </div>
           </div>
+          )}
 
           <div className="shrink-0 pt-2">
             {attachments.length > 0 ? (
@@ -1369,31 +1494,35 @@ export default function BasicChatPageClient() {
 
             <div className="mx-auto w-full max-w-3xl px-4 pb-2">
               <div className="rounded-[26px] bg-[#2f2f2f] px-3 pt-3 pb-2 shadow-[0_0_15px_rgba(0,0,0,0.10)] ring-1 ring-white/5">
-                <textarea
+                  <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Message AI"
+                  placeholder={mode === "compare" ? (compareModels.length >= 2 ? `Ask ${compareModels.length} models...` : "Add 2–4 models to compare") : "Message AI"}
                   rows={1}
                   className="w-full resize-none bg-transparent px-2 text-[15px] leading-6 text-white outline-none placeholder:text-white/40 custom-scrollbar max-h-[25vh] overflow-y-auto"
                 />
 
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!activeModel || loadingData} className="p-2 text-white/50 hover:text-white transition rounded-full hover:bg-white/5">
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={(mode === "chat" && !activeModel) || loadingData} className="p-2 text-white/50 hover:text-white transition rounded-full hover:bg-white/5">
                       <span className="material-symbols-outlined text-[20px]">attach_file</span>
                     </button>
                     <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} />
-                    <span className="text-xs font-medium text-white/30 truncate max-w-[120px]">{activeModel ? activeModel.name : "No model"}</span>
+                    <span className="text-xs font-medium text-white/30 truncate max-w-[180px]">{mode === "compare" ? `${compareModels.length} models selected` : (activeModel ? activeModel.name : "No model")}</span>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {isSending ? (
+                    {mode === "compare" && compareRunning ? (
+                      <button type="button" onClick={stopAllCompareRuns} className="p-2 text-white bg-white/10 hover:bg-white/20 transition rounded-full h-8 w-8 flex items-center justify-center" aria-label="Stop all model responses">
+                        <span className="material-symbols-outlined text-[16px]">stop</span>
+                      </button>
+                    ) : mode === "chat" && isSending ? (
                       <button type="button" onClick={handleStop} className="p-2 text-white bg-white/10 hover:bg-white/20 transition rounded-full h-8 w-8 flex items-center justify-center">
                         <span className="material-symbols-outlined text-[16px]">stop</span>
                       </button>
                     ) : null}
-                    <button onClick={sendMessage} disabled={!canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${canSend ? 'bg-white text-black hover:opacity-90' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}>
+                    <button type="button" onClick={mode === "compare" ? startCompareRun : sendMessage} disabled={mode === "compare" ? !compareModeCanSend : !canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${(mode === "compare" ? compareModeCanSend : canSend) ? 'bg-white text-black hover:opacity-90' : 'bg-white/10 text-white/30 cursor-not-allowed'}`} aria-label={mode === "compare" ? "Compare selected models" : "Send message"}>
                       <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
                     </button>
                   </div>
