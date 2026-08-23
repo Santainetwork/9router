@@ -30,12 +30,12 @@ export async function GET() {
       return { id: providerId, name };
     });
 
-    return NextResponse.json({ providers });
+    return NextResponse.json({ providers }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[API] Failed to get providers:", error);
     return NextResponse.json(
       { error: "Failed to fetch providers" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

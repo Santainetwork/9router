@@ -129,7 +129,7 @@ export async function GET(request, { params }) {
     // Get connection from database
     connection = await getProviderConnectionById(connectionId);
     if (!connection) {
-      return Response.json({ error: "Connection not found" }, { status: 404 });
+      return Response.json({ error: "Connection not found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
 
     // Allow OAuth connections, plus whitelisted apikey providers (glm/minimax/kiro/...)
@@ -142,7 +142,7 @@ export async function GET(request, { params }) {
       isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
 
     if (!isOAuth && !isApikeyEligible) {
-      return Response.json({ message: "Usage not available for this connection" });
+      return Response.json({ message: "Usage not available for this connection" }, { headers: { "Cache-Control": "no-store" } });
     }
 
     // Resolve connection proxy config; force strictProxy=false so quota/refresh fall back to direct on failure
@@ -164,7 +164,7 @@ export async function GET(request, { params }) {
         console.error("[Usage API] Credential refresh failed:", refreshError);
         return Response.json({
           error: `Credential refresh failed: ${refreshError.message}`
-        }, { status: 401 });
+        }, { status: 401, headers: { "Cache-Control": "no-store" } });
       }
     }
 
@@ -183,10 +183,10 @@ export async function GET(request, { params }) {
       }
     }
 
-    return Response.json(usage);
+    return Response.json(usage, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Usage] ${provider}: ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: error.message }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }

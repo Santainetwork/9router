@@ -223,8 +223,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   // Always include noAuth free providers (e.g. opencode) regardless of connections
   useEffect(() => {
     Promise.all([
-      fetch("/api/providers").then((r) => r.ok ? r.json() : null),
-      fetch("/api/provider-nodes").then((r) => r.ok ? r.json() : null),
+      fetch("/api/providers", { cache: "no-store" }).then((r) => r.ok ? r.json() : null),
+      fetch("/api/provider-nodes", { cache: "no-store" }).then((r) => r.ok ? r.json() : null),
     ])
       .then(([d, nodesData]) => {
         // Build node name lookup for custom providers
@@ -261,7 +261,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       setFetching(true);
     }
 
-    fetch(`/api/usage/stats?period=${period}`)
+    fetch(`/api/usage/stats?period=${period}`, { cache: "no-store" })
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) {

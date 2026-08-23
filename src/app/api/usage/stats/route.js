@@ -11,13 +11,13 @@ export async function GET(request) {
     const period = searchParams.get("period") || "7d";
 
     if (!VALID_PERIODS.has(period)) {
-      return NextResponse.json({ error: "Invalid period" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid period" }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
     const stats = await getUsageStats(period);
-    return NextResponse.json(stats);
+    return NextResponse.json(stats, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[API] Failed to get usage stats:", error);
-    return NextResponse.json({ error: "Failed to fetch usage stats" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch usage stats" }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }

@@ -23,14 +23,14 @@ export async function GET(request) {
     if (page < 1) {
       return NextResponse.json(
         { error: "Page must be >= 1" },
-        { status: 400 }
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
     
     if (pageSize < 1 || pageSize > 100) {
       return NextResponse.json(
         { error: "PageSize must be between 1 and 100" },
-        { status: 400 }
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
     
@@ -63,12 +63,12 @@ export async function GET(request) {
       return redacted;
     });
 
-    return NextResponse.json({ ...result, details: redactedDetails });
+    return NextResponse.json({ ...result, details: redactedDetails }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(
       { error: "Failed to fetch request details" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

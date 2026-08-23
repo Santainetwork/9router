@@ -36,7 +36,7 @@ export function appendFooterToOpenAIBody(body, footer) {
     // Don't corrupt tool-call turns — only append to plain text replies.
     if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) continue;
     if (typeof msg.content === "string") {
-      msg.content = (msg.content || "") + footer;
+      if (!msg.content.endsWith(footer)) msg.content = (msg.content || "") + footer;
     }
   }
   return body;
@@ -50,7 +50,9 @@ export function appendFooterToClaudeBody(body, footer) {
   // Append to the last text block, or add one.
   for (let i = body.content.length - 1; i >= 0; i--) {
     if (body.content[i]?.type === "text") {
-      body.content[i].text = (body.content[i].text || "") + footer;
+      if (!(typeof body.content[i].text === "string" && body.content[i].text.endsWith(footer))) {
+        body.content[i].text = (body.content[i].text || "") + footer;
+      }
       return body;
     }
   }
@@ -75,6 +77,7 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
   let injected = false;
   let capturedUsage = null;
   let terminated = false;
+  let streamedContent = "";
 
   const footerChunk = () => {
     const text = renderFooterText(template, { ...baseCtx, usage: capturedUsage || baseCtx.usage });
@@ -96,6 +99,17 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
     } catch { /* ignore */ }
   };
 
+  const captureContent = (payload) => {
+    if (!payload || payload[0] !== "{") return;
+    try {
+      const obj = JSON.parse(payload);
+      for (const choice of obj?.choices || []) {
+        const content = choice?.delta?.content;
+        if (typeof content === "string") streamedContent += content;
+      }
+    } catch { /* ignore */ }
+  };
+
   // Does this SSE data line carry a terminal signal (finish_reason set, or [DONE])?
   const isTerminalLine = (line) => {
     const t = line.trim();
@@ -113,7 +127,8 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
     injected = true;
     if (sawToolCalls) return;
     const chunk = footerChunk();
-    if (chunk) controller.enqueue(encoder.encode(chunk));
+    const text = renderFooterText(template, { ...baseCtx, usage: capturedUsage || baseCtx.usage });
+    if (chunk && !streamedContent.endsWith(text)) controller.enqueue(encoder.encode(chunk));
   };
 
   const transform = new TransformStream({
@@ -127,6 +142,7 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
         while ((idx = buffer.indexOf("\n")) !== -1) {
           const line = buffer.slice(0, idx + 1);
           buffer = buffer.slice(idx + 1);
+          if (line.trimStart().startsWith("data:")) captureContent(line.trim().slice(5).trim());
           const isDone = line.trim() === "data: [DONE]";
           if (isDone) {
             // Ensure the footer lands before the terminal, then emit exactly one
