@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
@@ -29,11 +29,35 @@ describe("bare anthropic model alias resolution", () => {
     }
   });
 
-  it("without an alias, bare anthropic-prefixed model still maps to native provider", async () => {
+  it("without an alias, bare Claude model does not map to native Anthropic", async () => {
     const { getModelInfoCore } = await import("open-sse/services/model.js");
     await expect(getModelInfoCore("claude-sonnet-4", {})).resolves.toEqual({
-      provider: "anthropic",
+      provider: "openai",
       model: "claude-sonnet-4",
     });
+  });
+
+  it("keeps a configured combo ahead of bare-model inference", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-combo-routing-"));
+    const previousDataDir = process.env.DATA_DIR;
+    process.env.DATA_DIR = tempDir;
+    vi.resetModules();
+    try {
+      const { createCombo } = await import("@/models/index.js");
+      const { getModelInfo } = await import("@/sse/services/model.js");
+      await createCombo({
+        name: "claude-sonnet-4",
+        models: ["openrouter/anthropic/claude-sonnet-4"],
+      });
+
+      await expect(getModelInfo("claude-sonnet-4")).resolves.toEqual({
+        provider: null,
+        model: "claude-sonnet-4",
+      });
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      if (previousDataDir === undefined) delete process.env.DATA_DIR;
+      else process.env.DATA_DIR = previousDataDir;
+    }
   });
 });
