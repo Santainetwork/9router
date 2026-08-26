@@ -89,6 +89,14 @@ const nextConfig = {
         destination: "/api/v1beta"
       },
       {
+        source: "/v2/:path*",
+        destination: "/api/v2/:path*"
+      },
+      {
+        source: "/v2",
+        destination: "/api/v2"
+      },
+      {
         source: "/v1/:path*",
         destination: "/api/v1/:path*"
       },
