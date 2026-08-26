@@ -41,6 +41,7 @@ export default function FooterSettingsPageClient() {
   // Server-side footer (applies to ALL API clients: Jcode, SDKs, curl…).
   // Stored in server settings, not localStorage.
   const [srvEnabled, setSrvEnabled] = useState(false);
+  const [srvApiVersions, setSrvApiVersions] = useState("both");
   const [srvText, setSrvText] = useState("");
   const [srvLoaded, setSrvLoaded] = useState(false);
   const [srvStatus, setSrvStatus] = useState("");
@@ -55,6 +56,7 @@ export default function FooterSettingsPageClient() {
       .then((r) => r.json())
       .then((s) => {
         setSrvEnabled(!!s.responseFooterEnabled);
+        setSrvApiVersions(typeof s.responseFooterApiVersions === "string" ? s.responseFooterApiVersions : "both");
         setSrvText(typeof s.responseFooterText === "string" ? s.responseFooterText : "");
         footer.setSettings(s);
         setSrvLoaded(true);
@@ -161,6 +163,26 @@ export default function FooterSettingsPageClient() {
             className="size-4 accent-primary"
           />
           Enable footer for all API responses
+        </label>
+        <div className="mt-2 flex items-center gap-4">
+          <p className="text-xs text-text-muted">Apply to:</p>
+          {["both", "v1", "v2"].map((v) => (
+            <label key={v} className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input
+                type="radio"
+                name="footerApiVersions"
+                value={v}
+                checked={srvApiVersions === v}
+                disabled={!srvLoaded}
+                onChange={(e) => { setSrvApiVersions(e.target.value); saveServer({ responseFooterApiVersions: e.target.value }); }}
+                className="size-3.5 accent-primary"
+              />
+              {v === "both" ? "Both (v1 & v2)" : v === "v1" ? "Only /v1" : "Only /v2"}
+            </label>
+          ))}
+        </div>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <span className="text-xs text-text-muted">&nbsp;</span>
         </label>
         <div className={`mt-3 ${srvEnabled ? "" : "pointer-events-none opacity-40"}`}>
           <p className="text-xs text-text-muted">

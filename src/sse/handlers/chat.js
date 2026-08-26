@@ -357,7 +357,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // Basic Chat renders its own footer under each reply (per-browser field
       // toggles + custom note), so injecting the server footer into the text
       // as well would show it twice. Server footer is for external API clients.
-      responseFooterEnabled: !!chatSettings.responseFooterEnabled && !isBasicChatRequest(clientRawRequest),
+      // Footer API version scope: "v1" | "v2" | "both" (default "both").
+      // Allows footer to be enabled only on /v1 or only on /v2 endpoints.
+      responseFooterEnabled: !!chatSettings.responseFooterEnabled
+        && !isBasicChatRequest(clientRawRequest)
+        && (() => {
+          const scope = chatSettings.responseFooterApiVersions || "both";
+          const ver = clientRawRequest?.apiVersion || "v1";
+          if (scope === "both") return true;
+          return scope === ver;
+        })(),
       responseFooterText: chatSettings.responseFooterText || "",
       requestedModel: reportModel,
       // Detect source format by endpoint + body

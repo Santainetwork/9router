@@ -66,6 +66,8 @@ const DEFAULT_SETTINGS = {
   // clients. Default off so it has zero effect until enabled.
   responseFooterEnabled: false,
   responseFooterText: "\n\n---\n_via 9Router · {model}_",
+  // Footer API version scope: "v1" | "v2" | "both" (default "both")
+  responseFooterApiVersions: "both",
   // Basic Chat metadata footer. Admin-controlled and shared by every dashboard user.
   responseFooterBasicChatEnabled: true,
   responseFooterBasicChatFields: { ...DEFAULT_FOOTER_FIELDS },
