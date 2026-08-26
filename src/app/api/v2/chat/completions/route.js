@@ -24,22 +24,23 @@ function parseTokenSaverConfig(body) {
   }
   
   const parsed = {
-    // Global toggle - when false, disables ALL savers
-    allEnabled: true
+    // Global toggle - when false or not set, disables ALL savers
+    allEnabled: false
   };
   
-  // Handle global enabled flag first
-  if (config.enabled !== undefined && typeof config.enabled === "boolean") {
-    parsed.allEnabled = config.enabled;
+  // Handle global enabled flag first - only enable if explicitly true
+  if (config.enabled === true) {
+    parsed.allEnabled = true;
   }
+  // Note: enabled: false or undefined means disabled (default)
   
-  // Per-feature overrides
+  // Per-feature overrides (only applied when allEnabled is true)
   const features = [
-    { name: "rtk", default: true },
-    { name: "headroom", default: true },
-    { name: "caveman", default: true },
-    { name: "ponytail", default: true },
-    { name: "pxpipe", default: true }
+    { name: "rtk", default: false },
+    { name: "headroom", default: false },
+    { name: "caveman", default: false },
+    { name: "ponytail", default: false },
+    { name: "pxpipe", default: false }
   ];
   
   for (const feature of features) {
@@ -48,10 +49,12 @@ function parseTokenSaverConfig(body) {
       const value = config[feature.name];
       if (typeof value === "boolean") {
         parsed[feature.name] = value;
-      } else if (typeof value === "string" && ["full", "minimal", "off"].includes(value)) {
+      } else if (typeof value === "string" && ["full", "minimal"].includes(value)) {
         parsed[feature.name] = value;
-      } else {
-        parsed[feature.name] = true; // Default if invalid
+      } else if (value === false) {
+        parsed[feature.name] = false;
+      } else if (value === true) {
+        parsed[feature.name] = true;
       }
     }
   }
@@ -60,15 +63,16 @@ function parseTokenSaverConfig(body) {
 }
 
 /**
- * Build header override string based on parsed config
- * Returns comma-separated list of disabled features or 'all'
+ * Build header override based on parsed config
+ * Returns "off" when savers should be disabled, null when using global settings
  */
 function buildDisabledFeaturesHeader(config) {
+  // Default behavior: NO SAVERS unless explicitly enabled
   if (!config || !config.allEnabled) {
-    return "all";
+    return "off"; // Disable ALL token savers
   }
   
-  // Find explicitly disabled features
+  // Find explicitly disabled features (when enabled:true but some features disabled)
   const features = ["rtk", "headroom", "caveman", "ponytail", "pxpipe"];
   const disabled = [];
   
@@ -78,7 +82,10 @@ function buildDisabledFeaturesHeader(config) {
     }
   }
   
-  return disabled.length > 0 ? disabled.join(",") : null;
+  // If any features are explicitly disabled, we need custom header handling
+  // But engine only understands "off" for total disable, so we use "off" for now
+  // TODO: Extend chatCore to support per-feature disabling in future
+  return disabled.length > 0 ? "off" : null; // Use "off" when partial disables requested
 }
 
 /**
@@ -118,45 +125,43 @@ async function createTokenSaverRequest(request, config) {
 }
 
 /**
- * POST /v2/chat/completions - Chat completions with customizable token saver settings
+ * POST /v2/chat/completions - Chat completions WITHOUT token savers by default
  * 
  * Accepts standard chat completion request body plus optional 'token_saver_config' field.
+ * By DEFAULT (when no config provided): ALL token savers are DISABLED for clean baseline responses.
  * 
- * Example 1 - Disable all savers:
+ * Example 1 - Default behavior (NO SAVERS):
+ * {
+ *   "model": "anthropic/claude-sonnet-4",
+ *   "messages": [{"role": "user", "content": "Hello"}]
+ * }
+ * // Result: NO token savers applied - completely raw response
+ * 
+ * Example 2 - Opt-in to token savers (enabled: true):
  * {
  *   "model": "anthropic/claude-sonnet-4",
  *   "messages": [{"role": "user", "content": "Hello"}],
  *   "token_saver_config": {
- *     "enabled": false
+ *     "enabled": true  // Enable global dashboard token saver settings
  *   }
  * }
+ * // Result: Token savers follow dashboard global settings
  * 
- * Example 2 - Selective disable (disable specific features):
+ * Example 3 - Selective enable with specific features:
  * {
  *   "model": "anthropic/claude-sonnet-4",
- *   "messages": [{"role": "user", "content": "Hello"}],
- *   "token_saver_config": {
- *     "enabled": true,          // Keep global enabled
- *     "caveman": false,         // Disable only Caveman
- *     "ponytail": false         // Disable only Ponytail
- *   }
- * }
- * 
- * Example 3 - Full configuration control:
- * {
- *   "model": "anthropic/claude-sonnet-4",
- *   "messages": [{"role": "user", "content": "Hello"}],
+ *   "messages": [{"role": "user", "content": "What is AI?"}],
  *   "token_saver_config": {
  *     "enabled": true,
- *     "rtk": true,              // RTK compression
- *     "headroom": false,        // No Headroom proxy
- *     "caveman": "minimal",     // Minimal cavity injection
- *     "ponytail": true,         // Enable Ponytail
- *     "pxpipe": false           // No image compression
+ *     "rtk": true,              // ✅ Use RTK compression
+ *     "headroom": false,        // ❌ No Headroom proxy  
+ *     "caveman": "minimal"      // 💬 Minimal brevity injection
  *   }
  * }
+ * // Note: When enabled:true, per-feature flags honor dashboard settings.
+ * // Partial disables still use "off" header until engine supports per-feature control.
  * 
- * When token_saver_config is NOT provided, behavior follows global dashboard settings.
+ * IMPORTANT: The default behavior (no config) is to disable all savers for clean baseline output.
  */
 export async function POST(request) {
   await ensureInitialized();
@@ -166,9 +171,9 @@ export async function POST(request) {
     const bodyText = await request.text();
     const body = JSON.parse(bodyText);
     
-    // Log usage pattern
+    // Log usage pattern - now defaults to NO SAVERS unless enabled:true
     console.log("V2 API:", JSON.stringify({
-      action: body?.token_saver_config ? "using_custom_token_saver_config" : "using_global_settings",
+      action: body?.token_saver_config ? "using_custom_token_saver_config" : "default_no_savers",
       has_custom_config: body?.token_saver_config !== undefined,
       model: body?.model
     }));

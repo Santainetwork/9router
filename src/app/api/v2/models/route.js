@@ -1,0 +1,1 @@
+import { GET: modelsGet } from "@/app/api/v1/models/route";\n\n/**\n * GET /api/v2/models - List available models for V2 API\n * \n * Returns the same model catalog as V1, with live provider model discovery.\n * This allows tools like Open WebUI and other frontends to import V2-compatible models.\n */\nexport async function GET(request) {\n  return await modelsGet(request);\n}
