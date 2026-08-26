@@ -198,15 +198,18 @@ export async function POST(request) {
       }
     }
     
-    // No custom config - reconstruct and pass through normally
+    // No custom config - disable ALL token savers for clean baseline output.
+    // V2 default: "bener-bener tanpa saver" unless explicitly opted in.
+    const headers = new Headers(request.headers);
+    headers.set(TOKEN_SAVER_HEADER, "off");
     const reconstructedRequest = new Request(request.url, {
       method: request.method,
-      headers: request.headers,
+      headers,
       body: bodyText,
       redirect: request.redirect,
       signal: request.signal
     });
-    
+
     return await handleChat(reconstructedRequest);
     
   } catch (e) {
