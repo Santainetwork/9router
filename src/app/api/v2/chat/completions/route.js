@@ -194,7 +194,15 @@ export async function POST(request) {
           config
         );
         
-        return await handleChat(modifiedRequest);
+        // Pass explicit clientRawRequest so downstream footer-scope and request
+        // detail logging know this came from the V2 endpoint.
+        const v2Headers = Object.fromEntries(modifiedRequest.headers.entries());
+        return await handleChat(modifiedRequest, {
+          endpoint: new URL(request.url).pathname,
+          apiVersion: "v2",
+          body,
+          headers: v2Headers
+        });
       }
     }
     
@@ -210,7 +218,15 @@ export async function POST(request) {
       signal: request.signal
     });
 
-    return await handleChat(reconstructedRequest);
+    // Pass explicit clientRawRequest so downstream footer-scope and request
+    // detail logging know this came from the V2 endpoint.
+    const v2Headers = Object.fromEntries(reconstructedRequest.headers.entries());
+    return await handleChat(reconstructedRequest, {
+      endpoint: new URL(request.url).pathname,
+      apiVersion: "v2",
+      body,
+      headers: v2Headers
+    });
     
   } catch (e) {
     console.error("Error in v2/chat/completions:", e.message);
