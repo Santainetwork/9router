@@ -58,11 +58,12 @@ export async function handleChat(request, clientRawRequest = null) {
   // Build clientRawRequest for logging (if not provided)
   if (!clientRawRequest) {
     const url = new URL(request.url);
-    // Detect API version from path (v1/v2)
+    // Detect API version from path (v1/v2). Match both bare and /api-prefixed
+    // paths since both /v2/chat/completions and /api/v2/chat/completions are valid.
     let apiVersion = "v1"; // default to v1
-    if (url.pathname.startsWith("/v2/")) {
+    if (url.pathname.startsWith("/v2/") || url.pathname.startsWith("/api/v2/")) {
       apiVersion = "v2";
-    } else if (url.pathname.startsWith("/v1/")) {
+    } else if (url.pathname.startsWith("/v1/") || url.pathname.startsWith("/api/v1/")) {
       apiVersion = "v1";
     }
     

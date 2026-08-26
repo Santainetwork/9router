@@ -426,7 +426,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     },
     pxpipe,
     status: "success"
-  }, { endpoint: clientRawRequest?.endpoint || null })).catch(err => {
+  }, { endpoint: clientRawRequest?.endpoint || null, apiVersion: clientRawRequest?.apiVersion || "unknown" })).catch(err => {
     console.error("[RequestDetail] Failed to save:", err.message);
   });
 
