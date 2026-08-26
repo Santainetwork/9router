@@ -58,8 +58,17 @@ export async function handleChat(request, clientRawRequest = null) {
   // Build clientRawRequest for logging (if not provided)
   if (!clientRawRequest) {
     const url = new URL(request.url);
+    // Detect API version from path (v1/v2)
+    let apiVersion = "v1"; // default to v1
+    if (url.pathname.startsWith("/v2/")) {
+      apiVersion = "v2";
+    } else if (url.pathname.startsWith("/v1/")) {
+      apiVersion = "v1";
+    }
+    
     clientRawRequest = {
       endpoint: url.pathname,
+      apiVersion,
       body,
       headers: Object.fromEntries(request.headers.entries())
     };
