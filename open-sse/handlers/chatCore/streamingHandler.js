@@ -44,7 +44,7 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, responseFooterEnabled, responseFooterText, requestedModel }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, responseFooterEnabled, responseFooterText, requestedModel, upstreamModel }) {
   if (onRequestSuccess) {
     Promise.resolve()
       .then(onRequestSuccess)
@@ -119,7 +119,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     pxpipe,
     apiVersion: clientRawRequest?.apiVersion || "unknown",
     endpoint: clientRawRequest?.endpoint || null,
-    status: "success"
+    status: "success",
+    upstreamModel
   }, { id: streamDetailId })).catch(err => {
     console.error("[RequestDetail] Failed to save streaming request:", err.message);
   });
@@ -164,7 +165,8 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
       pxpipe,
       apiVersion: clientRawRequest?.apiVersion || "unknown",
-      status: "success"
+      status: "success",
+      upstreamModel
     }, { id: streamDetailId })).catch(err => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });

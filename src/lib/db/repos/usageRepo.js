@@ -284,7 +284,7 @@ export async function saveRequestUsage(entry) {
           entry.timestamp, entry.provider || null, entry.model || null,
           entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
+          stringifyJson(tokens), stringifyJson({ requestedModel: entry.requestedModel, upstreamModel: entry.upstreamModel || undefined }),
         ]
       );
 
@@ -375,12 +375,19 @@ export async function getUsageStats(period = "all") {
     .map((r) => {
       const t = parseJson(r.tokens, {}) || {};
       const meta = parseJson(r.meta, {}) || {};
+      
+      // Priority order: upstreamModel (most accurate) > requestedModel (resolved by getModelInfo) > model (raw stored)
+      const displayModel = meta.upstreamModel || meta.requestedModel || r.model;
+      
       return {
-        timestamp: r.timestamp, model: meta.requestedModel || r.model, provider: r.provider || "",
+        timestamp: r.timestamp, 
+        model: displayModel, 
+        provider: r.provider || "",
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
         status: r.status || "ok",
+        upstreamModel: meta.upstreamModel || undefined,  // Include upstream model for dashboard use if needed
       };
     })
     .filter((e) => {

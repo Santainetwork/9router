@@ -363,7 +363,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       response: { error: error.message || String(error), status: error.name === "AbortError" ? 499 : 502, thinking: null },
       pxpipe: pxpipeSummary,
       status: "error",
-      apiVersion: clientRawRequest?.apiVersion || "unknown"
+      apiVersion: clientRawRequest?.apiVersion || "unknown",
+      upstreamModel
     })).catch(() => { });
 
     if (error.name === "AbortError") {
@@ -428,7 +429,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       response: { error: message, status: statusCode, thinking: null },
       pxpipe: pxpipeSummary,
       status: "error",
-      apiVersion: clientRawRequest?.apiVersion || "unknown"
+      apiVersion: clientRawRequest?.apiVersion || "unknown",
+      upstreamModel
     })).catch(() => { });
 
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
@@ -440,7 +442,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     return createErrorResult(statusCode, errMsg, resetsAtMs);
   }
 
-  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log, responseFooterEnabled, responseFooterText, requestedModel };
+  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log, responseFooterEnabled, responseFooterText, requestedModel, upstreamModel };
   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
   const trackDone = () => trackPendingRequest(model, provider, connectionId, false);
 

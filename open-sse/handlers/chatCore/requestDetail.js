@@ -72,6 +72,8 @@ export function buildRequestDetail(base, overrides = {}) {
     response: base.response || {},
     pxpipe: base.pxpipe || undefined,
     status: base.status || "success",
+    // Include actual upstream model if available (most accurate model sent to provider)
+    upstreamModel: base.upstreamModel || undefined,
     ...overrides
   };
 }
@@ -94,7 +96,7 @@ export function formatDoneLine({ usage, latency }) {
   return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
 }
 
-export function saveUsageStats({ provider, model, requestedModel, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false }) {
+export function saveUsageStats({ provider, model, requestedModel, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false, upstreamModel }) {
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -123,6 +125,7 @@ export function saveUsageStats({ provider, model, requestedModel, tokens, connec
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
-    endpoint: endpoint || null
+    endpoint: endpoint || null,
+    upstreamModel: upstreamModel || undefined
   }).catch(() => {});
 }
