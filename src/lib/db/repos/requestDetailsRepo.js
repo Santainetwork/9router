@@ -180,11 +180,35 @@ export async function getRequestDetails(filter = {}) {
   const totalPages = Math.ceil(totalItems / pageSize);
   const offset = (page - 1) * pageSize;
 
+  // Select all columns so we can join with providerConnections for display name
   const rows = db.all(
-    `SELECT data FROM requestDetails ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
+    `SELECT id, timestamp, provider, model, connectionId, status, data 
+     FROM requestDetails ${where} 
+     ORDER BY timestamp DESC 
+     LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
-  const details = rows.map((r) => parseJson(r.data, {}));
+  
+  // Build details array with provider connection info attached
+  const details = rows.map((r) => {
+    const detailObj = parseJson(r.data, {});
+    
+    // If we have a connectionId, try to fetch connection name for display
+    // This allows UI to show "called Anthropic/Claude vs OpenAI/Gemini" rather than just "/api/v1/chat/completions"
+    if (r.connectionId && !detailObj.providerConnectionName) {
+      try {
+        const connRow = db.prepare("SELECT name, provider FROM providerConnections WHERE id = ?").get(r.connectionId);
+        if (connRow) {
+          detailObj.providerConnectionName = connRow.name;
+          detailObj.providerConnectionType = connRow.provider;
+        }
+      } catch (e) {
+        // Connection not found or error - ignore silently
+      }
+    }
+    
+    return detailObj;
+  });
 
   return {
     details,
