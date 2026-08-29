@@ -26,7 +26,8 @@ const navItems = [
   { href: "/dashboard/footer", label: "Response Footer", icon: "subtitles" },
   { href: "/dashboard/rpm-tester", label: "RPM Tester", icon: "speed" },
   { href: "/dashboard/combos", label: "Combo & Vision Adapter", icon: "layers" },
-  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
+ { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
+ { href: "/leaderboard", label: "Leaderboard", icon: "premium_rate" }, // Changed from /dashboard/leaderboard due to route group not adding prefix
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
