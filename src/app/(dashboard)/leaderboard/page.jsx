@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
-import SegmentedControl from "// @/shared/components/SegmentedControl.js";
-// Skeleton component not found, using plain loading div
+import SegmentedControl from "@/shared/components/SegmentedControl.js";
 
 const PERIODS = [
   { value: "today", label: "Today" },
@@ -74,8 +73,8 @@ export default function LeaderboardPage() {
           {[1, 2, 3].map(i => (
             <Card key={i} padding="none">
               <div className="p-4">
-                <Skeleton className="h-4 w-48 mb-2" />
-                <Skeleton className="h-8 w-full" />
+                <div className="h-4 w-48 mb-2 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                <div className="h-8 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
               </div>
             </Card>
           ))}

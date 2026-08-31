@@ -90,6 +90,16 @@ function getCacheCreationTokens(tokens) {
   return tokens?.cache_creation_input_tokens || 0;
 }
 
+/**
+ * Determine if model name appears to be an upstream provider path (contains slashes or special prefixes)
+ */
+function isUpstreamModel(modelName) {
+  if (!modelName || typeof modelName !== 'string') return false;
+  const trimmed = modelName.trim();
+  // Common patterns for upstream models: provider/, org/model, github/repo, etc.
+  return trimmed.includes('/') || trimmed.startsWith('amanai/') || trimmed.startsWith('anthropic/') || trimmed.startsWith('google/');
+}
+
 function getInputTokens(tokens) {
   const prompt = tokens?.prompt_tokens || tokens?.input_tokens || 0;
   // Canonical storage keeps prompt cache-inclusive. Legacy Claude rows may have

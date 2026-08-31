@@ -6,6 +6,7 @@ const DEFAULT_BATCH_SIZE = 20;
 const DEFAULT_FLUSH_INTERVAL_MS = 5000;
 const DEFAULT_MAX_JSON_SIZE = 5 * 1024;
 const CONFIG_CACHE_TTL_MS = 5000;
+let requestDetailCounter = 0;
 
 let cachedConfig = null;
 let cachedConfigTs = 0;
@@ -71,10 +72,10 @@ function sanitizeHeaders(headers) {
 export const __test__ = { sanitizeHeaders };
 
 function generateDetailId(model) {
-  const timestamp = new Date().toISOString();
-  const random = Math.random().toString(36).substring(2, 8);
+  requestDetailCounter = (requestDetailCounter + 1) % 0xffffffff;
+  const timestamp = Date.now();
   const modelPart = model ? model.replace(/[^a-zA-Z0-9-]/g, "-") : "unknown";
-  return `${timestamp}-${random}-${modelPart}`;
+  return `${timestamp}-${requestDetailCounter.toString(36).padStart(8, '0')}-${modelPart}`;
 }
 
 function truncateField(obj, maxSize) {
@@ -116,6 +117,8 @@ async function flushToDatabase() {
             providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
             response: truncateField(item.response, config.maxJsonSize),
             pxpipe: item.pxpipe || undefined,
+            upstreamModel: item.upstreamModel || undefined,
+            requestedModel: item.requestedModel || undefined,
           };
 
           db.run(
@@ -192,6 +195,19 @@ export async function getRequestDetails(filter = {}) {
   // Build details array with provider connection info attached
   const details = rows.map((r) => {
     const detailObj = parseJson(r.data, {});
+    
+    // Display model: prefer the name carrying a provider prefix. When the client
+    // addressed the model with a prefix (e.g. "bai/deepseek-v4-flash" in
+    // requestedModel) but the upstream was sent unprefixed, show the prefixed one.
+    // When upstreamModel carries a resolved prefix (e.g. "amanai/..."), show that.
+    const prefixed = (m) => m && String(m).includes("/");
+    const upstreamModel = detailObj.upstreamModel;
+    const requestedModel = detailObj.requestedModel;
+    if (prefixed(requestedModel) && !prefixed(upstreamModel)) {
+      detailObj.model = requestedModel;
+    } else if (upstreamModel) {
+      detailObj.model = upstreamModel;
+    }
     
     // If we have a connectionId, try to fetch connection name for display
     // This allows UI to show "called Anthropic/Claude vs OpenAI/Gemini" rather than just "/api/v1/chat/completions"

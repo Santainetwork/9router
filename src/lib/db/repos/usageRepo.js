@@ -217,8 +217,13 @@ export async function getActiveRequests() {
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .map((e) => {
       const t = e.tokens || {};
+      const prefixed = (m) => m && String(m).includes("/");
+      const ringMeta = e.meta || {};
+      const ringDisplay = (prefixed(ringMeta.requestedModel) && !prefixed(ringMeta.upstreamModel))
+        ? ringMeta.requestedModel
+        : ringMeta.upstreamModel || e.model || e.requestedModel || "unknown";
       return {
-        timestamp: e.timestamp, model: e.requestedModel || e.meta?.requestedModel || e.model, provider: e.provider || "",
+        timestamp: e.timestamp, model: ringDisplay, provider: e.provider || "",
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         status: e.status || "ok",
@@ -376,8 +381,13 @@ export async function getUsageStats(period = "all") {
       const t = parseJson(r.tokens, {}) || {};
       const meta = parseJson(r.meta, {}) || {};
       
-      // Priority order: upstreamModel (most accurate) > requestedModel (resolved by getModelInfo) > model (raw stored)
-      const displayModel = meta.upstreamModel || meta.requestedModel || r.model;
+      // Display priority: prefer the model name carrying a provider prefix (e.g. "bai/deepseek-v4-flash"
+      // from requestedModel when upstreamModel was sent unprefixed, or "amanai/..." from upstreamModel
+      // when it was resolved). Falls back to upstreamModel > requestedModel > raw model.
+      const prefixed = (m) => m && String(m).includes("/");
+      const displayModel = (prefixed(meta.requestedModel) && !prefixed(meta.upstreamModel))
+        ? meta.requestedModel
+        : meta.upstreamModel || meta.requestedModel || r.model;
       
       return {
         timestamp: r.timestamp, 

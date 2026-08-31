@@ -132,10 +132,18 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 }
 
 /**
+ * Global counter for unique request detail IDs (prevents collisions).
+ * Mirrors counter in src/lib/db/repos/requestDetailsRepo.js for consistency.
+ */
+let __streamDetailCounter = 0;
+
+/**
  * Build onStreamComplete callback for streaming usage tracking.
  */
 export function buildOnStreamComplete({ provider, model, requestedModel, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, upstreamModel }) {
-  const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  // Use counter-based ID to guarantee uniqueness across rapid-fire streaming requests
+  __streamDetailCounter = (__streamDetailCounter + 1) % 0xffffffff;
+  const streamDetailId = `${Date.now()}-${__streamDetailCounter.toString(36).padStart(8, '0')}-${provider || 'unknown'}`;
 
   const onStreamComplete = (contentObj, usage, ttftAt) => {
     const latency = {

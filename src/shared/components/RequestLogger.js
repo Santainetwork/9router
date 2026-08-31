@@ -88,7 +88,7 @@ export default function RequestLogger() {
                   const isSuccess = status.includes("OK");
 
                   return (
-                    <tr key={i} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
+                    <tr key={log} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
                       <td className="px-3 py-1.5 border-r border-border text-text-muted">{parts[0]}</td>
                       <td className="px-3 py-1.5 border-r border-border font-medium">{parts[1]}</td>
                       <td className="px-3 py-1.5 border-r border-border">
