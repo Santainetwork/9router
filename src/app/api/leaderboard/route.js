@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db/driver.js';
+import { getAdapter } from '@/lib/db/driver.js';
 
 export const dynamic = 'force-dynamic';
 const CACHE_DURATION_MS = 5 * 60 * 1000;
@@ -55,6 +55,7 @@ function maskKey(key) {
 }
 
 async function getProvidersByUsage(days, limit) {
+  const db = await getAdapter();
   const sql = `
     SELECT 
       provider,
@@ -74,6 +75,7 @@ async function getProvidersByUsage(days, limit) {
 }
 
 async function getProvidersByCost(days, limit) {
+  const db = await getAdapter();
   const sql = `
     SELECT 
       provider,
@@ -93,6 +95,7 @@ async function getProvidersByCost(days, limit) {
 }
 
 async function getKeysByRequests(days, limit) {
+  const db = await getAdapter();
   // Aggregate by connectionId (proxy for "key/account") since requestDetails
   // doesn't store the apiKey directly. Include provider for context.
   const sql = `
@@ -132,6 +135,7 @@ async function getKeysByRequests(days, limit) {
 }
 
 async function getKeysByCost(days, limit) {
+  const db = await getAdapter();
   const sql = `
     SELECT 
       COALESCE(pc.name, rd.connectionId, 'unknown') as key_name,
