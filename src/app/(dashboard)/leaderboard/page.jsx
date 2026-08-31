@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Card, Button, SegmentedControl, Badge, CardSkeleton } from "@/shared/components";
+import { Card, Button, SegmentedControl, Badge } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 
 const PERIODS = [
   { value: "today", label: "Today" },
+  { value: "24h", label: "24 Hours" },
   { value: "7d", label: "Last 7 Days" },
   { value: "30d", label: "Last 30 Days" },
   { value: "all", label: "All Time" }
@@ -30,27 +31,27 @@ function fmtCost(n) {
 function RankBadge({ rank }) {
   if (rank === 1) {
     return (
-      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-500/15 text-amber-500 font-bold text-xs ring-1 ring-amber-500/30">
+      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-500/20 text-amber-500 font-bold text-xs ring-1 ring-amber-500/40 shadow-sm">
         🥇
       </span>
     );
   }
   if (rank === 2) {
     return (
-      <span className="inline-flex items-center justify-center size-7 rounded-full bg-slate-400/15 text-slate-400 font-bold text-xs ring-1 ring-slate-400/30">
+      <span className="inline-flex items-center justify-center size-7 rounded-full bg-slate-400/20 text-slate-400 font-bold text-xs ring-1 ring-slate-400/40 shadow-sm">
         🥈
       </span>
     );
   }
   if (rank === 3) {
     return (
-      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-700/15 text-amber-700 font-bold text-xs ring-1 ring-amber-700/30">
+      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-700/20 text-amber-700 font-bold text-xs ring-1 ring-amber-700/40 shadow-sm">
         🥉
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center justify-center size-7 rounded-full bg-surface-2 text-text-muted font-mono font-medium text-xs">
+    <span className="inline-flex items-center justify-center size-7 rounded-full bg-surface-2 text-text-muted font-mono font-semibold text-xs border border-border-subtle">
       {rank}
     </span>
   );
@@ -58,22 +59,22 @@ function RankBadge({ rank }) {
 
 function StatSummaryCard({ icon, label, value, sub, color = "primary" }) {
   const colorMap = {
-    primary: "bg-primary/10 text-primary",
-    success: "bg-emerald-500/10 text-emerald-500",
-    warning: "bg-amber-500/10 text-amber-500",
-    info: "bg-sky-500/10 text-sky-500"
+    primary: "bg-primary/10 text-primary border-primary/20",
+    success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    warning: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    info: "bg-sky-500/10 text-sky-500 border-sky-500/20"
   };
 
   return (
-    <Card className="flex-1">
+    <Card className="flex-1 transition hover:border-border">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-text-muted font-medium">{label}</p>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-text-main tabular-nums">{value}</p>
-          {sub && <p className="mt-0.5 text-xs text-text-muted">{sub}</p>}
+          <p className="text-xs uppercase tracking-wider text-text-muted font-medium">{label}</p>
+          <p className="mt-1.5 text-2xl font-bold tracking-tight text-text-main tabular-nums">{value}</p>
+          {sub && <p className="mt-1 text-xs text-text-muted">{sub}</p>}
         </div>
-        <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${colorMap[color] || colorMap.primary}`}>
-          <span className="material-symbols-outlined text-[20px]">{icon}</span>
+        <div className={`flex size-11 shrink-0 items-center justify-center rounded-xl border ${colorMap[color] || colorMap.primary}`}>
+          <span className="material-symbols-outlined text-[22px]">{icon}</span>
         </div>
       </div>
     </Card>
@@ -86,15 +87,17 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [search, setSearch] = useState("");
+  const [lastRefreshed, setLastRefreshed] = useState("");
 
   const fetchLeaderboard = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ period, top: "100", providers: "true" });
-      const res = await fetch(`/api/leaderboard?${params}`, { cache: "no-store" });
+      const params = new URLSearchParams({ period, top: "100" });
+      const res = await fetch(`/api/usage/leaderboard?${params}`, { cache: "no-store" });
       const json = await res.json();
       if (json.success && json.data) {
         setData(json.data);
+        setLastRefreshed(new Date().toLocaleTimeString());
       } else {
         console.error("Failed to fetch leaderboard:", json.error);
       }
@@ -109,7 +112,7 @@ export default function LeaderboardPage() {
     fetchLeaderboard();
   }, [period]);
 
-  // Compute overall summary stats
+  // Total summary calculations
   const totals = useMemo(() => {
     if (!data) return { requests: 0, tokens: 0, cost: 0, activeAccounts: 0, activeProviders: 0 };
     
@@ -121,6 +124,17 @@ export default function LeaderboardPage() {
 
     return { requests: reqs, tokens: toks, cost: cst, activeAccounts: accounts, activeProviders: providers };
   }, [data]);
+
+  // Max request count for relative progress bars
+  const maxKeyRequests = useMemo(() => {
+    if (!data?.keysByRequests?.length) return 1;
+    return Math.max(...data.keysByRequests.map(k => k.total_requests || 0), 1);
+  }, [data?.keysByRequests]);
+
+  const maxProvRequests = useMemo(() => {
+    if (!data?.providersByUsage?.length) return 1;
+    return Math.max(...data.providersByUsage.map(p => p.total_requests || 0), 1);
+  }, [data?.providersByUsage]);
 
   // Filtered lists
   const filteredKeys = useMemo(() => {
@@ -148,13 +162,20 @@ export default function LeaderboardPage() {
       {/* Top Header Card */}
       <Card padding="md">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
+          <div className="flex items-center gap-3.5">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
               <span className="material-symbols-outlined text-[24px]">leaderboard</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold text-text-main">Usage & Performance Leaderboard</h1>
-              <p className="text-xs text-text-muted">Rankings of connections, accounts, and AI providers</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-text-main">Usage & Performance Leaderboard</h1>
+                {lastRefreshed && (
+                  <span className="text-[10px] text-text-muted font-mono bg-surface-2 px-2 py-0.5 rounded-md">
+                    Updated {lastRefreshed}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">Real-time usage volume and token ranking across all upstream connections</p>
             </div>
           </div>
           
@@ -188,14 +209,14 @@ export default function LeaderboardPage() {
           icon="swap_calls"
           label="Total Requests"
           value={loading ? "..." : fmtNum(totals.requests)}
-          sub={`Across ${totals.activeAccounts} active connections`}
+          sub={`Across ${totals.activeAccounts} active credentials`}
           color="primary"
         />
         <StatSummaryCard
           icon="token"
           label="Total Tokens"
           value={loading ? "..." : fmtNum(totals.tokens)}
-          sub="Input & output combined"
+          sub="Input + Output combined"
           color="info"
         />
         <StatSummaryCard
@@ -206,10 +227,10 @@ export default function LeaderboardPage() {
           color="success"
         />
         <StatSummaryCard
-          icon="hub"
+          icon="dns"
           label="Active Providers"
           value={loading ? "..." : String(totals.activeProviders)}
-          sub={`${totals.activeAccounts} account credentials`}
+          sub={`${totals.activeAccounts} connected accounts`}
           color="warning"
         />
       </div>
@@ -220,35 +241,41 @@ export default function LeaderboardPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab("connections")}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                 activeTab === "connections"
                   ? "bg-primary text-white shadow-sm"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">key</span>
-              Accounts & Connections ({filteredKeys.length})
+              Accounts & Connections
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === "connections" ? "bg-white/20 text-white" : "bg-surface-2 text-text-muted"}`}>
+                {filteredKeys.length}
+              </span>
             </button>
             <button
               onClick={() => setActiveTab("providers")}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                 activeTab === "providers"
                   ? "bg-primary text-white shadow-sm"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">dns</span>
-              AI Providers ({filteredProviders.length})
+              <span className="material-symbols-outlined text-[16px]">hub</span>
+              AI Providers
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === "providers" ? "bg-white/20 text-white" : "bg-surface-2 text-text-muted"}`}>
+                {filteredProviders.length}
+              </span>
             </button>
           </div>
 
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-72">
             <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
               search
             </span>
             <input
               type="text"
-              placeholder={`Search ${activeTab}...`}
+              placeholder={`Search ${activeTab === "connections" ? "accounts, providers..." : "providers..."}`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-surface-2 border border-border-subtle rounded-lg pl-8 pr-3 py-1.5 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
@@ -259,7 +286,7 @@ export default function LeaderboardPage() {
         {/* Loading State */}
         {loading && (
           <div className="p-6 space-y-3">
-            {[1, 2, 3, 4].map(i => (
+            {[1, 2, 3, 4, 5].map(i => (
               <div key={i} className="h-12 bg-surface-2/60 animate-pulse rounded-lg" />
             ))}
           </div>
@@ -272,21 +299,25 @@ export default function LeaderboardPage() {
               <thead>
                 <tr className="border-b border-border-subtle bg-surface-2/30 text-text-muted font-medium">
                   <th className="py-3 px-4 w-12 text-center">Rank</th>
-                  <th className="py-3 px-4">Connection / Account</th>
+                  <th className="py-3 px-4 min-w-[200px]">Connection / Account</th>
                   <th className="py-3 px-4">Provider</th>
-                  <th className="py-3 px-4 text-right">Requests</th>
+                  <th className="py-3 px-4 text-right min-w-[140px]">Requests & Share</th>
                   <th className="py-3 px-4 text-right">Input Tokens</th>
                   <th className="py-3 px-4 text-right">Output Tokens</th>
                   <th className="py-3 px-4 text-right">Total Tokens</th>
                   <th className="py-3 px-4 text-right">Avg Latency</th>
-                  <th className="py-3 px-4 text-right">Total Cost</th>
+                  <th className="py-3 px-4 text-right">Cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
                 {filteredKeys.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-text-muted">
-                      No connection records found for this period.
+                    <td colSpan={9} className="py-12 text-center text-text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <span className="material-symbols-outlined text-[32px] opacity-40">query_stats</span>
+                        <p className="font-medium">No connection activity found for this period.</p>
+                        <p className="text-[11px] text-text-muted">Requests made to 9router will be ranked here automatically.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -294,6 +325,7 @@ export default function LeaderboardPage() {
                     const shareOfTotal = totals.requests > 0 
                       ? ((item.total_requests / totals.requests) * 100).toFixed(1)
                       : 0;
+                    const progressWidth = `${Math.min(100, Math.max(4, (item.total_requests / maxKeyRequests) * 100))}%`;
 
                     return (
                       <tr
@@ -305,11 +337,11 @@ export default function LeaderboardPage() {
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-text-main truncate">
+                            <span className="font-semibold text-text-main truncate text-sm">
                               {item.key_name}
                             </span>
                             <span className="font-mono text-[10px] text-text-muted truncate">
-                              ID: {item.id ? `${item.id.slice(0, 12)}...` : "unknown"}
+                              ID: {item.id ? item.id.slice(0, 16) : "unknown"}
                             </span>
                           </div>
                         </td>
@@ -317,8 +349,8 @@ export default function LeaderboardPage() {
                           {item.provider ? (
                             <div className="flex items-center gap-1.5">
                               <ProviderIcon providerId={item.provider} className="size-4 rounded" />
-                              <Badge size="sm" variant="default" className="font-medium capitalize">
-                                {item.provider}
+                              <Badge size="sm" variant="default" className="font-medium capitalize truncate max-w-[140px]">
+                                {item.provider.replace(/^openai-compatible-chat-/, 'custom-')}
                               </Badge>
                             </div>
                           ) : (
@@ -326,13 +358,21 @@ export default function LeaderboardPage() {
                           )}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <div className="flex flex-col items-end">
-                            <span className="font-bold text-text-main tabular-nums">
-                              {item.total_requests.toLocaleString()}
-                            </span>
-                            <span className="text-[10px] text-text-muted">
-                              {shareOfTotal}% share
-                            </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-text-main tabular-nums">
+                                {item.total_requests.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-text-muted font-medium">
+                                ({shareOfTotal}%)
+                              </span>
+                            </div>
+                            <div className="w-24 h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary rounded-full transition-all duration-300"
+                                style={{ width: progressWidth }}
+                              />
+                            </div>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right font-mono text-text-muted tabular-nums">
@@ -345,7 +385,7 @@ export default function LeaderboardPage() {
                           {fmtNum(item.total_tokens)}
                         </td>
                         <td className="py-3 px-4 text-right font-mono tabular-nums">
-                          <span className={item.avg_latency_ms > 3000 ? "text-amber-500" : "text-text-muted"}>
+                          <span className={item.avg_latency_ms > 5000 ? "text-amber-500 font-semibold" : "text-text-muted"}>
                             {item.avg_latency_ms > 0 ? `${item.avg_latency_ms}ms` : "-"}
                           </span>
                         </td>
@@ -368,11 +408,11 @@ export default function LeaderboardPage() {
               <thead>
                 <tr className="border-b border-border-subtle bg-surface-2/30 text-text-muted font-medium">
                   <th className="py-3 px-4 w-12 text-center">Rank</th>
-                  <th className="py-3 px-4">Provider</th>
-                  <th className="py-3 px-4 text-right">Total Requests</th>
+                  <th className="py-3 px-4 min-w-[200px]">AI Provider</th>
+                  <th className="py-3 px-4 text-right min-w-[140px]">Requests & Volume</th>
                   <th className="py-3 px-4 text-right">Input Tokens</th>
                   <th className="py-3 px-4 text-right">Output Tokens</th>
-                  <th className="py-3 px-4 text-right">Total Volume</th>
+                  <th className="py-3 px-4 text-right">Total Tokens</th>
                   <th className="py-3 px-4 text-right">Tracked Cost</th>
                   <th className="py-3 px-4 text-right">Cost / 1M Tokens</th>
                 </tr>
@@ -380,8 +420,11 @@ export default function LeaderboardPage() {
               <tbody className="divide-y divide-border-subtle">
                 {filteredProviders.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-text-muted">
-                      No provider records found for this period.
+                    <td colSpan={8} className="py-12 text-center text-text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <span className="material-symbols-outlined text-[32px] opacity-40">dns</span>
+                        <p className="font-medium">No provider records found for this period.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -393,6 +436,7 @@ export default function LeaderboardPage() {
                     const shareOfTotal = totals.requests > 0 
                       ? ((prov.total_requests / totals.requests) * 100).toFixed(1)
                       : 0;
+                    const progressWidth = `${Math.min(100, Math.max(4, (prov.total_requests / maxProvRequests) * 100))}%`;
 
                     return (
                       <tr
@@ -403,21 +447,34 @@ export default function LeaderboardPage() {
                           <RankBadge rank={idx + 1} />
                         </td>
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2.5">
                             <ProviderIcon providerId={prov.provider} className="size-6 rounded" />
-                            <span className="font-semibold text-text-main capitalize">
-                              {prov.provider}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-text-main capitalize text-sm">
+                                {prov.provider.replace(/^openai-compatible-chat-/, 'Custom Endpoint')}
+                              </span>
+                              <span className="text-[10px] font-mono text-text-muted">
+                                {prov.provider}
+                              </span>
+                            </div>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <div className="flex flex-col items-end">
-                            <span className="font-bold text-text-main tabular-nums">
-                              {prov.total_requests.toLocaleString()}
-                            </span>
-                            <span className="text-[10px] text-text-muted">
-                              {shareOfTotal}% volume
-                            </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-text-main tabular-nums">
+                                {prov.total_requests.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-text-muted font-medium">
+                                ({shareOfTotal}%)
+                              </span>
+                            </div>
+                            <div className="w-24 h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary rounded-full transition-all duration-300"
+                                style={{ width: progressWidth }}
+                              />
+                            </div>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right font-mono text-text-muted tabular-nums">
