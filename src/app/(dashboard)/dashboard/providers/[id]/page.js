@@ -53,6 +53,10 @@ export default function ProviderDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditNodeModal, setShowEditNodeModal] = useState(false);
   const [showBulkProxyModal, setShowBulkProxyModal] = useState(false);
+  const [showBulkLimitsModal, setShowBulkLimitsModal] = useState(false);
+  const [bulkLimitsRpm, setBulkLimitsRpm] = useState("");
+  const [bulkLimitsQueueMs, setBulkLimitsQueueMs] = useState("");
+  const [bulkUpdatingLimits, setBulkUpdatingLimits] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [modelAliases, setModelAliases] = useState({});
   const [customModels, setCustomModels] = useState([]);
@@ -884,6 +888,48 @@ export default function ProviderDetailPage() {
     return "Selected connections have mixed proxy bindings";
   })();
 
+  const handleApplyBulkLimits = async (e) => {
+    if (e) e.preventDefault();
+    const targetIds = selectedConnectionIds.length > 0 
+      ? selectedConnectionIds 
+      : connections.map(c => c.id);
+
+    if (targetIds.length === 0) return;
+
+    setBulkUpdatingLimits(true);
+    try {
+      const patch = {};
+      if (bulkLimitsRpm !== "") {
+        patch.rpm = Math.max(0, parseInt(bulkLimitsRpm, 10) || 0);
+      }
+      if (bulkLimitsQueueMs !== "") {
+        patch.queueTimeoutMs = Math.max(0, parseInt(bulkLimitsQueueMs, 10) || 0);
+      }
+
+      await Promise.all(
+        targetIds.map(id =>
+          fetch(`/api/providers/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+          })
+        )
+      );
+
+      setConnections(prev =>
+        prev.map(c => (targetIds.includes(c.id) ? { ...c, ...patch } : c))
+      );
+      setShowBulkLimitsModal(false);
+      setBulkLimitsRpm("");
+      setBulkLimitsQueueMs("");
+    } catch (err) {
+      console.error("Failed to update limits in batch:", err);
+      alert("Failed to update limits in batch.");
+    } finally {
+      setBulkUpdatingLimits(false);
+    }
+  };
+
   const openBulkProxyModal = () => {
     if (selectedConnections.length === 0) return;
     const uniquePoolIds = [...new Set(selectedConnections.map((conn) => conn.providerSpecificData?.proxyPoolId || "__none__"))];
@@ -1065,6 +1111,74 @@ export default function ProviderDetailPage() {
           Cancel
         </Button>
       </div>
+    </Modal>
+  );
+
+  const bulkLimitsModal = (
+    <Modal
+      isOpen={showBulkLimitsModal}
+      onClose={() => !bulkUpdatingLimits && setShowBulkLimitsModal(false)}
+      title={`Set Limits & Queue (${selectedConnectionIds.length > 0 ? selectedConnectionIds.length : connections.length} connections)`}
+    >
+      <form onSubmit={handleApplyBulkLimits} className="flex flex-col gap-4">
+        <p className="text-xs text-text-muted">
+          Apply RPM rate limit and queue timeout to {selectedConnectionIds.length > 0 ? `${selectedConnectionIds.length} selected` : "all"} connections simultaneously. Leave empty to keep unchanged.
+        </p>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-text-main">
+            Requests Per Minute (RPM)
+          </label>
+          <input
+            type="number"
+            min="0"
+            placeholder="0 = unlimited"
+            value={bulkLimitsRpm}
+            onChange={(e) => setBulkLimitsRpm(e.target.value)}
+            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-[11px] text-text-muted">
+            Max requests per minute allowed per connection.
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-text-main">
+            Queue Timeout (ms)
+          </label>
+          <input
+            type="number"
+            min="0"
+            placeholder="0 = reject immediately (429)"
+            value={bulkLimitsQueueMs}
+            onChange={(e) => setBulkLimitsQueueMs(e.target.value)}
+            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-[11px] text-text-muted">
+            Milliseconds requests can wait in queue before receiving 429 rate limit error.
+          </span>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowBulkLimitsModal(false)}
+            disabled={bulkUpdatingLimits}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={bulkUpdatingLimits || (bulkLimitsRpm === "" && bulkLimitsQueueMs === "")}
+          >
+            {bulkUpdatingLimits ? "Applying..." : "Apply to Connections"}
+          </Button>
+        </div>
+      </form>
     </Modal>
   );
 
@@ -1442,6 +1556,18 @@ export default function ProviderDetailPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              {connections.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="tune"
+                  onClick={() => setShowBulkLimitsModal(true)}
+                >
+                  {selectedConnectionIds.length > 0
+                    ? `Set Limits (${selectedConnectionIds.length})`
+                    : "Set Limits (All)"}
+                </Button>
+              )}
               {connections.length > 0 && proxyPools.length > 0 && (
                 <Button
                   size="sm"
@@ -1719,6 +1845,7 @@ export default function ProviderDetailPage() {
       </Card>
 
       {bulkActionModal}
+      {bulkLimitsModal}
 
       {/* Modals */}
       {providerId === "kiro" ? (
