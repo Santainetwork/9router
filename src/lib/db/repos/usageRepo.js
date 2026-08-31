@@ -310,6 +310,10 @@ export async function saveRequestUsage(entry) {
     });
 
     if (inserted) {
+      // Ensure ring entry has .meta so ringMeta.requestedModel display works (mirrors DB init path)
+      if (!entry.meta) {
+        entry.meta = { requestedModel: entry.requestedModel, upstreamModel: entry.upstreamModel };
+      }
       pushToRing(entry);
       scheduleStatsEvent("update", 250);
     }
