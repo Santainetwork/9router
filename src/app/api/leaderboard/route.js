@@ -17,20 +17,22 @@ export async function GET(request) {
   }
 
   try {
+    const days = period === 'today' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : period === 'all' ? -9999 : 7;
     let queries = {};
 
-    if (showProviders) {
-      // Provider usage aggregation
-      queries.providersByUsage = await getProvidersByUsage(period, topN);
-      queries.providersByCost = await getProvidersByCost(period, topN);
-    } else {
-      // API Key aggregation  
-      queries.keysByRequests = await getApiKeysByRequests(period, topN);
-      queries.keysByCost = await getApiKeysByCost(period, topN);
+    // Always compute provider stats (real data from requestDetails)
+    queries.providersByUsage = await getProvidersByUsage(days, topN);
+    queries.providersByCost = await getProvidersByCost(days, topN);
+
+    // For API keys, list active keys with connection-level rollup
+    queries.keysByRequests = await getKeysByRequests(days, topN);
+    queries.keysByCost = await getKeysByCost(days, topN);
+
+    if (!showProviders) {
+      delete queries.providersByUsage;
+      delete queries.providersByCost;
     }
 
-    console.log('[Leaderboard] Query result:', Object.keys(queries));
-    
     const result = {
       success: true,
       metadata: { period, timestamp: new Date().toISOString() },
@@ -46,153 +48,118 @@ export async function GET(request) {
   }
 }
 
-async function maskKey(key) {
+function maskKey(key) {
   if (!key || typeof key !== 'string') return '****';
   if (key.length <= 8) return key.charAt(0) + '***';
   return key.slice(0, 8) + '***';
 }
 
-async function getApiKeysByRequests(period, limit) {
-  const days = period === 'today' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : period === 'all' ? -9999 : 7;
-  
-  // Get all active keys
+async function getProvidersByUsage(days, limit) {
   const sql = `
     SELECT 
-      ak.id, 
-      ak.name AS key_name,
-      ak.key as full_key
-    FROM apiKeys ak
-    WHERE ak.isActive = 1
-    ORDER BY ak.createdAt DESC
-    LIMIT ?
-  `;
-  
-  const rows = db.prepare(sql).all(limit);
-  
-  // Get total stats from all requests in time period
-  const requestStats = await db.prepare(`
-    SELECT 
+      provider,
       COUNT(*) as total_requests,
-      SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.total_tokens'), 0)) as total_tokens,
-      SUM(COALESCE(JSON_EXTRACT(data, '$.cost'), 0)) as total_cost
+      SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.prompt_tokens'), 0)) as input_tokens,
+      SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.completion_tokens'), 0)) as output_tokens,
+      SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.total_tokens'), 0)) as total_tokens
     FROM requestDetails
     WHERE timestamp >= datetime('now', '-${days} days')
-  `).get();
-  
-  // Distribute stats proportionally among active keys
-  const totalCounts = requestStats.total_requests || 1;
-  const tokensPerRequest = (requestStats.total_tokens || 0) / totalCounts;
-  const costPerRequest = (requestStats.total_cost || 0) / totalCounts;
-  
-  return rows.map((row, idx) => ({
-    id: row.id,
-    key_name: row.key_name || "Unnamed",
-    key_masked: maskKey(row.full_key),
-    total_requests: Math.round(totalCounts / rows.length),
-    input_tokens: Math.round(tokensPerRequest * 0.7), // Estimate 70% prompt
-    output_tokens: Math.round(tokensPerRequest * 0.3), // Estimate 30% completion
-    total_tokens: Math.round(tokensPerRequest),
-    avg_latency_ms: 0,
-    total_cost: (costPerRequest * Math.round(totalCounts / rows.length)).toFixed(4),
-    cost_per_request: costPerRequest.toFixed(4),
-    last_used: new Date().toISOString()
+      AND provider IS NOT NULL
+      AND status = 'success'
+    GROUP BY provider
+    ORDER BY total_requests DESC
+    LIMIT ?
+  `;
+  return db.prepare(sql).all(limit);
+}
+
+async function getProvidersByCost(days, limit) {
+  const sql = `
+    SELECT 
+      provider,
+      SUM(COALESCE(JSON_EXTRACT(data, '$.cost'), 0)) as total_cost,
+      COUNT(*) as total_requests
+    FROM requestDetails
+    WHERE timestamp >= datetime('now', '-${days} days')
+      AND provider IS NOT NULL
+      AND JSON_EXTRACT(data, '$.cost') IS NOT NULL
+      AND status = 'success'
+    GROUP BY provider
+    HAVING total_cost > 0
+    ORDER BY total_cost DESC
+    LIMIT ?
+  `;
+  return db.prepare(sql).all(limit);
+}
+
+async function getKeysByRequests(days, limit) {
+  // Aggregate by connectionId (proxy for "key/account") since requestDetails
+  // doesn't store the apiKey directly. Include provider for context.
+  const sql = `
+    SELECT 
+      COALESCE(pc.name, rd.connectionId, 'unknown') as key_name,
+      rd.connectionId,
+      rd.provider,
+      COUNT(*) as total_requests,
+      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.tokens.prompt_tokens'), 0)) as input_tokens,
+      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.tokens.completion_tokens'), 0)) as output_tokens,
+      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.tokens.total_tokens'), 0)) as total_tokens,
+      ROUND(AVG(COALESCE(JSON_EXTRACT(rd.data, '$.latency.total'), 0))) as avg_latency_ms,
+      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.cost'), 0)) as total_cost
+    FROM requestDetails rd
+    LEFT JOIN providerConnections pc ON pc.id = rd.connectionId
+    WHERE rd.timestamp >= datetime('now', '-${days} days')
+      AND rd.status = 'success'
+    GROUP BY rd.connectionId
+    HAVING total_requests > 0
+    ORDER BY total_requests DESC
+    LIMIT ?
+  `;
+  const rows = db.prepare(sql).all(limit);
+  return rows.map(r => ({
+    id: r.connectionId,
+    key_name: r.key_name || 'Unnamed',
+    key_masked: maskKey(r.connectionId || ''),
+    provider: r.provider || '',
+    total_requests: r.total_requests,
+    input_tokens: r.input_tokens || 0,
+    output_tokens: r.output_tokens || 0,
+    total_tokens: r.total_tokens || 0,
+    avg_latency_ms: Math.round(r.avg_latency_ms) || 0,
+    total_cost: r.total_cost || 0,
+    cost_per_request: r.total_requests > 0 ? (r.total_cost / r.total_requests) : 0
   }));
 }
 
-async function getApiKeysByCost(period, limit) {
-  const days = period === 'today' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : period === 'all' ? -9999 : 7;
-  
+async function getKeysByCost(days, limit) {
   const sql = `
     SELECT 
-      ak.id, 
-      ak.name AS key_name,
-      ak.key as full_key,
-      COALESCE(ak.rp_request_count, 0) AS rp_request_count
-    FROM apiKeys ak
-    WHERE ak.isActive = 1
+      COALESCE(pc.name, rd.connectionId, 'unknown') as key_name,
+      rd.connectionId,
+      rd.provider,
+      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.cost'), 0)) as total_cost,
+      COUNT(*) as total_requests,
+      ROUND(AVG(COALESCE(JSON_EXTRACT(rd.data, '$.latency.total'), 0))) as avg_latency_ms
+    FROM requestDetails rd
+    LEFT JOIN providerConnections pc ON pc.id = rd.connectionId
+    WHERE rd.timestamp >= datetime('now', '-${days} days')
+      AND rd.status = 'success'
+      AND JSON_EXTRACT(rd.data, '$.cost') IS NOT NULL
+    GROUP BY rd.connectionId
+    HAVING total_cost > 0
+    ORDER BY total_cost DESC
     LIMIT ?
   `;
-  
   const rows = db.prepare(sql).all(limit);
-  
-  const totalCostQuery = await db.prepare(`
-    SELECT SUM(COALESCE(JSON_EXTRACT(data, '$.cost'), 0)) as total_cost
-    FROM requestDetails
-    WHERE timestamp >= datetime('now', '-${days} days')
-  `).get();
-  
-  const totalCost = parseFloat(totalCostQuery.total_cost) || 0;
-  const numKeys = rows.length || 1;
-  const equalShare = totalCost / numKeys;
-  
-  return rows.map(row => ({
-    id: row.id,
-    key_name: row.key_name || "Unnamed",
-    total_cost: equalShare.toFixed(4),
-    total_requests: Math.floor(100 / numKeys),
-    avg_latency_ms: 0,
-    requests_per_dollar: 0
-  }).sort((a, b) => b.total_cost - a.total_cost).slice(0, limit));
-}
-
-async function getProvidersByUsage(period, limit) {
-  const days = period === 'today' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : period === 'all' ? -9999 : 7;
-  
-  const sql = `
-    SELECT 
-      provider, COUNT(*) as total_requests
-    FROM requestDetails
-    WHERE timestamp >= datetime('now', '-${days} days')
-      AND provider IS NOT NULL
-    GROUP BY provider
-    ORDER BY total_requests DESC
-    LIMIT ?
-  `;
-  
-  const results = db.prepare(sql).all(limit);
-  
-  // Add token estimates
-  return results.map(p => {
-    const tokensPerReq = 50000; // Estimate
-    return {
-      provider: p.provider || 'Unknown',
-      total_requests: p.total_requests,
-      input_tokens: Math.round(p.total_requests * tokensPerReq * 0.7),
-      output_tokens: Math.round(p.total_requests * tokensPerReq * 0.3),
-      total_tokens: p.total_requests * tokensPerReq
-    };
-  });
-}
-
-async function getProvidersByCost(period, limit) {
-  const days = period === 'today' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : period === 'all' ? -9999 : 7;
-  
-  const sql = `
-    SELECT 
-      provider, COUNT(*) as total_requests
-    FROM requestDetails
-    WHERE timestamp >= datetime('now', '-${days} days')
-      AND provider IS NOT NULL
-    GROUP BY provider
-    HAVING COUNT(*) > 0
-    ORDER BY total_requests DESC
-    LIMIT ?
-  `;
-  
-  const results = db.prepare(sql).all(limit);
-  
-  // Get total cost
-  const totalCostQuery = await db.prepare(`
-    SELECT SUM(COALESCE(JSON_EXTRACT(data, '$.cost'), 0)) as total_cost
-    FROM requestDetails
-    WHERE timestamp >= datetime('now', '-${days} days')
-  `).get();
-  
-  const totalCost = parseFloat(totalCostQuery.total_cost) || 0;
-  
-  return results.map(r => ({
-    provider: r.provider || 'Unknown',
-    total_cost: (totalCost / results.length).toFixed(4),
-    total_requests: r.total_requests
+  return rows.map(r => ({
+    id: r.connectionId,
+    key_name: r.key_name || 'Unnamed',
+    key_masked: maskKey(r.connectionId || ''),
+    provider: r.provider || '',
+    total_cost: r.total_cost || 0,
+    total_requests: r.total_requests,
+    avg_latency_ms: Math.round(r.avg_latency_ms) || 0,
+    cost_per_request: r.total_requests > 0 ? (r.total_cost / r.total_requests) : 0,
+    requests_per_dollar: r.total_cost > 0 ? r.total_requests / r.total_cost : 0
   }));
 }
