@@ -90,10 +90,10 @@ export default function LeaderboardPage() {
   const fetchLeaderboard = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ period, top: "50", providers: "true" });
+      const params = new URLSearchParams({ period, top: "100", providers: "true" });
       const res = await fetch(`/api/leaderboard?${params}`, { cache: "no-store" });
       const json = await res.json();
-      if (json.success) {
+      if (json.success && json.data) {
         setData(json.data);
       } else {
         console.error("Failed to fetch leaderboard:", json.error);

@@ -17,16 +17,29 @@ export async function GET(request) {
   }
 
   try {
-    const days = period === 'today' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : period === 'all' ? -9999 : 7;
+    let whereTimeClause = '';
+    if (period === 'today') {
+      whereTimeClause = "timestamp >= datetime('now', 'start of day')";
+    } else if (period === '24h') {
+      whereTimeClause = "timestamp >= datetime('now', '-1 day')";
+    } else if (period === '7d') {
+      whereTimeClause = "timestamp >= datetime('now', '-7 days')";
+    } else if (period === '30d') {
+      whereTimeClause = "timestamp >= datetime('now', '-30 days')";
+    } else if (period === 'all') {
+      whereTimeClause = "1=1";
+    } else {
+      whereTimeClause = "timestamp >= datetime('now', '-7 days')";
+    }
     let queries = {};
 
     // Always compute provider stats (real data from requestDetails)
-    queries.providersByUsage = await getProvidersByUsage(days, topN);
-    queries.providersByCost = await getProvidersByCost(days, topN);
+    queries.providersByUsage = await getProvidersByUsage(whereTimeClause, topN);
+    queries.providersByCost = await getProvidersByCost(whereTimeClause, topN);
 
     // For API keys, list active keys with connection-level rollup
-    queries.keysByRequests = await getKeysByRequests(days, topN);
-    queries.keysByCost = await getKeysByCost(days, topN);
+    queries.keysByRequests = await getKeysByRequests(whereTimeClause, topN);
+    queries.keysByCost = await getKeysByCost(whereTimeClause, topN);
 
     if (!showProviders) {
       delete queries.providersByUsage;
@@ -54,7 +67,7 @@ function maskKey(key) {
   return key.slice(0, 8) + '***';
 }
 
-async function getProvidersByUsage(days, limit) {
+async function getProvidersByUsage(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
@@ -64,7 +77,7 @@ async function getProvidersByUsage(days, limit) {
       SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.completion_tokens'), 0)) as output_tokens,
       SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.total_tokens'), 0)) as total_tokens
     FROM requestDetails
-    WHERE timestamp >= datetime('now', '-${days} days')
+    WHERE ${whereTimeClause}
       AND provider IS NOT NULL
       AND status = 'success'
     GROUP BY provider
@@ -74,7 +87,7 @@ async function getProvidersByUsage(days, limit) {
   return db.prepare(sql).all(limit);
 }
 
-async function getProvidersByCost(days, limit) {
+async function getProvidersByCost(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
@@ -82,7 +95,7 @@ async function getProvidersByCost(days, limit) {
       SUM(COALESCE(JSON_EXTRACT(data, '$.cost'), 0)) as total_cost,
       COUNT(*) as total_requests
     FROM requestDetails
-    WHERE timestamp >= datetime('now', '-${days} days')
+    WHERE ${whereTimeClause}
       AND provider IS NOT NULL
       AND JSON_EXTRACT(data, '$.cost') IS NOT NULL
       AND status = 'success'
@@ -94,7 +107,7 @@ async function getProvidersByCost(days, limit) {
   return db.prepare(sql).all(limit);
 }
 
-async function getKeysByRequests(days, limit) {
+async function getKeysByRequests(whereTimeClause, limit) {
   const db = await getAdapter();
   // Aggregate by connectionId (proxy for "key/account") since requestDetails
   // doesn't store the apiKey directly. Include provider for context.
@@ -111,7 +124,7 @@ async function getKeysByRequests(days, limit) {
       SUM(COALESCE(JSON_EXTRACT(rd.data, '$.cost'), 0)) as total_cost
     FROM requestDetails rd
     LEFT JOIN providerConnections pc ON pc.id = rd.connectionId
-    WHERE rd.timestamp >= datetime('now', '-${days} days')
+    WHERE ${whereTimeClause.replace(/timestamp/g, 'rd.timestamp')}
       AND rd.status = 'success'
     GROUP BY rd.connectionId
     HAVING total_requests > 0
@@ -134,7 +147,7 @@ async function getKeysByRequests(days, limit) {
   }));
 }
 
-async function getKeysByCost(days, limit) {
+async function getKeysByCost(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
@@ -146,7 +159,7 @@ async function getKeysByCost(days, limit) {
       ROUND(AVG(COALESCE(JSON_EXTRACT(rd.data, '$.latency.total'), 0))) as avg_latency_ms
     FROM requestDetails rd
     LEFT JOIN providerConnections pc ON pc.id = rd.connectionId
-    WHERE rd.timestamp >= datetime('now', '-${days} days')
+    WHERE ${whereTimeClause.replace(/timestamp/g, 'rd.timestamp')}
       AND rd.status = 'success'
       AND JSON_EXTRACT(rd.data, '$.cost') IS NOT NULL
     GROUP BY rd.connectionId
