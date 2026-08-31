@@ -74,6 +74,9 @@ export function buildRequestDetail(base, overrides = {}) {
     status: base.status || "success",
     // Include actual upstream model if available (most accurate model sent to provider)
     upstreamModel: base.upstreamModel || undefined,
+    // Keep the client-side model reference (e.g. "bai/deepseek-v4-flash") so the
+    // dashboard can show the provider-prefixed name the client actually requested.
+    requestedModel: base.requestedModel || undefined,
     ...overrides
   };
 }

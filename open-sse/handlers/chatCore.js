@@ -376,7 +376,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       pxpipe: pxpipeSummary,
       status: "error",
       apiVersion: clientRawRequest?.apiVersion || "unknown",
-      upstreamModel
+upstreamModel,
+      requestedModel
     })).catch(() => { });
 
     if (error.name === "AbortError") {
@@ -442,7 +443,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       pxpipe: pxpipeSummary,
       status: "error",
       apiVersion: clientRawRequest?.apiVersion || "unknown",
-      upstreamModel
+upstreamModel,
+      requestedModel
     })).catch(() => { });
 
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);

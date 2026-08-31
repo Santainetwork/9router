@@ -120,7 +120,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     apiVersion: clientRawRequest?.apiVersion || "unknown",
     endpoint: clientRawRequest?.endpoint || null,
     status: "success",
-    upstreamModel
+    upstreamModel,
+    requestedModel
   }, { id: streamDetailId })).catch(err => {
     console.error("[RequestDetail] Failed to save streaming request:", err.message);
   });
@@ -174,7 +175,8 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
       pxpipe,
       apiVersion: clientRawRequest?.apiVersion || "unknown",
       status: "success",
-      upstreamModel
+      upstreamModel,
+      requestedModel
     }, { id: streamDetailId })).catch(err => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
