@@ -1,4 +1,4 @@
-import { getModelsByProviderId } from "open-sse/config/providerModels.js";
+import { getModelsByProviderId } from "../../../../../../../open-sse/config/providerModels.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export const QUOTA_CACHE_KEY = "quotaCacheData";
@@ -575,7 +575,7 @@ export function parseQuotaData(provider, data) {
         break;
 
       default:
-        // Generic fallback for unknown providers
+        // Generic fallback for unknown / custom compatible providers
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
@@ -583,6 +583,8 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
+              unlimited: quota.unlimited,
             });
           });
         }

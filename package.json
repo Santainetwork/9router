@@ -3,6 +3,11 @@
   "version": "0.5.59",
   "description": "9Router web dashboard",
   "private": true,
+  "imports": {
+    "open-sse/*": "./open-sse/*",
+    "open-sse": "./open-sse/index.js",
+    "#*": "./*"
+  },
   "scripts": {
     "dev": "next dev --port 20127",
     "dev:webpack": "next dev --webpack --port 20127",
