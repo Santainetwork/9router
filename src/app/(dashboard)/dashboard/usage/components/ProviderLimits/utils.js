@@ -224,6 +224,14 @@ export function setQuotaCache(connectionId, quotaEntry) {
  * @param {string|Date} date - ISO date string or Date object
  * @returns {string} Formatted countdown (e.g., "2d 5h 30m", "4h 40m", "15m") or "-"
  */
+export function formatCompactNumber(n) {
+  const v = Number(n) || 0;
+  if (v >= 1_000_000_000) return (v / 1_000_000_000).toFixed(1) + "B";
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+  if (v >= 10_000) return (v / 1_000).toFixed(1) + "K";
+  return v.toLocaleString();
+}
+
 export function formatResetTime(date) {
   if (!date) return "-";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatResetTime, getRemainingPercentage } from "./utils";
+import { formatResetTime, getRemainingPercentage, formatCompactNumber } from "./utils";
 
 const PAGE_SIZE = 10;
 
@@ -196,8 +196,8 @@ export default function QuotaTable({
                     }
                   >
                     {isUnlimited
-                      ? `${quota.used.toLocaleString()} used · Unlimited`
-                      : `${quota.used.toLocaleString()} / ${quota.total > 0 ? quota.total.toLocaleString() : "∞"}`}
+                      ? `${formatCompactNumber(quota.used)} used · Unlimited`
+                      : `${formatCompactNumber(quota.used)} / ${quota.total > 0 ? formatCompactNumber(quota.total) : "∞"}`}
                   </span>
                   <span className={`font-medium ${isUnlimited ? "text-green-600 dark:text-green-400" : colors.text} shrink-0`}>
                     {isUnlimited ? "Unlimited" : `${quota.remaining}%`}
