@@ -2,8 +2,8 @@
 // Fail-open everywhere: tick errors and per-connection failures never kill the interval.
 
 import * as log from "../utils/logger.js";
-import { getRefreshLeadMs } from "open-sse/services/tokenRefresh.js";
-import { getCredentialExpiryMs } from "open-sse/services/oauthCredentialManager.js";
+import { getRefreshLeadMs } from "../../../open-sse/services/tokenRefresh.js";
+import { getCredentialExpiryMs } from "../../../open-sse/services/oauthCredentialManager.js";
 
 /** Refresh when expiry is within 30 minutes (or the provider on-request lead, whichever larger). */
 export const BACKGROUND_REFRESH_LEAD_MS = 30 * 60 * 1000;
