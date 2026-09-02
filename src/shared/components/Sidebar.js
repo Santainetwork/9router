@@ -29,6 +29,7 @@ const navItems = [
  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
+  { href: "/dashboard/custom-credits", label: "Custom Credits", icon: "account_balance_wallet" },
   { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },

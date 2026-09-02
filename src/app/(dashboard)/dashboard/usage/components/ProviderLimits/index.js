@@ -177,6 +177,7 @@ export default function ProviderLimits() {
     async (targetPage = page) => {
       try {
         const params = new URLSearchParams({
+          scope: "native",
           page: String(targetPage),
           pageSize: String(pageSize),
           accountStatus: accountFilter,

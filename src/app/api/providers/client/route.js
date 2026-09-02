@@ -81,6 +81,7 @@ export async function GET(request) {
     await backfillCodexEmails();
 
     const { searchParams } = new URL(request.url);
+    const scope = searchParams.get("scope") || "all";
     const provider = searchParams.get("provider") || "all";
     const accountStatus = searchParams.get("accountStatus") || "all";
     const sort = searchParams.get("sort") || "priority";
@@ -88,7 +89,12 @@ export async function GET(request) {
     const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
 
     const allConnections = await getProviderConnections();
-    const eligibleConnections = allConnections.filter(isUsageEligible);
+    const eligibleConnections = allConnections.filter(c => {
+      const isCustom = c.provider?.startsWith("openai-compatible-") || c.provider?.startsWith("custom-");
+      if (scope === "native" && isCustom) return false;
+      if (scope === "custom" && !isCustom) return false;
+      return isUsageEligible(c);
+    });
     const providerOptions = Array.from(new Set(eligibleConnections.map((conn) => conn.provider))).sort();
 
     const providerFilteredConnections = eligibleConnections.filter((conn) => (
