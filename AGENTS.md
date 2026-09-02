@@ -1,48 +1,71 @@
 # 🚀 9Router Custom Enhancements - Complete Documentation
 
 ## Current State
-- **Latest Commit**: `0f34ef81` (feat: Add API Keys & Providers Leaderboard)
-- **Custom Fork**: Active with all enhancements deployed
+- **Active Branch**: `dev` (and `master`)
+- **Latest Dev Commit**: `e6eae312` (refactor: Convert /api/leaderboard into backward-compatible re-export)
 - **Status**: Production Ready ✅
 
 ---
 
 ## 📋 Core Customizations
 
-### 1. Upstream Model Tracking ✅ WORKING
-**Purpose**: Display actual provider models instead of client aliases in dashboard
+### 1. Upstream Model & Prefix Tracking ✅ WORKING
+**Purpose**: Display actual provider-prefixed models (e.g., `ag/claude-sonnet-4-6`, `bai/deepseek-v4-flash`, `amanai/qwen3.8-max-preview`) in dashboard and recent usage stream without loss across process lifecycles.
 
 **Implementation**:
 - Modified: `open-sse/handlers/chatCore.js` (+30 lines)
 - Modified: `open-sse/handlers/chatCore/streamingHandler.js` (+27 lines)
-- Modified: `src/lib/db/repos/usageRepo.js` (+9 -2 lines)
-- Added to DB: `upstreamModel` field in JSON data column
-
-**How it works**:
-```javascript
-const upstreamModel = getModelUpstreamId(alias, model);
-// Example: qmodel_38max → amanai/qwen3.8-max-preview
-```
-
-**Display Priority**: `upstreamModel` > `requestedModel` > `model` (fallback)
+- Modified: `src/lib/db/repos/usageRepo.js`: `entry.meta = { requestedModel, upstreamModel }` synced before `pushToRing`.
+- Modified: `src/lib/db/repos/requestDetailsRepo.js`: Persist `upstreamModel` & `requestedModel` in DB flush whitelist.
 
 ---
 
-### 2. Dashboard Polishing ✅ WORKING
-**Purpose**: Visual indicators for upstream vs alias models
+### 2. Custom Provider Credit & Balance Checking System ✅ DEPLOYED
+**Purpose**: Enable automatic and configurable credit/quota balance tracking for custom OpenAI-compatible and Custom Embedding endpoints in Quota Tracker.
 
-**Modified**: `src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js`
+**Implementation**:
+- New File: `open-sse/services/usage/customCompatible.js`
+- Modified: `open-sse/services/usage.js` (routed `openai-compatible-*` & `custom-*`)
+- Modified: `src/app/api/providers/client/route.js` & `src/app/api/usage/[connectionId]/route.js`
+- Modified: `src/shared/components/EditConnectionModal.js` & `src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js`
+- Modified: `src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js` (compact number formatting & generic quota fallback)
+
+**Supported Strategies**:
+1. **Auto-detect**: Automatically checks `baseUrl` domain to apply Amanai, OpenRouter, SiliconFlow, or NewAPI strategies.
+2. **Amanai**: Queries `GET {baseUrl}/v1/usage` (`credit_remaining`, status, name).
+3. **OpenRouter**: Queries `GET https://openrouter.ai/api/v1/auth/key` (`usage`, `limit`, `is_free_tier`).
+4. **SiliconFlow**: Queries `GET https://api.siliconflow.cn/v1/user/info` (`totalBalance`, `chargeBalance`).
+5. **NewAPI / OneAPI**: Queries `GET {baseUrl}/dashboard/billing/usage` (`total_available`, `total_granted`).
+6. **User Balance**: Queries `GET {baseUrl}/v1/user/balance` (`total_balance`, `currency`).
+7. **Custom URL & JSON Path**: Universal extractor with user-defined URL and JSON path.
+
+---
+
+### 3. Provider Connections Batch Set Limits ✅ DEPLOYED
+**Purpose**: Allow operators to set Requests Per Minute (RPM) and Queue Timeout (ms) simultaneously across selected or all provider connections.
+
+**Implementation**:
+- Modified: `src/app/(dashboard)/dashboard/providers/[id]/page.js`
+- Added toolbar button **`Set Limits (X)`** / **`Set Limits (All)`** and interactive configuration modal.
+
+---
+
+### 4. API Keys & Providers Leaderboard & CSV Export ✅ DEPLOYED
+**Purpose**: Real-time usage volume, cost, latency, and token monitoring dashboard.
 
 **Features**:
-- `isUpstreamModel()` helper function detects provider prefixes (`/`, `amanai/`, etc.)
-- `[UPSTREAM]` badge displayed for real provider models
-- Better tooltip information
-- Monospace fonts for clarity
+- Canonical Route: `/api/usage/leaderboard` (with `/api/leaderboard` backward-compatible shim).
+- URL Paths: `/dashboard/leaderboard` and `/leaderboard`.
+- Visual ranking badges (🥇🥈🥉).
+- Relative volume progress bars (% share of total).
+- KPI Summary Cards (Total Requests, Tokens, Costs, Active Providers).
+- Search bar for quick filtering.
+- **Export CSV** button generating standard RFC-4180 CSV snapshots.
 
 ---
 
-### 3. Response Footer Support ✅ CONFIGURED
-**Purpose**: Add metadata at end of streaming responses
+### 5. Response Footer Support ✅ CONFIGURED
+**Purpose**: Add metadata at end of streaming responses.
 
 **New File**: `open-sse/handlers/chatCore/responseFooter.js` (263 lines)
 
@@ -51,25 +74,13 @@ const upstreamModel = getModelUpstreamId(alias, model);
 {
   "responseFooterEnabled": true,
   "responseFooterText": "\n\n---\nby SantaiNetwork · {model} · {durationS} · {totalTokens} Token Total",
-  "responseFooterApiVersions": "v1,v2"  // Updated August 29, 2026
+  "responseFooterApiVersions": "v1,v2"
 }
 ```
 
-**Supports**: Both v1 and v2 API endpoints
-
 ---
 
-### 4. V2 API Deployment ✅ DEPLOYED
-**Purpose**: New API paths with proper routing and auth boundaries
-
-**Changes in `next.config.mjs`**:
-```javascript
-{ source: "/v2/:path*", destination: "/api/v2/:path*" }
-{ source: "/v2", destination: "/api/v2" }
-{ source: "/v1/:path*", destination: "/api/v1/:path*" }
-{ source: "/v1", destination: "/api/v1" }
-```
-
+### 6. V2 API Deployment ✅ DEPLOYED
 **Endpoints**:
 - `/api/v2/models` - Public list of models ✅
 - `/v2/models` - Alias route ✅  
@@ -77,155 +88,23 @@ const upstreamModel = getModelUpstreamId(alias, model);
 
 ---
 
-### 5. API Keys & Providers Leaderboard ✅ DEPLOYED (Aug 29, 2026)
-**Purpose**: Usage monitoring and cost tracking dashboard
-
-**New Files**:
-- `src/app/api/leaderboard/route.js` (110 lines) - Backend aggregation logic
-- `src/app/(dashboard)/leaderboard/page.jsx` (236 lines) - Frontend UI
-
-**Features**:
-- **Top API Keys by Usage**: Request counts, input/output tokens, latency
-- **Top API Keys by Cost**: Spending analysis, requests per dollar
-- **Provider Rankings**: Toggleable view of provider usage efficiency
-- **Time Filters**: Today, Last 7 Days, Last 30 Days, All Time
-- **Visual Ranking Badges**: 🥇🥈🥉 gold/silver/bronze positions
-
-**Metrics Tracked**:
-- Total requests per key/provider
-- Input tokens, output tokens, total tokens
-- Total cost in USD ($ precision to 4 decimals)
-- Average latency (milliseconds)
-- Cost efficiency metrics ($/request, $/million tokens)
-
-**Cache Strategy**: 5-minute server-side caching for performance
-
-**Access**: `/dashboard/leaderboard` (requires authentication)
-
----
-
-## 📦 Files Modified vs Original 9Router
-
-| Category | Files | Lines Changed |
-|----------|-------|---------------|
-| Core Chat | `chatCore.js`, `streamingHandler.js` | +57 |
-| Database | `usageRepo.js` | +9 -2 |
-| Dashboard | `RequestDetailsTab.js`, `page.jsx` (leaderboard) | +25 +236 |
-| API Routes | `route.js` (leaderboard) | +110 |
-| Config | `next.config.mjs` | +13 |
-| New | `responseFooter.js`, leaderboard/* | +499 |
-| **TOTAL** | ~7 core files | ~+714 net custom code |
-
-**Total Custom Files Created**: 20+ (docs, scripts, services, dashboards)
-
----
-
-## 🎯 Acceptance Criteria Status
-
-| Feature | Status | Verified |
-|---------|--------|----------|
-| Upstream Model Capture | ✅ Working | Database stores `amanai/...` not aliases |
-| Dashboard Badge UI | ✅ Working | `[UPSTREAM]` badges display correctly |
-| Footer v1+v2 Support | ✅ Updated | DB configured for both versions |
-| V2 Route Mapping | ✅ Deployed | Both native + alias routes active |
-| Auth Protection | ✅ Strict | Properly rejects unauthenticated requests |
-| Leaderboard UI | ✅ Deployed | Accessible at `/dashboard/leaderboard` |
-| No Regression | ✅ Confirmed | All v1 features intact |
-
----
-
-## 🔧 Verification Commands
+## 🔧 Verification & Testing
 
 ```bash
-# Check deployment status
-systemctl status 9router
+# Run unit test suite
+node --test tests/unit/*.test.mjs
+
+# Build standalone production bundle
+npm run build
+
+# Deploy to release directory and restart
+rsync -av --delete /opt/9router/.next/standalone/ /opt/9router-release/
+systemctl restart 9router
 curl http://localhost:20128/api/health
-
-# Verify V2 public endpoints
-curl http://localhost:20128/api/v2/models
-curl http://localhost:20128/v2/models
-
-# Test leaderboad API
-curl http://localhost:20128/api/leaderboard?period=7d&top=20&providers=true
-
-# Monitor latest requests
-tail -f /var/log/9router.log | grep apiVersion
-
-# Query database for upstream models
-NODE_PATH=/opt/9router/node_modules node -e "
-const db=require('better-sqlite3')('/var/lib/9router/.9router/db/data.sqlite');
-const rows=db.prepare('SELECT model, data FROM requestDetails ORDER BY id DESC LIMIT 5').all();
-rows.forEach(r=>console.log(r.model, JSON.parse(r.data||{}).upstreamModel || '(none)'));
-"
-
-# Check footer config
-sqlite3 /var/lib/9router/.9router/db/data.sqlite \
-  "SELECT json_extract(data,'$.responseFooterApiVersions') FROM settings"
 ```
 
 ---
 
-## 📊 Known Issues & Recommendations
-
-### Monitoring Needed:
-1. ⏳ First V2 chat request to verify `apiVersion=v2` field capture
-2. ⏳ Confirm footer appears correctly on V2 streaming responses
-3. ⏳ Monitor leaderboard metrics as traffic increases
-
-### Pending Validation:
-- End-to-end test: Make real V2 request → Check DB fields → Verify leaderboard updates
-- Performance: Ensure upstream model lookup doesn't add latency
-- Compatibility: Long-term compatibility with original 9router updates
-
----
-
-## 💡 Operational Guide
-
-### For Developers:
-1. Always test changes locally before deploying
-2. Monitor logs for `apiVersion`, `upstreamModel`, and leaderboard metrics
-3. Keep changelog updated when modifying customization logic
-4. Leaderboard queries cache for 5 minutes before refreshing
-
-### For Operators:
-1. Health check passes: `curl http://localhost:20128/api/health`
-2. Service active: `systemctl is-active 9router`
-3. Watch log: `journalctl -u 9router -f`
-4. Dashboard access: Navigate to `/dashboard/leaderboard` after login
-
-### For Troubleshooting:
-- Dashboard not showing? → Clear cache, hard refresh (Ctrl+Shift+R)
-- Models still show as aliases? → Check if requests are recent (DB lag)
-- Footer missing on V2? → Verify `responseFooterApiVersions="v1,v2"` in DB
-- Leaderboard empty? → Need some API requests to populate metrics
-
----
-
-## 📝 Change History
-
-| Date | Commit | Change |
-|------|--------|--------|
-| Aug 28 | c83c099f | Initial upstream model capture |
-| Aug 28 | fd76e445 | Fix parameter passing |
-| Aug 28 | 8b0d2003 | Save upstreamModel to DB |
-| Aug 29 | 8cc12e3f | Build complete, deploy ready |
-| Aug 29 | CURRENT | V2 API + footer scope validation |
-| Aug 29 | 0f34ef81 | Leaderboard feature added |
-
----
-
-## 🔗 References
-
-- **Original Repository**: `https://github.com/decolua/9router.git`
-- **Current Repo Root**: `/opt/9router`
-- **Release Directory**: `/opt/9router-release`
-- **Service Log**: `/var/log/9router.log`
-- **Database**: `/var/lib/9router/.9router/db/data.sqlite`
-- **Leaderboard UI**: `http://localhost:20128/dashboard/leaderboard`
-- **Leaderboard API**: `http://localhost:20128/api/leaderboard`
-
----
-
-*Last Updated: August 29, 2026*  
-*Version: v2.1.0-custom-leaderboard-enabled*  
+*Last Updated: September 2, 2026*  
+*Version: v2.2.0-custom-credits-and-leaderboard*  
 *Maintained by: SantaiNetwork AI Infrastructure Team*
