@@ -44,6 +44,8 @@ function sanitize(c) {
 }
 
 function isUsageEligible(connection) {
+  const isCustom = connection.provider?.startsWith("openai-compatible-") || connection.provider?.startsWith("custom-");
+  if (isCustom) return true;
   return USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) && (
     connection.authType === "oauth" || USAGE_APIKEY_PROVIDERS.includes(connection.provider)
   );

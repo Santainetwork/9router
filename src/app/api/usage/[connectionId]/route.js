@@ -138,8 +138,12 @@ export async function GET(request, { params }) {
     const isOAuth = connection.authType === "oauth";
     const isApikeyAuth =
       connection.authType === "apikey" || connection.authType === "api_key";
+    const isCustomCompatible = 
+      connection.provider?.startsWith("openai-compatible-") || 
+      connection.provider?.startsWith("custom-");
+
     const isApikeyEligible =
-      isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
+      isApikeyAuth && (USAGE_APIKEY_PROVIDERS.includes(connection.provider) || isCustomCompatible);
 
     if (!isOAuth && !isApikeyEligible) {
       return Response.json({ message: "Usage not available for this connection" }, { headers: { "Cache-Control": "no-store" } });

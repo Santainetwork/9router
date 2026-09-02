@@ -23,6 +23,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
   const [region, setRegion] = useState("");
+  const [creditCheckType, setCreditCheckType] = useState("auto");
+  const [customCreditUrl, setCustomCreditUrl] = useState("");
+  const [customCreditPath, setCustomCreditPath] = useState("credit_remaining");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [validating, setValidating] = useState(false);
@@ -47,6 +50,11 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       }
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
+      }
+      if (connection.providerSpecificData) {
+        setCreditCheckType(connection.providerSpecificData.creditCheckType || "auto");
+        setCustomCreditUrl(connection.providerSpecificData.customCreditUrl || "");
+        setCustomCreditPath(connection.providerSpecificData.customCreditPath || "credit_remaining");
       }
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
@@ -156,7 +164,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       }
       
       // Add Azure-specific data if this is an Azure connection
-      if (isAzure) {
+      if (isCompatible) {
+      providerSpecificData = {
+        ...((connection?.providerSpecificData) || {}),
+        creditCheckType,
+        customCreditUrl: creditCheckType === "custom" ? customCreditUrl : undefined,
+        customCreditPath: creditCheckType === "custom" ? customCreditPath : undefined,
+      };
+    } else if (isAzure) {
         updates.providerSpecificData = {
           azureEndpoint: azureData.azureEndpoint,
           apiVersion: azureData.apiVersion,
@@ -271,6 +286,55 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             onChange={(e) => setRegion(e.target.value)}
             options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
           />
+        )}
+
+        {/* Compatible Provider Credit Check Option */}
+        {isCompatible && (
+          <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-2/30 p-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-text-main">
+                Credit / Balance Check System
+              </label>
+              <select
+                value={creditCheckType}
+                onChange={(e) => setCreditCheckType(e.target.value)}
+                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="auto">Auto-detect (e.g. Amanai)</option>
+                <option value="amanai">Amanai (/v1/usage)</option>
+                <option value="newapi">NewAPI / OneAPI (/dashboard/billing/usage)</option>
+                <option value="deepseek">User Balance (/v1/user/balance)</option>
+                <option value="custom">Custom URL & JSON Path</option>
+                <option value="none">Disabled</option>
+              </select>
+              <p className="text-[11px] text-text-muted">
+                Pilih opsi pengadopsian sistem check credits untuk provider custom ini.
+              </p>
+            </div>
+
+            {creditCheckType === "custom" && (
+              <div className="flex flex-col gap-2 pt-1 border-t border-border-subtle">
+                <div>
+                  <label className="text-xs text-text-muted">Custom Endpoint URL</label>
+                  <Input
+                    value={customCreditUrl}
+                    onChange={(e) => setCustomCreditUrl(e.target.value)}
+                    placeholder="https://api.example.com/v1/user/info"
+                    size="sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted">JSON Path to Balance</label>
+                  <Input
+                    value={customCreditPath}
+                    onChange={(e) => setCustomCreditPath(e.target.value)}
+                    placeholder="credit_remaining (or data.total_available)"
+                    size="sm"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {!isCompatible && !isAzure && !isCloudflareAi && (

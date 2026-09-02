@@ -15,6 +15,7 @@ import { getGrokCliUsage } from "./usage/grok-cli.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
 import { getZedUsage } from "./usage/zed.js";
+import { getCustomCompatibleUsage } from "./usage/customCompatible.js";
 import { resolveQoderCredentials } from "./qoderModels.js";
 import { getGlmUsage } from "./usage/glm.js";
 import {
@@ -65,7 +66,8 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
     ...(projectId ? { projectId } : {}),
   };
 
-  const handler = USAGE_HANDLERS[provider];
+  const handler = USAGE_HANDLERS[provider] || 
+    (provider.startsWith("openai-compatible-") || provider.startsWith("custom-") ? (c) => getCustomCompatibleUsage(connection, c.proxyOptions) : null);
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
   return await handler({
     provider,
