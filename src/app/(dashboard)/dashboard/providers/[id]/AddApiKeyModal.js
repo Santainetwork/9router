@@ -353,8 +353,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
                 onChange={(e) => setCreditCheckType(e.target.value)}
                 className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                <option value="auto">Auto-detect (e.g. Amanai)</option>
+                <option value="auto">Auto-detect (e.g. Amanai, OpenRouter, SiliconFlow)</option>
                 <option value="amanai">Amanai (/v1/usage)</option>
+                <option value="openrouter">OpenRouter (/api/v1/auth/key)</option>
+                <option value="siliconflow">SiliconFlow (/v1/user/info)</option>
                 <option value="newapi">NewAPI / OneAPI (/dashboard/billing/usage)</option>
                 <option value="deepseek">User Balance (/v1/user/balance)</option>
                 <option value="custom">Custom URL & JSON Path</option>

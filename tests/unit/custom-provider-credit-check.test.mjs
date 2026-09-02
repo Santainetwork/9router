@@ -51,6 +51,38 @@ test('custom provider usage - auto-detects newapi from baseUrl', async () => {
   assert.ok('plan' in result || 'message' in result);
 });
 
+test('custom provider usage - auto-detects openrouter from baseUrl', async () => {
+  const mockConn = {
+    id: 'test-conn-auto-openrouter',
+    provider: 'openai-compatible-chat-mock',
+    apiKey: 'sk-mock-key',
+    providerSpecificData: {
+      baseUrl: 'https://openrouter.ai/api/v1',
+      creditCheckType: 'auto'
+    }
+  };
+
+  const result = await getCustomCompatibleUsage(mockConn);
+  assert.ok(typeof result === 'object');
+  assert.ok('plan' in result || 'message' in result);
+});
+
+test('custom provider usage - auto-detects siliconflow from baseUrl', async () => {
+  const mockConn = {
+    id: 'test-conn-auto-siliconflow',
+    provider: 'openai-compatible-chat-mock',
+    apiKey: 'sk-mock-key',
+    providerSpecificData: {
+      baseUrl: 'https://api.siliconflow.cn/v1',
+      creditCheckType: 'auto'
+    }
+  };
+
+  const result = await getCustomCompatibleUsage(mockConn);
+  assert.ok(typeof result === 'object');
+  assert.ok('plan' in result || 'message' in result);
+});
+
 test('custom provider usage - returns disabled when creditCheckType is none', async () => {
   const mockConn = {
     id: 'test-conn-none',

@@ -53,6 +53,10 @@ export async function getCustomCompatibleUsage(connection, proxyOptions = null) 
   if (creditCheckType === "auto") {
     if (baseUrl && baseUrl.includes("amanai.dev")) {
       creditCheckType = "amanai";
+    } else if (baseUrl && baseUrl.includes("openrouter.ai")) {
+      creditCheckType = "openrouter";
+    } else if (baseUrl && baseUrl.includes("siliconflow.cn")) {
+      creditCheckType = "siliconflow";
     } else if (baseUrl && (baseUrl.includes("oneapi") || baseUrl.includes("newapi") || baseUrl.includes("api.b.ai"))) {
       creditCheckType = "newapi";
     } else {
@@ -75,17 +79,27 @@ export async function getCustomCompatibleUsage(connection, proxyOptions = null) 
     return await fetchAmanaiCredits(baseUrl || "https://api.amanai.dev/v1", cleanKey, proxyOptions);
   }
 
-  // 2. NewAPI / OneAPI Strategy
+  // 2. OpenRouter Strategy
+  if (creditCheckType === "openrouter") {
+    return await fetchOpenRouterCredits(cleanKey, proxyOptions);
+  }
+
+  // 3. SiliconFlow Strategy
+  if (creditCheckType === "siliconflow") {
+    return await fetchSiliconFlowCredits(cleanKey, proxyOptions);
+  }
+
+  // 4. NewAPI / OneAPI Strategy
   if (creditCheckType === "newapi" || creditCheckType === "oneapi") {
     return await fetchNewApiCredits(baseUrl, cleanKey, proxyOptions);
   }
 
-  // 3. DeepSeek / User Balance Strategy
+  // 5. DeepSeek / User Balance Strategy
   if (creditCheckType === "deepseek" || creditCheckType === "user_balance") {
     return await fetchUserBalanceCredits(baseUrl, cleanKey, proxyOptions);
   }
 
-  // 4. Custom URL Strategy
+  // 6. Custom URL Strategy
   if (creditCheckType === "custom" && providerSpecificData?.customCreditUrl) {
     return await fetchCustomUrlCredits(
       providerSpecificData.customCreditUrl,
@@ -169,6 +183,91 @@ async function fetchAmanaiCredits(baseUrl, apiKey, proxyOptions) {
       plan: "Amanai",
       message: `Amanai credit check error: ${err.message}`,
     };
+  }
+}
+
+async function fetchOpenRouterCredits(apiKey, proxyOptions) {
+  try {
+    const res = await proxyAwareFetch(
+      "https://openrouter.ai/api/v1/auth/key",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+        },
+      },
+      proxyOptions
+    );
+
+    if (!res.ok) {
+      return { plan: "OpenRouter", message: `OpenRouter key auth check error (${res.status})` };
+    }
+
+    const json = await res.json().catch(() => null);
+    const data = json?.data || {};
+    const usage = toFiniteNumber(data.usage, 0);
+    const limit = data.limit !== null && data.limit !== undefined ? toFiniteNumber(data.limit, 0) : 0;
+    const isFreeTier = data.is_free_tier === true;
+    const label = data.label || "Key";
+
+    const remaining = limit > 0 ? Math.max(0, limit - usage) : (isFreeTier ? 0 : 100);
+    const quotas = {};
+    quotas["Credits (USD)"] = {
+      used: usage,
+      total: limit > 0 ? limit : (limit === 0 ? usage : 0),
+      remainingPercentage: limit > 0 ? Math.round((remaining / limit) * 100) : 100,
+      resetAt: null,
+      unlimited: limit === 0,
+    };
+
+    return {
+      plan: `OpenRouter (${label})`,
+      quotas,
+    };
+  } catch (err) {
+    return { plan: "OpenRouter", message: `OpenRouter error: ${err.message}` };
+  }
+}
+
+async function fetchSiliconFlowCredits(apiKey, proxyOptions) {
+  try {
+    const res = await proxyAwareFetch(
+      "https://api.siliconflow.cn/v1/user/info",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+        },
+      },
+      proxyOptions
+    );
+
+    if (!res.ok) {
+      return { plan: "SiliconFlow", message: `SiliconFlow balance check error (${res.status})` };
+    }
+
+    const json = await res.json().catch(() => null);
+    const data = json?.data || {};
+    const total = toFiniteNumber(data.totalBalance ?? data.balance, 0);
+    const charge = toFiniteNumber(data.chargeBalance, 0);
+
+    const quotas = {};
+    quotas["Balance (CNY)"] = {
+      used: 0,
+      total,
+      remainingPercentage: total > 0 ? 100 : 0,
+      resetAt: null,
+      unlimited: total > 0,
+    };
+
+    return {
+      plan: `SiliconFlow (${data.name || "User"})`,
+      quotas,
+    };
+  } catch (err) {
+    return { plan: "SiliconFlow", message: `SiliconFlow error: ${err.message}` };
   }
 }
 
