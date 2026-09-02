@@ -1,5 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { formatModelWithProviderPrefix } from "./usageRepo.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
@@ -196,18 +197,11 @@ export async function getRequestDetails(filter = {}) {
   const details = rows.map((r) => {
     const detailObj = parseJson(r.data, {});
     
-    // Display model: prefer the name carrying a provider prefix. When the client
-    // addressed the model with a prefix (e.g. "bai/deepseek-v4-flash" in
-    // requestedModel) but the upstream was sent unprefixed, show the prefixed one.
-    // When upstreamModel carries a resolved prefix (e.g. "amanai/..."), show that.
-    const prefixed = (m) => m && String(m).includes("/");
-    const upstreamModel = detailObj.upstreamModel;
-    const requestedModel = detailObj.requestedModel;
-    if (prefixed(requestedModel) && !prefixed(upstreamModel)) {
-      detailObj.model = requestedModel;
-    } else if (upstreamModel) {
-      detailObj.model = upstreamModel;
-    }
+    // Display model: ensure consistent provider prefix format
+    detailObj.model = formatModelWithProviderPrefix(r.model, r.provider, {
+      requestedModel: detailObj.requestedModel,
+      upstreamModel: detailObj.upstreamModel
+    });
     
     // If we have a connectionId, try to fetch connection name for display
     // This allows UI to show "called Anthropic/Claude vs OpenAI/Gemini" rather than just "/api/v1/chat/completions"

@@ -149,6 +149,43 @@ async function calculateCost(provider, model, tokens) {
   }
 }
 
+const PROVIDER_SHORT_PREFIXES = {
+  antigravity: "ag",
+  qoder: "qoder",
+  codex: "codex",
+  claude: "claude",
+  github: "github",
+  kiro: "kiro",
+  deepseek: "deepseek",
+  glm: "glm",
+  "glm-cn": "glm",
+  minimax: "minimax",
+  "minimax-cn": "minimax",
+  kimi: "kimi",
+  groq: "groq",
+  openrouter: "openrouter",
+};
+
+export function formatModelWithProviderPrefix(rawModel, provider = "", meta = {}) {
+  const reqModel = meta?.requestedModel;
+  const upModel = meta?.upstreamModel;
+
+  if (reqModel && String(reqModel).includes("/")) return String(reqModel);
+  if (upModel && String(upModel).includes("/")) return String(upModel);
+
+  const candidate = reqModel || upModel || rawModel || "unknown";
+  if (String(candidate).includes("/")) return String(candidate);
+
+  if (provider) {
+    const provLower = String(provider).toLowerCase();
+    const shortPrefix = PROVIDER_SHORT_PREFIXES[provLower] || 
+      (provLower.startsWith("openai-compatible-") ? "custom" : provLower);
+    return `${shortPrefix}/${candidate}`;
+  }
+
+  return candidate;
+}
+
 export function trackPendingRequest(model, provider, connectionId, started, error = false) {
   const modelKey = provider ? `${model} (${provider})` : model;
   const timerKey = `${connectionId}|${modelKey}`;
@@ -217,11 +254,8 @@ export async function getActiveRequests() {
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .map((e) => {
       const t = e.tokens || {};
-      const prefixed = (m) => m && String(m).includes("/");
       const ringMeta = e.meta || {};
-      const ringDisplay = (prefixed(ringMeta.requestedModel) && !prefixed(ringMeta.upstreamModel))
-        ? ringMeta.requestedModel
-        : ringMeta.upstreamModel || e.model || e.requestedModel || "unknown";
+      const ringDisplay = formatModelWithProviderPrefix(e.model, e.provider, ringMeta);
       return {
         timestamp: e.timestamp, model: ringDisplay, provider: e.provider || "",
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
@@ -384,14 +418,7 @@ export async function getUsageStats(period = "all") {
     .map((r) => {
       const t = parseJson(r.tokens, {}) || {};
       const meta = parseJson(r.meta, {}) || {};
-      
-      // Display priority: prefer the model name carrying a provider prefix (e.g. "bai/deepseek-v4-flash"
-      // from requestedModel when upstreamModel was sent unprefixed, or "amanai/..." from upstreamModel
-      // when it was resolved). Falls back to upstreamModel > requestedModel > raw model.
-      const prefixed = (m) => m && String(m).includes("/");
-      const displayModel = (prefixed(meta.requestedModel) && !prefixed(meta.upstreamModel))
-        ? meta.requestedModel
-        : meta.upstreamModel || meta.requestedModel || r.model;
+      const displayModel = formatModelWithProviderPrefix(r.model, r.provider, meta);
       
       return {
         timestamp: r.timestamp, 
@@ -401,7 +428,7 @@ export async function getUsageStats(period = "all") {
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
         status: r.status || "ok",
-        upstreamModel: meta.upstreamModel || undefined,  // Include upstream model for dashboard use if needed
+        upstreamModel: meta.upstreamModel || undefined,
       };
     })
     .filter((e) => {
