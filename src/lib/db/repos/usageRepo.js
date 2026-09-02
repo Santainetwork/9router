@@ -131,16 +131,32 @@ async function ensureRingInitialized() {
   } catch {}
 }
 
-async function calculateCost(provider, model, tokens) {
-  if (!tokens || !provider || !model) return 0;
+async function calculateCost(provider, model, tokens, meta = {}) {
+  if (!tokens || (!provider && !model)) return 0;
   try {
     const { getPricingForModel } = await import("./pricingRepo.js");
-    const pricing = await getPricingForModel(provider, model);
+    
+    // 1. Try raw model
+    let pricing = await getPricingForModel(provider, model);
+
+    // 2. Try requestedModel if available
+    if (!pricing && meta?.requestedModel) {
+      pricing = await getPricingForModel(provider, meta.requestedModel);
+    }
+
+    // 3. Try upstreamModel if available
+    if (!pricing && meta?.upstreamModel) {
+      pricing = await getPricingForModel(provider, meta.upstreamModel);
+    }
+
+    // 4. Try stripping prefix from model
+    if (!pricing && model && model.includes("/")) {
+      const base = model.split("/").pop();
+      pricing = await getPricingForModel(provider, base);
+    }
+
     if (!pricing) return 0;
 
-    // Delegate the actual math to the single source of truth (avoids the two
-    // copies drifting apart — see open-sse/providers/pricing.js for the
-    // cache-inclusive prompt_tokens convention this assumes).
     const { calculateCostFromTokens } = await import("open-sse/providers/pricing.js");
     return calculateCostFromTokens(tokens, pricing);
   } catch (e) {
@@ -291,7 +307,10 @@ export async function saveRequestUsage(entry) {
     const originalRawModel = entry.model;
     entry.model = displayModel;
 
-    entry.cost = await calculateCost(entry.provider, originalRawModel, entry.tokens);
+    entry.cost = await calculateCost(entry.provider, originalRawModel, entry.tokens, {
+      requestedModel: entry.requestedModel,
+      upstreamModel: entry.upstreamModel
+    });
 
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;

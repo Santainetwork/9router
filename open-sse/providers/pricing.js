@@ -268,7 +268,33 @@ export const PROVIDER_PRICING = {
  * Patterns use simple glob: "*" matches any substring.
  * First match wins — order matters.
  */
+export const CANONICAL_MODEL_ALIASES = {
+  // Qoder aliases
+  "qmodel_38max": "qwen/qwen3.8-max",
+  "qmodel-38max": "qwen/qwen3.8-max",
+  "qmodel_max": "qwen/qwen3.8-max",
+  "qmodel": "qwen/qwen3.7-max",
+  "dmodel": "deepseek-chat",
+  "dfmodel": "deepseek-chat",
+  "dmodel_v4pro": "deepseek-chat",
+  "dmodel-v4pro": "deepseek-chat",
+  "dmodel_v4flash": "deepseek-chat",
+  "kmodel_latest": "moonshotai/kimi-k3",
+  "kmodel": "moonshotai/kimi-k3",
+  "cmodel_opus": "claude-opus-4.7",
+  "cmodel_sonnet": "claude-sonnet-4-6",
+  "gmodel_37flash": "gemini-3.7-flash",
+  "gmodel_3flash": "gemini-3-flash",
+};
+
 export const PATTERN_PRICING = [
+  // --- Qoder internal model aliases ---
+  { pattern: "*qmodel*38*",      pricing: { input: 2.00,  output: 6.00,  cached: 0.25,  reasoning: 6.00,   cache_creation: 2.50 } },
+  { pattern: "*qmodel*",         pricing: { input: 1.25,  output: 3.75,  cached: 0.25,  reasoning: 3.75,   cache_creation: 1.25 } },
+  { pattern: "*dmodel*",         pricing: { input: 0.14,  output: 0.28,  cached: 0.0028, reasoning: 0.28,  cache_creation: 0.14 } },
+  { pattern: "*dfmodel*",        pricing: { input: 0.14,  output: 0.28,  cached: 0.0028, reasoning: 0.28,  cache_creation: 0.14 } },
+  { pattern: "*kmodel*",         pricing: { input: 3.00,  output: 15.00, cached: 0.30,  reasoning: 15.00,  cache_creation: 3.00 } },
+
   // --- Codex variants ---
   { pattern: "*-codex-xhigh",   pricing: { input: 10.00, output: 40.00, cached: 5.00,  reasoning: 60.00,  cache_creation: 10.00 } },
   { pattern: "*-codex-high",    pricing: { input: 8.00,  output: 32.00, cached: 4.00,  reasoning: 48.00,  cache_creation: 8.00  } },
@@ -370,14 +396,23 @@ export function getPricingForModel(provider, model) {
     return PROVIDER_PRICING[provider][model];
   }
 
-  // 2. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
-  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+  // 2. Resolve known model aliases (e.g. qmodel_38max -> qwen/qwen3.8-max)
+  const cleanModel = String(model).trim();
+  const aliased = CANONICAL_MODEL_ALIASES[cleanModel] || CANONICAL_MODEL_ALIASES[cleanModel.toLowerCase()];
+  if (aliased) {
+    if (MODEL_PRICING[aliased]) return MODEL_PRICING[aliased];
+  }
+
+  // 3. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
+  const baseModel = cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel;
+  const baseAliased = CANONICAL_MODEL_ALIASES[baseModel] || CANONICAL_MODEL_ALIASES[baseModel.toLowerCase()];
+  if (baseAliased && MODEL_PRICING[baseAliased]) return MODEL_PRICING[baseAliased];
   if (MODEL_PRICING[baseModel]) return MODEL_PRICING[baseModel];
   if (MODEL_PRICING[model]) return MODEL_PRICING[model];
 
-  // 3. Pattern match
+  // 4. Pattern match
   for (const { pattern, pricing } of PATTERN_PRICING) {
-    if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
+    if (matchPattern(pattern, baseModel) || matchPattern(pattern, model) || (aliased && matchPattern(pattern, aliased))) {
       return pricing;
     }
   }
