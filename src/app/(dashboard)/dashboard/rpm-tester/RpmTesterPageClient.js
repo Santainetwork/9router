@@ -155,6 +155,18 @@ export default function RpmTesterPageClient() {
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-neutral-500">Model</span>
           <input className="border rounded px-2 py-1.5 bg-transparent" value={model} onChange={(e) => setModel(e.target.value)} placeholder="provider/model" />
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {["deepseek-v4-flash", "claude-sonnet-4-6", "qwen3.8-max", "gemini-3.7-flash-high"].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setModel(preset)}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition ${model === preset ? "border-primary bg-primary/10 text-primary" : "border-border-subtle bg-surface-2 text-text-muted hover:text-text-main"}`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
