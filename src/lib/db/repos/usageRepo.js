@@ -282,7 +282,16 @@ export async function saveRequestUsage(entry) {
     const db = await getAdapter();
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
+    
+    // Canonicalize model to include provider prefix (e.g. ag/gemini-3.7-flash, bai/deepseek-v4-flash)
+    const displayModel = formatModelWithProviderPrefix(entry.model, entry.provider, {
+      requestedModel: entry.requestedModel,
+      upstreamModel: entry.upstreamModel
+    });
+    const originalRawModel = entry.model;
+    entry.model = displayModel;
+
+    entry.cost = await calculateCost(entry.provider, originalRawModel, entry.tokens);
 
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
