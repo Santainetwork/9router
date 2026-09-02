@@ -298,8 +298,17 @@ export default function RequestDetailsTab() {
                     <td className="whitespace-nowrap p-4 text-sm text-text-main">
                       {new Date(detail.timestamp).toLocaleString()}
                     </td>
-                    <td className="max-w-[260px] truncate p-4 font-mono text-sm text-text-main">
-                      {detail.model}
+                    <td className="max-w-[280px] p-4 text-sm text-text-main">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {isUpstreamModel(detail.model) && (
+                          <span className="shrink-0 rounded bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300 font-mono">
+                            {detail.model.split('/')[0]}
+                          </span>
+                        )}
+                        <span className="truncate font-mono font-medium">
+                          {detail.model.includes('/') ? detail.model.split('/').slice(1).join('/') : detail.model}
+                        </span>
+                      </div>
                     </td>
                     <td className="max-w-[180px] truncate p-4 text-sm text-text-main">
                        <span className="font-medium">
@@ -376,7 +385,14 @@ export default function RequestDetailsTab() {
                </div>
               <div>
                 <span className="text-text-muted">Model:</span>{" "}
-                <span className="text-text-main font-mono">{selectedDetail.model}</span>
+                <span className="inline-flex items-center gap-1.5 font-mono text-text-main font-medium">
+                  {isUpstreamModel(selectedDetail.model) && (
+                    <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300">
+                      {selectedDetail.model.split('/')[0]}
+                    </span>
+                  )}
+                  {selectedDetail.model}
+                </span>
               </div>
               <div>
                 <span className="text-text-muted">Status:</span>{" "}
