@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Badge, Button } from "@/shared/components";
+import ProviderIcon from "@/shared/components/ProviderIcon";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { restoreSessionModel } from "./basicChatModels";
@@ -1234,11 +1235,14 @@ export default function BasicChatPageClient() {
                           className={`rounded-[14px] border px-3 py-3 text-left transition ${(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-white">{model.name}</p>
-                              <p className="truncate text-[11px] text-white/45">{model.requestModel}</p>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <ProviderIcon providerId={model.provider} size={20} className="rounded shrink-0" />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-white">{model.name}</p>
+                                <p className="truncate text-[11px] text-white/45">{model.requestModel}</p>
+                              </div>
                             </div>
-                            {(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? <span className="material-symbols-outlined text-[18px] text-blue-300">check_circle</span> : null}
+                            {(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? <span className="material-symbols-outlined text-[18px] text-blue-300 shrink-0">check_circle</span> : null}
                           </div>
                         </button>
                       );
