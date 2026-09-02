@@ -13,7 +13,11 @@ const failedIds = new Set();
 
 function normalizeId(providerId) {
   if (!providerId || typeof providerId !== "string") return "";
-  return providerId.trim().toLowerCase();
+  const id = providerId.trim().toLowerCase();
+  if (id.startsWith("openai-compatible-") || id.startsWith("custom-embedding-") || id.startsWith("custom-")) {
+    return "openai";
+  }
+  return id;
 }
 
 /** Resolve icon file id (after alias). Empty if previously failed this session. */
