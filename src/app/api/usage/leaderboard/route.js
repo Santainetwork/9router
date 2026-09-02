@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdapter } from '@/lib/db/driver.js';
 
 export const dynamic = 'force-dynamic';
-const CACHE_DURATION_MS = 30 * 1000; // 30 seconds fresh cache
+const CACHE_DURATION_MS = 15 * 1000; // 15s cache
 let cache = null;
 let cacheTimestamp = 0;
 
@@ -67,17 +67,18 @@ function maskKey(key) {
 
 async function getProvidersByUsage(whereTimeClause, limit) {
   const db = await getAdapter();
+  // Primary: usageHistory (59k+ permanent records)
   const sql = `
     SELECT 
       provider,
       COUNT(*) as total_requests,
-      SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.prompt_tokens'), 0)) as input_tokens,
-      SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.completion_tokens'), 0)) as output_tokens,
-      SUM(COALESCE(JSON_EXTRACT(data, '$.tokens.total_tokens'), 0)) as total_tokens
-    FROM requestDetails
+      SUM(COALESCE(promptTokens, 0)) as input_tokens,
+      SUM(COALESCE(completionTokens, 0)) as output_tokens,
+      SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)) as total_tokens,
+      SUM(COALESCE(cost, 0)) as total_cost
+    FROM usageHistory
     WHERE ${whereTimeClause}
       AND provider IS NOT NULL
-      AND status = 'success'
     GROUP BY provider
     ORDER BY total_requests DESC
     LIMIT ?
@@ -90,13 +91,12 @@ async function getProvidersByCost(whereTimeClause, limit) {
   const sql = `
     SELECT 
       provider,
-      SUM(COALESCE(JSON_EXTRACT(data, '$.cost'), 0)) as total_cost,
-      COUNT(*) as total_requests
-    FROM requestDetails
+      SUM(COALESCE(cost, 0)) as total_cost,
+      COUNT(*) as total_requests,
+      SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)) as total_tokens
+    FROM usageHistory
     WHERE ${whereTimeClause}
       AND provider IS NOT NULL
-      AND JSON_EXTRACT(data, '$.cost') IS NOT NULL
-      AND status = 'success'
     GROUP BY provider
     HAVING total_cost > 0
     ORDER BY total_cost DESC
@@ -109,35 +109,33 @@ async function getKeysByRequests(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
-      COALESCE(pc.name, rd.connectionId, 'unknown') as key_name,
-      rd.connectionId,
-      rd.provider,
+      COALESCE(pc.name, uh.connectionId, uh.provider, 'unknown') as key_name,
+      uh.connectionId,
+      uh.provider,
       COUNT(*) as total_requests,
-      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.tokens.prompt_tokens'), 0)) as input_tokens,
-      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.tokens.completion_tokens'), 0)) as output_tokens,
-      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.tokens.total_tokens'), 0)) as total_tokens,
-      ROUND(AVG(COALESCE(JSON_EXTRACT(rd.data, '$.latency.total'), 0))) as avg_latency_ms,
-      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.cost'), 0)) as total_cost
-    FROM requestDetails rd
-    LEFT JOIN providerConnections pc ON pc.id = rd.connectionId
-    WHERE ${whereTimeClause.replace(/timestamp/g, 'rd.timestamp')}
-      AND rd.status = 'success'
-    GROUP BY rd.connectionId
+      SUM(COALESCE(uh.promptTokens, 0)) as input_tokens,
+      SUM(COALESCE(uh.completionTokens, 0)) as output_tokens,
+      SUM(COALESCE(uh.promptTokens, 0) + COALESCE(uh.completionTokens, 0)) as total_tokens,
+      SUM(COALESCE(uh.cost, 0)) as total_cost
+    FROM usageHistory uh
+    LEFT JOIN providerConnections pc ON pc.id = uh.connectionId
+    WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
+    GROUP BY COALESCE(uh.connectionId, uh.provider)
     HAVING total_requests > 0
     ORDER BY total_requests DESC
     LIMIT ?
   `;
   const rows = db.all(sql, [limit]);
   return rows.map(r => ({
-    id: r.connectionId,
+    id: r.connectionId || r.provider,
     key_name: r.key_name || 'Unnamed',
-    key_masked: maskKey(r.connectionId || ''),
+    key_masked: maskKey(r.connectionId || r.provider || ''),
     provider: r.provider || '',
     total_requests: r.total_requests,
     input_tokens: r.input_tokens || 0,
     output_tokens: r.output_tokens || 0,
     total_tokens: r.total_tokens || 0,
-    avg_latency_ms: Math.round(r.avg_latency_ms) || 0,
+    avg_latency_ms: 0,
     total_cost: r.total_cost || 0,
     cost_per_request: r.total_requests > 0 ? (r.total_cost / r.total_requests) : 0
   }));
@@ -147,31 +145,29 @@ async function getKeysByCost(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
-      COALESCE(pc.name, rd.connectionId, 'unknown') as key_name,
-      rd.connectionId,
-      rd.provider,
-      SUM(COALESCE(JSON_EXTRACT(rd.data, '$.cost'), 0)) as total_cost,
+      COALESCE(pc.name, uh.connectionId, uh.provider, 'unknown') as key_name,
+      uh.connectionId,
+      uh.provider,
+      SUM(COALESCE(uh.cost, 0)) as total_cost,
       COUNT(*) as total_requests,
-      ROUND(AVG(COALESCE(JSON_EXTRACT(rd.data, '$.latency.total'), 0))) as avg_latency_ms
-    FROM requestDetails rd
-    LEFT JOIN providerConnections pc ON pc.id = rd.connectionId
-    WHERE ${whereTimeClause.replace(/timestamp/g, 'rd.timestamp')}
-      AND rd.status = 'success'
-      AND JSON_EXTRACT(rd.data, '$.cost') IS NOT NULL
-    GROUP BY rd.connectionId
+      SUM(COALESCE(uh.promptTokens, 0) + COALESCE(uh.completionTokens, 0)) as total_tokens
+    FROM usageHistory uh
+    LEFT JOIN providerConnections pc ON pc.id = uh.connectionId
+    WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
+    GROUP BY COALESCE(uh.connectionId, uh.provider)
     HAVING total_cost > 0
     ORDER BY total_cost DESC
     LIMIT ?
   `;
   const rows = db.all(sql, [limit]);
   return rows.map(r => ({
-    id: r.connectionId,
+    id: r.connectionId || r.provider,
     key_name: r.key_name || 'Unnamed',
-    key_masked: maskKey(r.connectionId || ''),
+    key_masked: maskKey(r.connectionId || r.provider || ''),
     provider: r.provider || '',
     total_cost: r.total_cost || 0,
     total_requests: r.total_requests,
-    avg_latency_ms: Math.round(r.avg_latency_ms) || 0,
+    avg_latency_ms: 0,
     cost_per_request: r.total_requests > 0 ? (r.total_cost / r.total_requests) : 0,
     requests_per_dollar: r.total_cost > 0 ? r.total_requests / r.total_cost : 0
   }));
