@@ -48,8 +48,17 @@ export async function getCustomCompatibleUsage(connection, proxyOptions = null) 
   }
 
   // Determine credit check strategy
-  const creditCheckType = providerSpecificData?.creditCheckType || 
-    (baseUrl && baseUrl.includes("amanai.dev") ? "amanai" : "none");
+  let creditCheckType = providerSpecificData?.creditCheckType || "auto";
+
+  if (creditCheckType === "auto") {
+    if (baseUrl && baseUrl.includes("amanai.dev")) {
+      creditCheckType = "amanai";
+    } else if (baseUrl && (baseUrl.includes("oneapi") || baseUrl.includes("newapi") || baseUrl.includes("api.b.ai"))) {
+      creditCheckType = "newapi";
+    } else {
+      creditCheckType = "none";
+    }
+  }
 
   if (creditCheckType === "none") {
     return {
