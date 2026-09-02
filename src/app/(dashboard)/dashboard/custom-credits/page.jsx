@@ -13,6 +13,7 @@ export default function CustomCreditsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStrategy, setFilterStrategy] = useState("all");
+  const [compactMode, setCompactMode] = useState(true); // Default compact duplicate accounts/keys
 
   // Load custom provider connections
   const fetchConnections = useCallback(async () => {
@@ -64,14 +65,52 @@ export default function CustomCreditsPage() {
     }
   }, [connections, fetchQuota]);
 
-  // Summary Metrics
+  // Grouped / Compacted Connections
+  // If multiple connections share the same API key or baseUrl, collapse into 1 card row
+  const processedConnections = useMemo(() => {
+    if (!compactMode) {
+      return connections.map(conn => ({
+        ...conn,
+        services: [conn.provider?.startsWith("custom-embedding-") ? "Embedding / RAG" : "Chat / LLM"],
+        connectionIds: [conn.id]
+      }));
+    }
+
+    const map = new Map();
+    connections.forEach(conn => {
+      // Group key: masked key or name or providerSpecificData key
+      const keyId = conn.apiKey || conn.name || conn.id;
+      const serviceType = conn.provider?.startsWith("custom-embedding-") ? "Embedding / RAG" : "Chat / LLM";
+
+      if (!map.has(keyId)) {
+        map.set(keyId, {
+          ...conn,
+          services: [serviceType],
+          connectionIds: [conn.id]
+        });
+      } else {
+        const existing = map.get(keyId);
+        if (!existing.services.includes(serviceType)) {
+          existing.services.push(serviceType);
+        }
+        existing.connectionIds.push(conn.id);
+        // Prefer active status if any is active
+        if (conn.isActive) existing.isActive = true;
+      }
+    });
+
+    return Array.from(map.values());
+  }, [connections, compactMode]);
+
+  // Summary Metrics calculated on unique / deduplicated entries
   const summary = useMemo(() => {
     let totalConnections = connections.length;
+    let uniqueAccounts = processedConnections.length;
     let activeConnections = 0;
     let totalCreditsTracked = 0;
     let hasCreditsCount = 0;
 
-    connections.forEach(conn => {
+    processedConnections.forEach(conn => {
       if (conn.isActive) activeConnections += 1;
       const q = quotaData[conn.id];
       if (q?.quotas) {
@@ -86,15 +125,16 @@ export default function CustomCreditsPage() {
 
     return {
       totalConnections,
+      uniqueAccounts,
       activeConnections,
       totalCreditsTracked,
       hasCreditsCount
     };
-  }, [connections, quotaData]);
+  }, [connections, processedConnections, quotaData]);
 
   // Filtered List
   const filtered = useMemo(() => {
-    return connections.filter(conn => {
+    return processedConnections.filter(conn => {
       const q = (search || "").toLowerCase();
       const matchesSearch = !q || 
         (conn.name && conn.name.toLowerCase().includes(q)) ||
@@ -105,7 +145,7 @@ export default function CustomCreditsPage() {
 
       return matchesSearch && matchesStrategy;
     });
-  }, [connections, search, filterStrategy]);
+  }, [processedConnections, search, filterStrategy]);
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -130,6 +170,19 @@ export default function CustomCreditsPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Button
+              variant={compactMode ? "primary" : "outline"}
+              size="sm"
+              onClick={() => setCompactMode(!compactMode)}
+              className="gap-1.5"
+              title="Group multiple connections using the same API Key (e.g. Chat & RAG)"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                {compactMode ? "filter_none" : "view_agenda"}
+              </span>
+              {compactMode ? "Compacted (Unique Keys)" : "All Connections"}
+            </Button>
+
             <Button
               variant="outline"
               size="sm"
@@ -270,16 +323,30 @@ export default function CustomCreditsPage() {
 
                   return (
                     <tr key={conn.id} className="hover:bg-surface-2/40 transition group">
-                      {/* Name & ID */}
+                      {/* Name & ID & Service Badges */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
                           <ProviderIcon providerId={conn.provider} className="size-6 rounded shrink-0" />
                           <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-text-main truncate text-sm">
-                              {conn.name}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-text-main truncate text-sm">
+                                {conn.name}
+                              </span>
+                              {(conn.services || []).map((srv) => (
+                                <span
+                                  key={srv}
+                                  className={`rounded px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider ${
+                                    srv.includes("Embedding") 
+                                      ? "bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20"
+                                      : "bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/20"
+                                  }`}
+                                >
+                                  {srv}
+                                </span>
+                              ))}
+                            </div>
                             <span className="font-mono text-[10px] text-text-muted truncate">
-                              {conn.id.slice(0, 16)}...
+                              ID: {conn.id.slice(0, 16)}...
                             </span>
                           </div>
                         </div>
