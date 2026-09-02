@@ -157,6 +157,57 @@ export default function LeaderboardPage() {
     );
   }, [data?.providersByUsage, search]);
 
+  const handleExportCsv = () => {
+    if (!data) return;
+    let csvContent = "";
+    const filename = `9router_leaderboard_${activeTab}_${period}_${new Date().toISOString().slice(0, 10)}.csv`;
+
+    if (activeTab === "connections") {
+      const headers = ["Rank", "Connection Name", "Connection ID", "Provider", "Total Requests", "Input Tokens", "Output Tokens", "Total Tokens", "Avg Latency (ms)", "Total Cost ($)"];
+      const rows = (filteredKeys || []).map((item, idx) => [
+        idx + 1,
+        `"${(item.key_name || "").replace(/"/g, '""')}"`,
+        `"${item.id || ""}"`,
+        `"${item.provider || ""}"`,
+        item.total_requests || 0,
+        item.input_tokens || 0,
+        item.output_tokens || 0,
+        item.total_tokens || 0,
+        item.avg_latency_ms || 0,
+        (item.total_cost || 0).toFixed(4),
+      ]);
+      csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    } else {
+      const headers = ["Rank", "Provider", "Total Requests", "Input Tokens", "Output Tokens", "Total Tokens", "Total Cost ($)", "Cost Per 1M Tokens ($)"];
+      const rows = (filteredProviders || []).map((prov, idx) => {
+        const costItem = (data?.providersByCost || []).find(p => p.provider === prov.provider);
+        const cost = costItem?.total_cost || 0;
+        const totalTokens = prov.total_tokens || (prov.input_tokens + prov.output_tokens);
+        const costPerMillion = totalTokens > 0 ? (cost / (totalTokens / 1_000_000)).toFixed(4) : "0";
+        return [
+          idx + 1,
+          `"${(prov.provider || "").replace(/"/g, '""')}"`,
+          prov.total_requests || 0,
+          prov.input_tokens || 0,
+          prov.output_tokens || 0,
+          totalTokens || 0,
+          cost.toFixed(4),
+          costPerMillion,
+        ];
+      });
+      csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    }
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
       {/* Top Header Card */}
@@ -186,6 +237,19 @@ export default function LeaderboardPage() {
               onChange={setPeriod}
               size="sm"
             />
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              disabled={loading || !data}
+              className="gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                download
+              </span>
+              Export CSV
+            </Button>
 
             <Button
               variant="outline"
