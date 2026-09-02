@@ -82,7 +82,7 @@ async function getProvidersByUsage(whereTimeClause, limit) {
     ORDER BY total_requests DESC
     LIMIT ?
   `;
-  return db.prepare(sql).all(limit);
+  return db.all(sql, [limit]);
 }
 
 async function getProvidersByCost(whereTimeClause, limit) {
@@ -102,7 +102,7 @@ async function getProvidersByCost(whereTimeClause, limit) {
     ORDER BY total_cost DESC
     LIMIT ?
   `;
-  return db.prepare(sql).all(limit);
+  return db.all(sql, [limit]);
 }
 
 async function getKeysByRequests(whereTimeClause, limit) {
@@ -127,7 +127,7 @@ async function getKeysByRequests(whereTimeClause, limit) {
     ORDER BY total_requests DESC
     LIMIT ?
   `;
-  const rows = db.prepare(sql).all(limit);
+  const rows = db.all(sql, [limit]);
   return rows.map(r => ({
     id: r.connectionId,
     key_name: r.key_name || 'Unnamed',
@@ -163,7 +163,7 @@ async function getKeysByCost(whereTimeClause, limit) {
     ORDER BY total_cost DESC
     LIMIT ?
   `;
-  const rows = db.prepare(sql).all(limit);
+  const rows = db.all(sql, [limit]);
   return rows.map(r => ({
     id: r.connectionId,
     key_name: r.key_name || 'Unnamed',
