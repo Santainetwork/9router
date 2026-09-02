@@ -9,6 +9,8 @@
     "#*": "./*"
   },
   "scripts": {
+    "test": "node --test tests/unit/*.test.mjs",
+    "verify": "node tests/__baseline__/verify-providers.mjs && node tests/__baseline__/verify-oauth-urls.mjs && node --test tests/unit/*.test.mjs",
     "dev": "next dev --port 20127",
     "dev:webpack": "next dev --webpack --port 20127",
     "build": "next build --webpack",
