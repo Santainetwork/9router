@@ -1,3 +1,12 @@
+# v0.5.59-custom (2026-09-02)
+
+## Custom Enhancements (SantaiNetwork AI Infrastructure)
+- **Custom Credits & Quota**: Automatic credit & balance checking for custom OpenAI-compatible and Custom Embedding endpoints with flexible adoption strategies (Amanai `/v1/usage`, OpenRouter, SiliconFlow, NewAPI/OneAPI, User Balance, Custom JSON path).
+- **Batch Limits**: Batch configure RPM and Queue Timeout (ms) simultaneously across selected or all provider connections.
+- **Leaderboard**: Real-time volume, token, and cost tracking dashboard with relative progress bars, search filtering, and RFC-4180 CSV export.
+- **Upstream Prefix Consistency**: Preserve provider prefix (`ag/`, `bai/`, `amanai/`) in usage ring memory and database storage across restarts.
+- **Provider Icons**: Normalize custom and openai-compatible provider node IDs to `/providers/openai.png` to eliminate 404 image errors.
+
 # v0.5.59 (2026-08-29)
 
 ## Features
