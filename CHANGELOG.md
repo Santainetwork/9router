@@ -1,11 +1,40 @@
-# v0.5.59-custom (2026-09-02)
+# v0.5.65-custom (2026-09-03)
 
 ## Custom Enhancements (SantaiNetwork AI Infrastructure)
-- **Custom Credits & Quota**: Automatic credit & balance checking for custom OpenAI-compatible and Custom Embedding endpoints with flexible adoption strategies (Amanai `/v1/usage`, OpenRouter, SiliconFlow, NewAPI/OneAPI, User Balance, Custom JSON path).
+- **Custom Credits & Quota**: Dedicated `/dashboard/custom-credits` tracker with automatic credit & balance checking for custom OpenAI-compatible and Custom Embedding endpoints (Amanai `/v1/usage`, OpenRouter, SiliconFlow, NewAPI/OneAPI, User Balance, Custom JSON path).
+- **Compact Duplicate Accounts**: Automatically deduplicate multiple connections sharing the same API key across Chat and RAG/Embedding with active service badges.
 - **Batch Limits**: Batch configure RPM and Queue Timeout (ms) simultaneously across selected or all provider connections.
 - **Leaderboard**: Real-time volume, token, and cost tracking dashboard with relative progress bars, search filtering, and RFC-4180 CSV export.
 - **Upstream Prefix Consistency**: Preserve provider prefix (`ag/`, `bai/`, `amanai/`) in usage ring memory and database storage across restarts.
 - **Provider Icons**: Normalize custom and openai-compatible provider node IDs to `/providers/openai.png` to eliminate 404 image errors.
+
+# v0.5.65 (2026-09-03)
+
+## Features
+- **Fetch**: add Ollama Cloud web fetch provider
+- **Gemini / Antigravity**: add Gemini 3.8 Flash support and bump IDE fingerprint to 2.11.0
+- **Claude**: add Claude Fable 5.1 support (adaptive thinking with `output_config.effort`), bump Claude Code fingerprint to 2.1.258 for new-model access
+- **Providers**: add client-side status filter (All / Active / Inactive / No connection) on the Providers dashboard; add max height and scroll for connection list
+- **Providers & Models**: streamline tokenrouter model catalog down to 22 flagship/newest models and add missing provider icons; refresh Codebuddy-CN catalog (add hy4-preview/hy3/glm-5.3/kimi-k3-1, drop EOL glm-5.0/glm-4.7)
+- **Models**: capability toggles (vision, reasoning) when adding custom models with upsert and live caps refresh
+- **CLI tools**: support saving and managing custom API key presets
+- **Quota**: add usage and rate-limit tracking for Groq via `x-ratelimit-*` headers
+- **i18n**: complete Indonesian translation (1391 keys)
+
+## Fixes
+- **Security**: close SSRF guard bypasses in `ssrfGuard.js` (alternate IPv6 encodings, hostname trailing dots, wildcard DNS resolution check, safe redirect handling) (#3714)
+- **Model markers**: strip the `[1m]` context marker Claude Code appends to model names (`claude-opus-5[1m]`) preventing model resolution failures (#3690)
+- **Claude**: drop `server_tool_use` blocks carrying foreign IDs to avoid Anthropic 400 rejections; never anchor cache breakpoints on `defer_loading` tools (#3567)
+- **Antigravity**: strike-break optimistic quota readings that keep 429ing by blocking the connection+model pair for 15m after 3 strikes (#3681); preserve client identity on model catalog requests (#3414)
+- **Auth**: protect root `/responses` rewrite requiring API key validation in dashboardGuard
+- **Chat & Docker**: return 503 Service Unavailable when all credentials are rate-limited; explicitly bundle `node-machine-id` into standalone Docker runtime image
+- **OpenCode**: route Muse Spark models to `/zen/v1/responses` and declare vision support; filter inactive free model
+- **Kiro**: preserve inline images as OpenAI-compatible `image_url` parts in OpenAI MITM; remove redundant top-level `systemPrompt` from payload
+- **Usage**: read Responses-shape `cached_tokens` in `extractUsageFromResponse` for non-streaming traffic
+- **Models**: support single model lookup with provider-prefixed IDs (e.g. `cc/claude-sonnet-5`)
+- **Translator**: route Gemini thinking through `reasoning_effort` on OpenAI-compatible wire; convert `prefixItems` and ensure array items in Gemini schema sanitizer
+- **UI**: apply persisted theme before first paint to prevent flash on reload; translate combo vision adapter label
+>>>>>>> origin/master
 
 # v0.5.59 (2026-08-29)
 
@@ -49,6 +78,9 @@
 - **i18n**: pt-BR expanded to 1132 terms
 
 ## Fixes
+- **Claude Code**: add Claude Fable 5.1 and advertise Claude Code 2.1.258 in
+  both the request header and billing identity; use its permanent adaptive-thinking
+  mode with `output_config.effort`
 - **Stream**: record usage when a client closes on the terminal event — the
   Responses API has no [DONE] sentinel, so codex closed the socket on
   `response.completed` and cancelled the reader before flush() ran its usage
