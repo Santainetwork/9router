@@ -3,32 +3,32 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Usage Check · 9Router</title>
+<title>Usage & Quota Check · 9Router</title>
 <link rel="icon" href="/favicon.svg" />
 <style>
   :root {
-    --bg: #0b0d12;
-    --surface: #12151c;
-    --surface-2: #171b24;
-    --border: #262b36;
-    --text: #e7eaf0;
-    --text-muted: #9aa3b2;
-    --text-subtle: #5f6773;
-    --primary: #f59e0b;
-    --primary-700: #b45309;
-    --red: #ef4444;
-    --orange: #f97316;
-    --green: #22c55e;
+    --bg: #FFFDF9;
+    --surface: #FFFFFF;
+    --surface-alt: #FAF8F5;
+    --border: #000000;
+    --shadow: #000000;
+    --text: #000000;
+    --muted: #555555;
+    --yellow: #FACC15;
+    --cyan: #22D3EE;
+    --pink: #F472B6;
+    --emerald: #34D399;
+    --red: #EF4444;
   }
-  @media (prefers-color-scheme: light) {
+  @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #f6f7f9;
-      --surface: #ffffff;
-      --surface-2: #f0f2f5;
-      --border: #e2e5ea;
-      --text: #1a1d24;
-      --text-muted: #5f6773;
-      --text-subtle: #9aa3b2;
+      --bg: #0B0F19;
+      --surface: #111827;
+      --surface-alt: #1F2937;
+      --border: #FFFFFF;
+      --shadow: #FFFFFF;
+      --text: #FFFFFF;
+      --muted: #9CA3AF;
     }
   }
   * { box-sizing: border-box; }
@@ -36,139 +36,299 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
-    padding: 40px 16px;
+    padding: 48px 16px;
   }
-  .wrap { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
-  h1 { font-size: 24px; font-weight: 600; margin: 0; }
-  .muted { color: var(--text-muted); }
-  .subtle { color: var(--text-subtle); }
-  .sm { font-size: 14px; }
-  .xs { font-size: 12px; }
-  .tiny { font-size: 11px; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px;
-  }
-  .col { display: flex; flex-direction: column; }
-  .gap-1 { gap: 4px; }
-  .gap-2 { gap: 8px; }
-  .gap-3 { gap: 12px; }
-  .row { display: flex; align-items: center; }
-  .wrap-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .between { justify-content: space-between; }
-  .ml-auto { margin-left: auto; }
-  input {
-    width: 100%;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-size: 14px;
-    outline: none;
-  }
-  input:focus { border-color: var(--primary); }
-  button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
-  .btn {
-    background: var(--primary);
-    color: #1a1204;
-    font-weight: 600;
-    font-size: 13px;
-    padding: 9px 16px;
-    border-radius: 10px;
+  .wrap { max-width: 660px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  
+  .badge-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .badge {
     display: inline-flex;
+    align-items: center;
+    border: 2px solid var(--border);
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 6px;
+    box-shadow: 2px 2px 0 var(--shadow);
+  }
+  .badge-yellow { background: var(--yellow); color: #000; }
+  .badge-cyan { background: var(--cyan); color: #000; }
+  .badge-pink { background: var(--pink); color: #000; }
+
+  h1 {
+    font-size: 32px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+    margin: 4px 0 0 0;
+  }
+  p.desc {
+    margin: 4px 0 0 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .neo-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 4px 4px 0 var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .label-title {
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  input[type="password"], input[type="text"] {
+    width: 100%;
+    background: var(--surface-alt);
+    border: 2px solid var(--border);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px;
+    font-weight: 700;
+    outline: none;
+    box-shadow: 3px 3px 0 var(--shadow);
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  input:focus {
+    background: var(--surface);
+  }
+
+  .actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  .seg {
+    display: flex;
     align-items: center;
     gap: 6px;
   }
-  .btn:disabled { opacity: 0.6; cursor: default; }
-  .seg { display: inline-flex; background: rgba(127,127,127,0.12); border-radius: 10px; padding: 4px; }
+  .seg-label {
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    margin-right: 4px;
+    color: var(--muted);
+  }
   .seg button {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    color: var(--text);
     padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 900;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 2px 2px 0 var(--shadow);
+    transition: all 0.1s;
+  }
+  .seg button.active {
+    background: var(--cyan);
+    color: #000;
+    transform: translate(-1px, -1px);
+  }
+  .seg button:hover:not(.active) {
+    background: var(--surface-alt);
+  }
+
+  .btn-submit {
+    background: var(--yellow);
+    border: 2px solid var(--border);
+    color: #000;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 900;
+    text-transform: uppercase;
+    border-radius: 12px;
+    cursor: pointer;
+    box-shadow: 3px 3px 0 var(--shadow);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.1s;
+  }
+  .btn-submit:hover {
+    background: #fde047;
+    transform: translate(-1px, -1px);
+  }
+  .btn-submit:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+  .btn-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .err-box {
+    background: var(--red);
+    color: #000;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 900;
+    box-shadow: 3px 3px 0 var(--shadow);
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .neo-stat {
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 3px 3px 0 var(--shadow);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .neo-stat .stat-label {
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  .neo-stat .stat-value {
+    font-size: 24px;
+    font-weight: 900;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin: 8px 0 0 0;
+  }
+  .neo-stat .stat-sub {
+    font-size: 11px;
+    font-weight: 700;
+    margin: 2px 0 0 0;
+    opacity: 0.8;
+  }
+
+  .meter-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .meter-bar {
+    height: 16px;
+    width: 100%;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-alt);
+    padding: 2px;
+    box-shadow: 2px 2px 0 var(--shadow);
+  }
+  .meter-fill {
+    height: 100%;
+    border-radius: 4px;
+    border-right: 2px solid var(--border);
+    transition: width 0.3s ease;
+  }
+
+  .pills-container {
+    background: var(--surface-alt);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 3px 3px 0 var(--shadow);
+  }
+  .pill-item {
+    display: inline-block;
+    border: 2px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    padding: 4px 10px;
     border-radius: 8px;
     font-size: 12px;
-    font-weight: 500;
-    color: var(--text-muted);
-    transition: all .15s;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 900;
+    margin: 3px 4px 3px 0;
+    box-shadow: 2px 2px 0 var(--shadow);
   }
-  .seg button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
-  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  @media (min-width: 560px) { .grid { grid-template-columns: repeat(4, 1fr); } }
-  .stat {
-    border: 1px solid var(--border);
-    background: var(--bg);
-    border-radius: 10px;
-    padding: 12px;
+  .pill-wildcard {
+    background: var(--yellow);
+    color: #000;
   }
-  .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
-  .stat .value { margin-top: 4px; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .stat .sub { margin-top: 2px; font-size: 11px; color: var(--text-muted); }
-  .err {
-    border: 1px solid rgba(239,68,68,.3);
-    background: rgba(239,68,68,.06);
-    color: #f87171;
-    border-radius: 10px;
-    padding: 12px;
-    font-size: 14px;
-  }
-  .bar { height: 8px; width: 100%; overflow: hidden; border-radius: 999px; background: rgba(127,127,127,.18); }
-  .bar > div { height: 100%; border-radius: 999px; }
-  .chip {
-    border: 1px solid var(--border);
-    background: var(--bg);
-    border-radius: 999px;
-    padding: 4px 10px;
+
+  .model-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 2px solid var(--border);
     font-size: 12px;
-    font-family: ui-monospace, monospace;
   }
-  .divide > div + div { border-top: 1px solid var(--border); }
-  .modelrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
-  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .hidden { display: none; }
-  .spin {
-    width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.3);
-    border-top-color: transparent; border-radius: 50%;
-    animation: sp .6s linear infinite;
+  .model-row:last-child {
+    border-bottom: none;
   }
-  @keyframes sp { to { transform: rotate(360deg); } }
+
+  .hidden { display: none !important; }
+  .footer { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div>
-      <h1>Usage Check</h1>
-      <p class="sm muted" style="margin:4px 0 0">Paste your API key to see your limits and usage. Only your own key's data is shown.</p>
-      <p class="tiny subtle" style="margin:4px 0 0">Modified by SantaiNetwork</p>
-    </div>
-
-    <div class="card">
-      <div class="col gap-3">
-        <input id="key" type="password" placeholder="sk-..." aria-label="API key" autocomplete="off" />
-        <div class="wrap-row">
-          <div class="seg" id="periods"></div>
-          <button class="btn ml-auto" id="checkBtn">
-            <span id="checkSpin" class="spin hidden"></span>
-            <span>Check</span>
-          </button>
-        </div>
-        <div id="error" class="err hidden"></div>
+      <div class="badge-row">
+        <span class="badge badge-yellow">9Router AI</span>
+        <span class="badge badge-cyan">Self-Service Portal</span>
       </div>
+      <h1>Usage & Quota Check</h1>
+      <p class="desc">Paste your API key below to inspect real-time quotas, token limits, and permitted models.</p>
     </div>
 
+    <!-- Input Card -->
+    <div class="neo-card">
+      <div class="label-title">Your API Key</div>
+      <input id="key" type="password" placeholder="sk-..." aria-label="API key" autocomplete="off" />
+      <div class="actions-row">
+        <div class="seg">
+          <span class="seg-label">Window:</span>
+          <div id="periods" style="display:flex;gap:6px;"></div>
+        </div>
+        <button class="btn-submit" id="checkBtn">
+          <span id="checkSpin" class="hidden">⌛</span>
+          <span>Inspect Usage ⚡</span>
+        </button>
+      </div>
+      <div id="error" class="err-box hidden"></div>
+    </div>
+
+    <!-- Results Section -->
     <div id="results"></div>
+
+    <div class="footer">
+      SantaiNetwork 9Router Gateway
+    </div>
   </div>
 
 <script>
 (function () {
   var PERIODS = [
-    { d: 1, label: "1 day" },
-    { d: 7, label: "7 days" },
-    { d: 14, label: "14 days" },
-    { d: 30, label: "30 days" }
+    { d: 1, label: "1D" },
+    { d: 7, label: "7D" },
+    { d: 14, label: "14D" },
+    { d: 30, label: "30D" }
   ];
   var days = 7;
   var lastData = null;
@@ -215,13 +375,7 @@
   function showError(msg) {
     if (!msg) { errEl.classList.add("hidden"); errEl.textContent = ""; return; }
     errEl.classList.remove("hidden");
-    errEl.textContent = msg;
-  }
-
-  function stat(label, value, sub) {
-    return '<div class="stat"><p class="label">' + esc(label) + '</p>' +
-      '<p class="value">' + esc(value) + '</p>' +
-      (sub ? '<p class="sub">' + esc(sub) + '</p>' : '') + '</div>';
+    errEl.textContent = "⚠️ " + msg;
   }
 
   function render(data) {
@@ -231,92 +385,141 @@
     var used = (data.usage && data.usage.tokensUsedAllTime) || 0;
     var remaining = data.usage ? data.usage.tokensRemaining : null;
     var pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
-    var barColor = pct >= 100 ? "var(--red)" : pct >= 80 ? "var(--orange)" : "var(--green)";
+    var barColor = pct >= 100 ? "var(--red)" : pct >= 80 ? "var(--yellow)" : "var(--emerald)";
     var models = (data.usage && data.usage.byModel) ? Object.entries(data.usage.byModel) : [];
-    var pdays = data.usage.period.days;
+    var pdays = (data.usage && data.usage.period && data.usage.period.days) || days;
 
-    var html = "";
+    var html = '<div style="display:flex;flex-direction:column;gap:24px;">';
 
-    // Summary card
-    html += '<div class="card" style="margin-bottom:24px">';
-    html += '<div class="row between" style="margin-bottom:12px">';
-    html += '<p class="sm" style="font-weight:500;margin:0">' + esc((data.key && data.key.name) || "Your key") + '</p>';
-    html += '<span class="xs muted">last ' + esc(pdays) + 'd</span></div>';
-    html += '<div class="grid">';
-    html += stat("Requests / min", data.limits.requestsPerMinute > 0 ? data.limits.requestsPerMinute : "Unlimited");
-    html += stat("Requests", fmt(data.usage.requests), "in " + pdays + "d");
-    html += stat("Tokens", fmt(data.usage.totalTokens), "in " + pdays + "d");
-    html += stat("Quota", quota > 0 ? fmt(quota) : "Unlimited", quota > 0 ? (fmt(remaining) + " left") : "no cap");
+    // Summary Card
+    html += '<div class="neo-card">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--border);padding-bottom:12px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--emerald);border:2px solid var(--border);"></span>';
+    html += '<span style="font-size:14px;font-weight:900;text-transform:uppercase;">' + esc((data.key && data.key.name) || "Your API Key") + '</span>';
+    html += '</div>';
+    html += '<span class="badge" style="background:var(--surface-alt);color:var(--text);font-family:monospace;">' + esc((data.key && data.key.keyMasked) || "") + '</span>';
+    html += '</div>';
+
+    // Meter Box
+    html += '<div class="meter-box">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900;text-transform:uppercase;">';
+    html += '<span>All-Time Token Quota</span>';
+    html += '<span style="font-family:monospace;">' + fmt(used) + (quota > 0 ? (' / ' + fmt(quota) + ' (' + pct + '%)') : ' (Unlimited)') + '</span>';
     html += '</div>';
     if (quota > 0) {
-      html += '<div style="margin-top:12px">';
-      html += '<div class="bar"><div style="width:' + pct + '%;background:' + barColor + '"></div></div>';
-      html += '<p class="xs muted" style="margin:4px 0 0">' + fmt(used) + ' / ' + fmt(quota) + ' tokens used all-time (' + pct + '%)</p>';
-      html += '</div>';
+      html += '<div class="meter-bar"><div class="meter-fill" style="width:' + pct + '%;background:' + barColor + '"></div></div>';
     }
     html += '</div>';
 
-    // Access card
-    html += '<div class="card" style="margin-bottom:24px">';
-    html += '<p class="sm" style="font-weight:500;margin:0 0 8px">Models you can use</p>';
-    if (data.access && data.access.restricted) {
-      html += '<div class="wrap-row">';
-      (data.access.allowedModels || []).forEach(function (m) {
-        html += '<span class="chip">' + esc(m) + '</span>';
+    // 3 Stats Grid
+    html += '<div class="stats-grid">';
+    html += '<div class="neo-stat" style="background:var(--cyan);color:#000;">';
+    html += '<span class="stat-label">Requests (' + esc(pdays) + 'D)</span>';
+    html += '<span class="stat-value">' + fmt(data.usage.requests || data.usage.requestsInPeriod || 0) + '</span>';
+    html += '<span class="stat-sub">HTTP requests processed</span>';
+    html += '</div>';
+
+    html += '<div class="neo-stat" style="background:var(--pink);color:#000;">';
+    html += '<span class="stat-label">Tokens (' + esc(pdays) + 'D)</span>';
+    html += '<span class="stat-value">' + fmt(data.usage.totalTokens || data.usage.tokensInPeriod || 0) + '</span>';
+    html += '<span class="stat-sub">Prompt + completion</span>';
+    html += '</div>';
+
+    html += '<div class="neo-stat" style="background:var(--yellow);color:#000;">';
+    html += '<span class="stat-label">Remaining Quota</span>';
+    html += '<span class="stat-value">' + (remaining != null ? fmt(remaining) : "Unl") + '</span>';
+    html += '<span class="stat-sub">' + (remaining != null ? "Tokens left" : "No hard limit") + '</span>';
+    html += '</div>';
+    html += '</div>';
+
+    // Traffic Throttle Pills
+    html += '<div class="pills-container">';
+    html += '<div style="font-size:11px;font-weight:900;text-transform:uppercase;margin-bottom:8px;">Traffic Throttle Parameters</div>';
+    html += '<div>';
+    html += '<span class="pill-item">RPM: ' + esc(data.limits.requestsPerMinute > 0 ? data.limits.requestsPerMinute : "Unlimited") + '</span>';
+    html += '<span class="pill-item">Concurrency: ' + esc(data.limits.concurrency > 0 ? data.limits.concurrency : "Unlimited") + '</span>';
+    html += '<span class="pill-item">Queue: ' + esc(data.limits.queueTimeoutMs ? (data.limits.queueTimeoutMs + "ms") : "60s") + '</span>';
+    html += '</div>';
+    html += '</div>';
+
+    // Allowed Models
+    html += '<div>';
+    html += '<div style="font-size:11px;font-weight:900;text-transform:uppercase;margin-bottom:8px;">Allowed Models</div>';
+    if (data.limits.allowedModels && data.limits.allowedModels.length > 0) {
+      html += '<div>';
+      data.limits.allowedModels.forEach(function (m) {
+        var isWildcard = m.indexOf("*") !== -1;
+        html += '<span class="pill-item ' + (isWildcard ? 'pill-wildcard' : '') + '">' + esc(m) + '</span>';
       });
       html += '</div>';
     } else {
-      html += '<p class="sm muted" style="margin:0">✓ All models are available (no restriction).</p>';
+      html += '<span style="font-size:12px;font-weight:700;color:var(--muted);">All models permitted (unrestricted).</span>';
     }
     html += '</div>';
 
-    // By-model card
+    html += '</div>'; // End Summary Card
+
+    // Model Usage Breakdown Card
     if (models.length > 0) {
-      models.sort(function (a, b) {
-        return (b[1].promptTokens + b[1].completionTokens) - (a[1].promptTokens + a[1].completionTokens);
-      });
-      html += '<div class="card">';
-      html += '<p class="sm" style="font-weight:500;margin:0 0 8px">Usage by model (last ' + esc(pdays) + 'd)</p>';
-      html += '<div class="divide">';
+      html += '<div class="neo-card">';
+      html += '<div style="font-size:12px;font-weight:900;text-transform:uppercase;border-bottom:2px solid var(--border);padding-bottom:10px;">Token Breakdown by Model (' + esc(pdays) + 'D)</div>';
+      html += '<div>';
       models.forEach(function (pair) {
-        var m = pair[0], v = pair[1];
-        html += '<div class="modelrow">';
-        html += '<p class="mono xs truncate" style="margin:0">' + esc(m) + '</p>';
-        html += '<p class="xs muted" style="margin:0;flex-shrink:0;font-variant-numeric:tabular-nums">' +
-          fmt(v.requests) + ' req · ' + fmt(v.promptTokens + v.completionTokens) + ' tok</p>';
+        var name = pair[0];
+        var info = pair[1];
+        var tok = (info && info.total_tokens) || (info && (info.promptTokens + info.completionTokens)) || 0;
+        var reqs = (info && (info.requests || info.count)) || 0;
+        html += '<div class="model-row">';
+        html += '<span style="font-family:monospace;font-weight:700;">' + esc(name) + '</span>';
+        html += '<span style="font-family:monospace;font-weight:900;">' + fmt(tok) + ' tok <span style="font-weight:700;opacity:0.6;margin-left:6px;">(' + reqs + ' reqs)</span></span>';
         html += '</div>';
       });
-      html += '</div></div>';
+      html += '</div>';
+      html += '</div>';
     }
 
+    html += '</div>';
     resEl.innerHTML = html;
   }
 
   function check(period) {
-    period = period || days;
     var k = keyEl.value.trim();
-    if (!k) { showError("Enter your API key."); return; }
-    setLoading(true);
+    if (!k) { showError("Enter an API key first"); return; }
     showError("");
-    fetch("/v1/usage?period=" + period + "d", {
-      headers: { Authorization: "Bearer " + k },
-      cache: "no-store"
-    })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (body) {
-          return { ok: res.ok, status: res.status, body: body };
-        });
-      })
-      .then(function (r) {
-        if (!r.ok) { showError((r.body && r.body.error) || ("Request failed (" + r.status + ")")); render(null); }
-        else { render(r.body); }
-      })
-      .catch(function (e) { showError((e && e.message) || "Network error"); render(null); })
-      .finally(function () { setLoading(false); });
+    setLoading(true);
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "/api/v1/usage?period=" + (period || days) + "d");
+    xhr.setRequestHeader("Authorization", "Bearer " + k);
+    xhr.onload = function () {
+      setLoading(false);
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          render(data);
+        } else {
+          render(null);
+          showError(data.error || ("Request failed (" + xhr.status + ")"));
+        }
+      } catch (e) {
+        render(null);
+        showError("Invalid response from server");
+      }
+    };
+    xhr.onerror = function () {
+      setLoading(false);
+      render(null);
+      showError("Network error. Is the server running?");
+    };
+    xhr.send();
   }
 
-  checkBtn.onclick = function () { check(); };
-  keyEl.addEventListener("keydown", function (e) { if (e.key === "Enter") check(); });
+  keyEl.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); check(); }
+  });
+  checkBtn.addEventListener("click", function () { check(); });
+
   renderPeriods();
 })();
 </script>
