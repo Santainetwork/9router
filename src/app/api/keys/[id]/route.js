@@ -21,7 +21,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { isActive, rpm, queueTimeoutMs, allowedModels, tokenQuota } = body;
+    const { isActive, rpm, concurrency, queueTimeoutMs, allowedModels, tokenQuota } = body;
 
     const existing = await getApiKeyById(id);
     if (!existing) {
@@ -31,6 +31,7 @@ export async function PUT(request, { params }) {
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
     if (rpm !== undefined) updateData.rpm = Math.max(0, Math.floor(Number(rpm) || 0));
+    if (concurrency !== undefined) updateData.concurrency = Math.max(0, Math.floor(Number(concurrency) || 0));
     if (queueTimeoutMs !== undefined) updateData.queueTimeoutMs = Math.max(0, Math.floor(Number(queueTimeoutMs) || 0));
     if (tokenQuota !== undefined) updateData.tokenQuota = Math.max(0, Math.floor(Number(tokenQuota) || 0));
     if (allowedModels !== undefined) {

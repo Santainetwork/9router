@@ -84,6 +84,7 @@ export const TABLES = {
       isActive: "INTEGER DEFAULT 1",
       createdAt: "TEXT NOT NULL",
       rpm: "INTEGER DEFAULT 0",
+      concurrency: "INTEGER DEFAULT 0",
       queueTimeoutMs: "INTEGER DEFAULT 0",
       allowedModels: "TEXT",
       tokenQuota: "INTEGER DEFAULT 0",

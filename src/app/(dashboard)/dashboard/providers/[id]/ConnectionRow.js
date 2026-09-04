@@ -211,16 +211,30 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
           {onUpdateLimits && (
             <div className="mt-2 flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-text-muted">RPM (0 = unlimited)</label>
+                <label className="text-[11px] text-text-muted">RPM (0 = unl)</label>
                 <input
                   type="number"
                   min="0"
                   defaultValue={connection.rpm ?? 0}
                   onBlur={(e) => {
                     const rpm = Math.max(0, parseInt(e.target.value, 10) || 0);
-                    if (rpm !== (connection.rpm ?? 0)) onUpdateLimits(rpm, connection.queueTimeoutMs ?? 0);
+                    if (rpm !== (connection.rpm ?? 0)) onUpdateLimits(rpm, connection.concurrency ?? 0, connection.queueTimeoutMs ?? 0);
+                  }}
+                  className="w-20 rounded border border-border bg-input px-2 py-1 text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-text-muted">Max Concurrency</label>
+                <input
+                  type="number"
+                  min="0"
+                  defaultValue={connection.concurrency ?? 0}
+                  onBlur={(e) => {
+                    const concurrency = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    if (concurrency !== (connection.concurrency ?? 0)) onUpdateLimits(connection.rpm ?? 0, concurrency, connection.queueTimeoutMs ?? 0);
                   }}
                   className="w-24 rounded border border-border bg-input px-2 py-1 text-sm"
+                  placeholder="0 = unl"
                 />
               </div>
               <div className="flex flex-col gap-1">
@@ -231,9 +245,9 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                   defaultValue={connection.queueTimeoutMs ?? 0}
                   onBlur={(e) => {
                     const queueTimeoutMs = Math.max(0, parseInt(e.target.value, 10) || 0);
-                    if (queueTimeoutMs !== (connection.queueTimeoutMs ?? 0)) onUpdateLimits(connection.rpm ?? 0, queueTimeoutMs);
+                    if (queueTimeoutMs !== (connection.queueTimeoutMs ?? 0)) onUpdateLimits(connection.rpm ?? 0, connection.concurrency ?? 0, queueTimeoutMs);
                   }}
-                  className="w-32 rounded border border-border bg-input px-2 py-1 text-sm"
+                  className="w-28 rounded border border-border bg-input px-2 py-1 text-sm"
                 />
               </div>
             </div>

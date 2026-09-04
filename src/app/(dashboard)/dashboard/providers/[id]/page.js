@@ -55,6 +55,7 @@ export default function ProviderDetailPage() {
   const [showBulkProxyModal, setShowBulkProxyModal] = useState(false);
   const [showBulkLimitsModal, setShowBulkLimitsModal] = useState(false);
   const [bulkLimitsRpm, setBulkLimitsRpm] = useState("");
+  const [bulkLimitsConcurrency, setBulkLimitsConcurrency] = useState("");
   const [bulkLimitsQueueMs, setBulkLimitsQueueMs] = useState("");
   const [bulkUpdatingLimits, setBulkUpdatingLimits] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -902,6 +903,9 @@ export default function ProviderDetailPage() {
       if (bulkLimitsRpm !== "") {
         patch.rpm = Math.max(0, parseInt(bulkLimitsRpm, 10) || 0);
       }
+      if (bulkLimitsConcurrency !== "") {
+        patch.concurrency = Math.max(0, parseInt(bulkLimitsConcurrency, 10) || 0);
+      }
       if (bulkLimitsQueueMs !== "") {
         patch.queueTimeoutMs = Math.max(0, parseInt(bulkLimitsQueueMs, 10) || 0);
       }
@@ -921,6 +925,7 @@ export default function ProviderDetailPage() {
       );
       setShowBulkLimitsModal(false);
       setBulkLimitsRpm("");
+      setBulkLimitsConcurrency("");
       setBulkLimitsQueueMs("");
     } catch (err) {
       console.error("Failed to update limits in batch:", err);
@@ -1038,16 +1043,16 @@ export default function ProviderDetailPage() {
                   setSelectedConnection(conn);
                   setShowEditModal(true);
                 }}
-                onUpdateLimits={async (rpm, queueTimeoutMs) => {
+                onUpdateLimits={async (rpm, concurrency, queueTimeoutMs) => {
                   try {
                     const res = await fetch(`/api/providers/${conn.id}`, {
                       method: "PUT",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ rpm, queueTimeoutMs }),
+                      body: JSON.stringify({ rpm, concurrency, queueTimeoutMs }),
                     });
                     if (res.ok) {
                       setConnections(prev => prev.map(c =>
-                        c.id === conn.id ? { ...c, rpm, queueTimeoutMs } : c
+                        c.id === conn.id ? { ...c, rpm, concurrency, queueTimeoutMs } : c
                       ));
                     }
                   } catch (error) {
@@ -1139,6 +1144,23 @@ export default function ProviderDetailPage() {
           />
           <span className="text-[11px] text-text-muted">
             Max requests per minute allowed per connection.
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-text-main">
+            Max Concurrency (Simultaneous Requests)
+          </label>
+          <input
+            type="number"
+            min="0"
+            placeholder="0 = unlimited"
+            value={bulkLimitsConcurrency}
+            onChange={(e) => setBulkLimitsConcurrency(e.target.value)}
+            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-[11px] text-text-muted">
+            Max simultaneous in-flight requests allowed to this connection.
           </span>
         </div>
 

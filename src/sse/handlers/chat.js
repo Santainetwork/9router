@@ -109,10 +109,12 @@ export async function handleChat(request, clientRawRequest = null) {
     }
   }
 
-  // Per-API-key RPM rate limit + queue (applies whenever a known key is presented).
+  // Per-API-key RPM rate limit + concurrency + queue (applies whenever a known key is presented).
+  let releaseApiKey = () => {};
   {
-    const limited = await enforceApiKeyRateLimit(apiKey, clientRawRequest.responseMetadata);
-    if (limited) return limited;
+    const gateResult = await enforceApiKeyRateLimit(apiKey, clientRawRequest.responseMetadata);
+    if (gateResult?.limited) return gateResult.limited;
+    if (gateResult?.release) releaseApiKey = gateResult.release;
   }
 
   if (!modelStr) {
@@ -298,24 +300,31 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     // Account selection shown in the unified "▶" line (acc:...)
-    // Per-provider (per-connection) RPM rate limit + queue.
-    if (credentials.connectionId && credentials.connectionId !== "noauth" && credentials.rpm > 0) {
+    // Per-provider (per-connection) RPM and Concurrency limit + queue.
+    let releaseProvider = () => {};
+    const hasProviderLimits = Number(credentials.rpm) > 0 || Number(credentials.concurrency) > 0;
+    if (credentials.connectionId && credentials.connectionId !== "noauth" && hasProviderLimits) {
       try {
         let queued = false;
         const startedAt = Date.now();
-        await acquire("provider", credentials.connectionId, {
+        const releaseFn = await acquire("provider", credentials.connectionId, {
           rpm: credentials.rpm,
+          concurrency: credentials.concurrency,
           timeoutMs: credentials.queueTimeoutMs,
           onQueued: () => { queued = true; },
         });
+        if (releaseFn) releaseProvider = releaseFn;
         if (responseMetadata && queued) {
           responseMetadata.providerQueued = true;
           responseMetadata.providerWaitMs = (responseMetadata.providerWaitMs || 0) + (Date.now() - startedAt);
         }
       } catch (e) {
         if (e instanceof RateLimitTimeoutError) {
-          log.warn("RATELIMIT", `[${provider}/${model}] connection ${credentials.connectionName} exceeded ${credentials.rpm} rpm`);
-          return unavailableResponse(HTTP_STATUS.RATE_LIMITED, `[${provider}/${model}] provider rate limit exceeded`, e.retryAfter, `${e.retryAfter}s`);
+          const reason = credentials.concurrency > 0 && !(credentials.rpm > 0)
+            ? `[${provider}/${model}] connection ${credentials.connectionName} reached ${credentials.concurrency} max concurrency`
+            : `[${provider}/${model}] connection ${credentials.connectionName} exceeded limit (${credentials.rpm} rpm / ${credentials.concurrency} concurrent)`;
+          log.warn("RATELIMIT", reason);
+          return unavailableResponse(HTTP_STATUS.RATE_LIMITED, e.message || `[${provider}/${model}] provider rate limit / concurrency exceeded`, e.retryAfter, `${e.retryAfter}s`);
         }
         throw e;
       }
@@ -379,6 +388,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       requestedModel: reportModel,
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
+      onRelease: () => {
+        try { releaseProvider(); } catch {}
+        try { releaseApiKey(); } catch {}
+      },
       onCredentialsRefreshed: async (newCreds) => {
         await updateProviderCredentials(credentials.connectionId, {
           ...newCreds,

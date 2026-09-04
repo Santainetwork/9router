@@ -217,6 +217,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       connectionId: connection.id,
       // Per-connection RPM rate limit + queue config (0 = unlimited)
       rpm: Number(connection.rpm) > 0 ? Math.floor(Number(connection.rpm)) : 0,
+      concurrency: Number(connection.concurrency) > 0 ? Math.floor(Number(connection.concurrency)) : 0,
       queueTimeoutMs: Number(connection.queueTimeoutMs) > 0 ? Math.floor(Number(connection.queueTimeoutMs)) : 0,
       // Include current status for optimization check
       testStatus: connection.testStatus,

@@ -19,16 +19,22 @@ import * as log from "../utils/logger.js";
  *          otherwise null (caller proceeds).
  */
 export async function enforceApiKeyRateLimit(apiKey, queueMeta = null) {
-  if (!apiKey) return null;
+  if (!apiKey) return { limited: null, release: () => {} };
 
   const limits = await getApiKeyLimits(apiKey);
-  if (!limits || !(limits.rpm > 0)) return null;
+  const hasRpm = Number(limits?.rpm) > 0;
+  const hasConcurrency = Number(limits?.concurrency) > 0;
+
+  if (!limits || (!hasRpm && !hasConcurrency)) {
+    return { limited: null, release: () => {} };
+  }
 
   try {
     let queued = false;
     const startedAt = Date.now();
-    await acquire("apikey", limits.id, {
+    const releaseFn = await acquire("apikey", limits.id, {
       rpm: limits.rpm,
+      concurrency: limits.concurrency,
       timeoutMs: limits.queueTimeoutMs,
       onQueued: () => { queued = true; },
     });
@@ -36,16 +42,20 @@ export async function enforceApiKeyRateLimit(apiKey, queueMeta = null) {
       queueMeta.apiKeyQueued = true;
       queueMeta.apiKeyWaitMs = (queueMeta.apiKeyWaitMs || 0) + (Date.now() - startedAt);
     }
-    return null;
+    return { limited: null, release: releaseFn || (() => {}) };
   } catch (e) {
     if (e instanceof RateLimitTimeoutError) {
-      log.warn("RATELIMIT", `API key ${log.maskKey(apiKey)} exceeded ${limits.rpm} rpm`);
-      return unavailableResponse(
+      const reason = hasConcurrency && !hasRpm
+        ? `API key ${log.maskKey(apiKey)} exceeded ${limits.concurrency} max concurrency`
+        : `API key ${log.maskKey(apiKey)} exceeded limit (${limits.rpm} rpm / ${limits.concurrency} concurrent)`;
+      log.warn("RATELIMIT", reason);
+      const resp = unavailableResponse(
         HTTP_STATUS.RATE_LIMITED,
-        "API key rate limit exceeded",
+        e.message || "API key rate limit / concurrency exceeded",
         e.retryAfter,
         `${e.retryAfter}s`,
       );
+      return { limited: resp, release: () => {} };
     }
     throw e;
   }

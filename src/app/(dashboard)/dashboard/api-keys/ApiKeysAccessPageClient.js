@@ -214,9 +214,9 @@ export default function ApiKeysAccessPageClient() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-4">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs text-text-muted">RPM (0 = unlimited)</label>
+                    <label className="text-xs text-text-muted">RPM (0 = unl)</label>
                     <input
                       type="number"
                       min="0"
@@ -229,7 +229,21 @@ export default function ApiKeysAccessPageClient() {
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs text-text-muted">Queue timeout ms (0 = reject)</label>
+                    <label className="text-xs text-text-muted">Max Concurrency</label>
+                    <input
+                      type="number"
+                      min="0"
+                      defaultValue={key.concurrency ?? 0}
+                      onBlur={(e) => {
+                        const concurrency = Math.max(0, parseInt(e.target.value, 10) || 0);
+                        if (concurrency !== (key.concurrency ?? 0)) savePatch(key.id, { concurrency });
+                      }}
+                      className="rounded border border-border bg-input px-2 py-1 text-sm"
+                      placeholder="0 = unl"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-text-muted">Queue timeout ms</label>
                     <input
                       type="number"
                       min="0"
@@ -242,7 +256,7 @@ export default function ApiKeysAccessPageClient() {
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs text-text-muted">Token quota (0 = unlimited)</label>
+                    <label className="text-xs text-text-muted">Token quota</label>
                     <input
                       type="number"
                       min="0"

@@ -11,9 +11,10 @@
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { toFiniteNumber } from "./shared.js";
 
+import { getProviderNodes } from "@/lib/localDb";
+
 async function getProviderNodesSafe() {
   try {
-    const { getProviderNodes } = await import("../../../src/lib/db/repos/providerNodesRepo.js");
     return await getProviderNodes();
   } catch {
     return [];

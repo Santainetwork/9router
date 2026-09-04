@@ -99,6 +99,7 @@ export async function PUT(request, { params }) {
       lastError,
       lastErrorAt,
       rpm,
+      concurrency,
       queueTimeoutMs,
       providerSpecificData
     } = body;
@@ -129,6 +130,7 @@ export async function PUT(request, { params }) {
     if (lastError !== undefined) updateData.lastError = lastError;
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
     if (rpm !== undefined) updateData.rpm = Math.max(0, Math.floor(Number(rpm) || 0));
+    if (concurrency !== undefined) updateData.concurrency = Math.max(0, Math.floor(Number(concurrency) || 0));
     if (queueTimeoutMs !== undefined) updateData.queueTimeoutMs = Math.max(0, Math.floor(Number(queueTimeoutMs) || 0));
 
     if (
