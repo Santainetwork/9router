@@ -97,21 +97,29 @@ export async function GET() {
         : connMap.get(b.key) || b.key,
   }));
 
+  const apiKeyBuckets = activeBuckets.filter((b) => b.scope === "apikey");
+  const providerBuckets = activeBuckets.filter((b) => b.scope === "provider");
+
   return NextResponse.json({
     totalQueued: snap.totalQueued,
     totalActiveWindows: snap.totalActiveWindows,
     totalActiveConcurrent: snap.totalActiveConcurrent,
+    buckets: activeBuckets,
     activeBuckets,
     apiKeys: {
       total: allKeys.length,
       totalQueued: allKeys.reduce((acc, k) => acc + k.queued, 0),
       totalActiveConcurrent: allKeys.reduce((acc, k) => acc + k.activeConcurrency, 0),
+      activeBuckets: apiKeyBuckets.length,
+      buckets: apiKeyBuckets,
       items: allKeys,
     },
     providers: {
       total: allProviders.length,
       totalQueued: allProviders.reduce((acc, c) => acc + c.queued, 0),
       totalActiveConcurrent: allProviders.reduce((acc, c) => acc + c.activeConcurrency, 0),
+      activeBuckets: providerBuckets.length,
+      buckets: providerBuckets,
       items: allProviders,
     },
     at: new Date().toISOString(),

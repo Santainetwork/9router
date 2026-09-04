@@ -371,7 +371,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     }
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
-    if (!refreshedCredentials || !refreshedCredentials.accessToken) {
+    const hasValidCred = refreshedCredentials && (refreshedCredentials.accessToken || refreshedCredentials.apiKey || refreshedCredentials.id === "noauth");
+    if (!hasValidCred) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = "Failed to refresh credentials";
       try { releaseProvider(); } catch {}

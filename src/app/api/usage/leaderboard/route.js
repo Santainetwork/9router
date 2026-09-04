@@ -67,51 +67,67 @@ function maskKey(key) {
 
 async function getProvidersByUsage(whereTimeClause, limit) {
   const db = await getAdapter();
-  // Primary: usageHistory (59k+ permanent records)
   const sql = `
     SELECT 
-      provider,
+      COALESCE(pn.name, uh.provider) as provider_name,
+      uh.provider as provider,
       COUNT(*) as total_requests,
-      SUM(COALESCE(promptTokens, 0)) as input_tokens,
-      SUM(COALESCE(completionTokens, 0)) as output_tokens,
-      SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)) as total_tokens,
-      SUM(COALESCE(cost, 0)) as total_cost
-    FROM usageHistory
-    WHERE ${whereTimeClause}
-      AND provider IS NOT NULL
-    GROUP BY provider
+      SUM(COALESCE(uh.promptTokens, 0)) as input_tokens,
+      SUM(COALESCE(uh.completionTokens, 0)) as output_tokens,
+      SUM(COALESCE(uh.promptTokens, 0) + COALESCE(uh.completionTokens, 0)) as total_tokens,
+      SUM(COALESCE(uh.cost, 0)) as total_cost
+    FROM usageHistory uh
+    LEFT JOIN providerNodes pn ON pn.id = uh.provider
+    WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
+      AND uh.provider IS NOT NULL
+    GROUP BY COALESCE(pn.name, uh.provider)
     ORDER BY total_requests DESC
     LIMIT ?
   `;
-  return db.all(sql, [limit]);
+  const rows = db.all(sql, [limit]);
+  return rows.map(r => ({
+    ...r,
+    provider: r.provider_name || r.provider,
+    raw_provider: r.provider,
+    cost_per_request: r.total_requests > 0 ? ((r.total_cost || 0) / r.total_requests) : 0,
+  }));
 }
 
 async function getProvidersByCost(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
-      provider,
-      SUM(COALESCE(cost, 0)) as total_cost,
+      COALESCE(pn.name, uh.provider) as provider_name,
+      uh.provider as provider,
+      SUM(COALESCE(uh.cost, 0)) as total_cost,
       COUNT(*) as total_requests,
-      SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)) as total_tokens
-    FROM usageHistory
-    WHERE ${whereTimeClause}
-      AND provider IS NOT NULL
-    GROUP BY provider
+      SUM(COALESCE(uh.promptTokens, 0) + COALESCE(uh.completionTokens, 0)) as total_tokens
+    FROM usageHistory uh
+    LEFT JOIN providerNodes pn ON pn.id = uh.provider
+    WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
+      AND uh.provider IS NOT NULL
+    GROUP BY COALESCE(pn.name, uh.provider)
     HAVING total_cost > 0
     ORDER BY total_cost DESC
     LIMIT ?
   `;
-  return db.all(sql, [limit]);
+  const rows = db.all(sql, [limit]);
+  return rows.map(r => ({
+    ...r,
+    provider: r.provider_name || r.provider,
+    raw_provider: r.provider,
+    cost_per_request: r.total_requests > 0 ? ((r.total_cost || 0) / r.total_requests) : 0,
+  }));
 }
 
 async function getKeysByRequests(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
-      COALESCE(pc.name, uh.connectionId, uh.provider, 'unknown') as key_name,
+      COALESCE(pc.name, uh.connectionId, pn.name, uh.provider, 'unknown') as key_name,
       uh.connectionId,
       uh.provider,
+      COALESCE(pn.name, pc.provider, uh.provider, '') as provider_name,
       COUNT(*) as total_requests,
       SUM(COALESCE(uh.promptTokens, 0)) as input_tokens,
       SUM(COALESCE(uh.completionTokens, 0)) as output_tokens,
@@ -119,6 +135,7 @@ async function getKeysByRequests(whereTimeClause, limit) {
       SUM(COALESCE(uh.cost, 0)) as total_cost
     FROM usageHistory uh
     LEFT JOIN providerConnections pc ON pc.id = uh.connectionId
+    LEFT JOIN providerNodes pn ON pn.id = uh.provider
     WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
     GROUP BY COALESCE(uh.connectionId, uh.provider)
     HAVING total_requests > 0
@@ -130,7 +147,8 @@ async function getKeysByRequests(whereTimeClause, limit) {
     id: r.connectionId || r.provider,
     key_name: r.key_name || 'Unnamed',
     key_masked: maskKey(r.connectionId || r.provider || ''),
-    provider: r.provider || '',
+    provider: r.provider_name || r.provider || '',
+    raw_provider: r.provider || '',
     total_requests: r.total_requests,
     input_tokens: r.input_tokens || 0,
     output_tokens: r.output_tokens || 0,
@@ -145,14 +163,16 @@ async function getKeysByCost(whereTimeClause, limit) {
   const db = await getAdapter();
   const sql = `
     SELECT 
-      COALESCE(pc.name, uh.connectionId, uh.provider, 'unknown') as key_name,
+      COALESCE(pc.name, uh.connectionId, pn.name, uh.provider, 'unknown') as key_name,
       uh.connectionId,
       uh.provider,
+      COALESCE(pn.name, pc.provider, uh.provider, '') as provider_name,
       SUM(COALESCE(uh.cost, 0)) as total_cost,
       COUNT(*) as total_requests,
       SUM(COALESCE(uh.promptTokens, 0) + COALESCE(uh.completionTokens, 0)) as total_tokens
     FROM usageHistory uh
     LEFT JOIN providerConnections pc ON pc.id = uh.connectionId
+    LEFT JOIN providerNodes pn ON pn.id = uh.provider
     WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
     GROUP BY COALESCE(uh.connectionId, uh.provider)
     HAVING total_cost > 0
@@ -164,7 +184,8 @@ async function getKeysByCost(whereTimeClause, limit) {
     id: r.connectionId || r.provider,
     key_name: r.key_name || 'Unnamed',
     key_masked: maskKey(r.connectionId || r.provider || ''),
-    provider: r.provider || '',
+    provider: r.provider_name || r.provider || '',
+    raw_provider: r.provider || '',
     total_cost: r.total_cost || 0,
     total_requests: r.total_requests,
     avg_latency_ms: 0,

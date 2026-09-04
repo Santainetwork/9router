@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Card, Button, SegmentedControl, Badge } from "@/shared/components";
+import { Card, Button, SegmentedControl } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
+import { cn } from "@/shared/utils/cn";
 
 const PERIODS = [
   { value: "today", label: "Today" },
@@ -10,6 +11,16 @@ const PERIODS = [
   { value: "7d", label: "Last 7 Days" },
   { value: "30d", label: "Last 30 Days" },
   { value: "all", label: "All Time" }
+];
+
+const SORT_OPTIONS = [
+  { value: "requests", label: "Total Requests" },
+  { value: "tokens", label: "Total Tokens" },
+  { value: "cost", label: "Total Cost ($)" },
+  { value: "input", label: "Input Tokens" },
+  { value: "output", label: "Output Tokens" },
+  { value: "cost_per_req", label: "Cost / Request" },
+  { value: "name", label: "Name (A-Z)" },
 ];
 
 function fmtNum(n) {
@@ -84,6 +95,8 @@ function StatSummaryCard({ icon, label, value, sub, color = "primary" }) {
 export default function LeaderboardPage() {
   const [period, setPeriod] = useState("7d");
   const [activeTab, setActiveTab] = useState("connections"); // 'connections' | 'providers'
+  const [sortBy, setSortBy] = useState("requests");
+  const [sortDir, setSortDir] = useState("desc");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [search, setSearch] = useState("");
@@ -112,50 +125,139 @@ export default function LeaderboardPage() {
     fetchLeaderboard();
   }, [period]);
 
+  const handleSortClick = (column) => {
+    if (sortBy === column) {
+      setSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+    } else {
+      setSortBy(column);
+      setSortDir("desc");
+    }
+  };
+
   // Total summary calculations
   const totals = useMemo(() => {
     if (!data) return { requests: 0, tokens: 0, cost: 0, activeAccounts: 0, activeProviders: 0 };
-    
     const reqs = (data.keysByRequests || []).reduce((sum, r) => sum + (r.total_requests || 0), 0);
     const toks = (data.keysByRequests || []).reduce((sum, r) => sum + (r.total_tokens || 0), 0);
     const cst = (data.keysByRequests || []).reduce((sum, r) => sum + (r.total_cost || 0), 0);
     const accounts = (data.keysByRequests || []).length;
     const providers = (data.providersByUsage || []).length;
-
     return { requests: reqs, tokens: toks, cost: cst, activeAccounts: accounts, activeProviders: providers };
   }, [data]);
 
   // Max request count for relative progress bars
   const maxKeyRequests = useMemo(() => {
     if (!data?.keysByRequests?.length) return 1;
-    return Math.max(...data.keysByRequests.map(k => k.total_requests || 0), 1);
+    return Math.max(...data.keysByRequests.map((k) => k.total_requests || 0), 1);
   }, [data?.keysByRequests]);
 
   const maxProvRequests = useMemo(() => {
     if (!data?.providersByUsage?.length) return 1;
-    return Math.max(...data.providersByUsage.map(p => p.total_requests || 0), 1);
+    return Math.max(...data.providersByUsage.map((p) => p.total_requests || 0), 1);
   }, [data?.providersByUsage]);
 
-  // Filtered lists
-  const filteredKeys = useMemo(() => {
+  // Sort and filter connection rows
+  const sortedAndFilteredKeys = useMemo(() => {
     if (!data?.keysByRequests) return [];
-    if (!search.trim()) return data.keysByRequests;
-    const q = search.toLowerCase();
-    return data.keysByRequests.filter(
-      k => (k.key_name && k.key_name.toLowerCase().includes(q)) ||
-           (k.provider && k.provider.toLowerCase().includes(q)) ||
-           (k.id && k.id.toLowerCase().includes(q))
-    );
-  }, [data?.keysByRequests, search]);
+    let list = [...data.keysByRequests];
 
-  const filteredProviders = useMemo(() => {
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (k) =>
+          (k.key_name && k.key_name.toLowerCase().includes(q)) ||
+          (k.provider && k.provider.toLowerCase().includes(q)) ||
+          (k.id && k.id.toLowerCase().includes(q))
+      );
+    }
+
+    list.sort((a, b) => {
+      let valA, valB;
+      switch (sortBy) {
+        case "tokens":
+          valA = a.total_tokens || 0;
+          valB = b.total_tokens || 0;
+          break;
+        case "input":
+          valA = a.input_tokens || 0;
+          valB = b.input_tokens || 0;
+          break;
+        case "output":
+          valA = a.output_tokens || 0;
+          valB = b.output_tokens || 0;
+          break;
+        case "cost":
+          valA = a.total_cost || 0;
+          valB = b.total_cost || 0;
+          break;
+        case "cost_per_req":
+          valA = a.cost_per_request || 0;
+          valB = b.cost_per_request || 0;
+          break;
+        case "name":
+          valA = (a.key_name || "").toLowerCase();
+          valB = (b.key_name || "").toLowerCase();
+          return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case "requests":
+        default:
+          valA = a.total_requests || 0;
+          valB = b.total_requests || 0;
+          break;
+      }
+      return sortDir === "asc" ? valA - valB : valB - valA;
+    });
+
+    return list;
+  }, [data?.keysByRequests, search, sortBy, sortDir]);
+
+  // Sort and filter provider rows
+  const sortedAndFilteredProviders = useMemo(() => {
     if (!data?.providersByUsage) return [];
-    if (!search.trim()) return data.providersByUsage;
-    const q = search.toLowerCase();
-    return data.providersByUsage.filter(
-      p => p.provider && p.provider.toLowerCase().includes(q)
-    );
-  }, [data?.providersByUsage, search]);
+    let list = [...data.providersByUsage];
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) => p.provider && p.provider.toLowerCase().includes(q));
+    }
+
+    list.sort((a, b) => {
+      let valA, valB;
+      switch (sortBy) {
+        case "tokens":
+          valA = a.total_tokens || 0;
+          valB = b.total_tokens || 0;
+          break;
+        case "input":
+          valA = a.input_tokens || 0;
+          valB = b.input_tokens || 0;
+          break;
+        case "output":
+          valA = a.output_tokens || 0;
+          valB = b.output_tokens || 0;
+          break;
+        case "cost":
+          valA = a.total_cost || 0;
+          valB = b.total_cost || 0;
+          break;
+        case "cost_per_req":
+          valA = a.cost_per_request || 0;
+          valB = b.cost_per_request || 0;
+          break;
+        case "name":
+          valA = (a.provider || "").toLowerCase();
+          valB = (b.provider || "").toLowerCase();
+          return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case "requests":
+        default:
+          valA = a.total_requests || 0;
+          valB = b.total_requests || 0;
+          break;
+      }
+      return sortDir === "asc" ? valA - valB : valB - valA;
+    });
+
+    return list;
+  }, [data?.providersByUsage, search, sortBy, sortDir]);
 
   const handleExportCsv = () => {
     if (!data) return;
@@ -164,7 +266,7 @@ export default function LeaderboardPage() {
 
     if (activeTab === "connections") {
       const headers = ["Rank", "Connection Name", "Connection ID", "Provider", "Total Requests", "Input Tokens", "Output Tokens", "Total Tokens", "Avg Latency (ms)", "Total Cost ($)"];
-      const rows = (filteredKeys || []).map((item, idx) => [
+      const rows = (sortedAndFilteredKeys || []).map((item, idx) => [
         idx + 1,
         `"${(item.key_name || "").replace(/"/g, '""')}"`,
         `"${item.id || ""}"`,
@@ -176,14 +278,11 @@ export default function LeaderboardPage() {
         item.avg_latency_ms || 0,
         (item.total_cost || 0).toFixed(4),
       ]);
-      csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     } else {
-      const headers = ["Rank", "Provider", "Total Requests", "Input Tokens", "Output Tokens", "Total Tokens", "Total Cost ($)", "Cost Per 1M Tokens ($)"];
-      const rows = (filteredProviders || []).map((prov, idx) => {
-        const costItem = (data?.providersByCost || []).find(p => p.provider === prov.provider);
-        const cost = costItem?.total_cost || 0;
+      const headers = ["Rank", "Provider Name", "Total Requests", "Input Tokens", "Output Tokens", "Total Tokens", "Total Cost ($)", "Cost Per Request ($)"];
+      const rows = (sortedAndFilteredProviders || []).map((prov, idx) => {
         const totalTokens = prov.total_tokens || (prov.input_tokens + prov.output_tokens);
-        const costPerMillion = totalTokens > 0 ? (cost / (totalTokens / 1_000_000)).toFixed(4) : "0";
         return [
           idx + 1,
           `"${(prov.provider || "").replace(/"/g, '""')}"`,
@@ -191,11 +290,11 @@ export default function LeaderboardPage() {
           prov.input_tokens || 0,
           prov.output_tokens || 0,
           totalTokens || 0,
-          cost.toFixed(4),
-          costPerMillion,
+          (prov.total_cost || 0).toFixed(4),
+          (prov.cost_per_request || 0).toFixed(4),
         ];
       });
-      csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     }
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -206,6 +305,27 @@ export default function LeaderboardPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const renderSortHeader = (label, colKey, alignRight = true) => {
+    const isCurrent = sortBy === colKey;
+    return (
+      <th
+        onClick={() => handleSortClick(colKey)}
+        className={cn(
+          "py-3 px-3 cursor-pointer select-none transition-colors hover:text-text-main",
+          alignRight ? "text-right" : "text-left",
+          isCurrent ? "text-primary font-bold" : ""
+        )}
+      >
+        <div className={cn("inline-flex items-center gap-1", alignRight ? "justify-end" : "justify-start")}>
+          <span>{label}</span>
+          <span className="text-[11px] opacity-80">
+            {isCurrent ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+          </span>
+        </div>
+      </th>
+    );
   };
 
   return (
@@ -229,7 +349,7 @@ export default function LeaderboardPage() {
               <p className="text-xs text-text-muted mt-0.5">Real-time usage volume and token ranking across all upstream connections</p>
             </div>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-3">
             <SegmentedControl
               options={PERIODS}
@@ -245,217 +365,180 @@ export default function LeaderboardPage() {
               disabled={loading || !data}
               className="gap-1.5"
             >
-              <span className="material-symbols-outlined text-[16px]">
-                download
-              </span>
+              <span className="material-symbols-outlined text-[16px]">download</span>
               Export CSV
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchLeaderboard}
-              disabled={loading}
-              className="gap-1.5"
-            >
-              <span className={`material-symbols-outlined text-[16px] ${loading ? "animate-spin" : ""}`}>
-                refresh
-              </span>
-              Refresh
             </Button>
           </div>
         </div>
       </Card>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI Stats Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatSummaryCard
-          icon="swap_calls"
+          icon="check_circle"
           label="Total Requests"
-          value={loading ? "..." : fmtNum(totals.requests)}
-          sub={`Across ${totals.activeAccounts} active credentials`}
+          value={fmtNum(totals.requests)}
+          sub={`Across ${totals.activeAccounts} accounts`}
           color="primary"
         />
         <StatSummaryCard
           icon="token"
           label="Total Tokens"
-          value={loading ? "..." : fmtNum(totals.tokens)}
+          value={fmtNum(totals.tokens)}
           sub="Input + Output combined"
           color="info"
         />
         <StatSummaryCard
           icon="payments"
           label="Estimated Cost"
-          value={loading ? "..." : fmtCost(totals.cost)}
-          sub="Tracked upstream costs"
-          color="success"
+          value={fmtCost(totals.cost)}
+          sub="Based on canonical rates"
+          color="warning"
         />
         <StatSummaryCard
-          icon="dns"
+          icon="hub"
           label="Active Providers"
-          value={loading ? "..." : String(totals.activeProviders)}
-          sub={`${totals.activeAccounts} connected accounts`}
-          color="warning"
+          value={totals.activeProviders}
+          sub="Reporting upstream nodes"
+          color="success"
         />
       </div>
 
-      {/* Main View Tabs & Search Filter */}
-      <Card padding="none" className="overflow-hidden">
-        <div className="flex flex-col gap-3 p-4 border-b border-border-subtle sm:flex-row sm:items-center sm:justify-between bg-surface-1/50">
+      {/* Tab Switcher & Sorting Filters */}
+      <Card padding="md">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab("connections")}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                 activeTab === "connections"
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-text-muted hover:text-text-main bg-surface-2"
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">key</span>
-              Accounts & Connections
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === "connections" ? "bg-white/20 text-white" : "bg-surface-2 text-text-muted"}`}>
-                {filteredKeys.length}
-              </span>
+              Top Connections / Keys ({sortedAndFilteredKeys.length})
             </button>
             <button
               onClick={() => setActiveTab("providers")}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                 activeTab === "providers"
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-text-muted hover:text-text-main bg-surface-2"
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">hub</span>
-              AI Providers
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeTab === "providers" ? "bg-white/20 text-white" : "bg-surface-2 text-text-muted"}`}>
-                {filteredProviders.length}
-              </span>
+              Provider Summary ({sortedAndFilteredProviders.length})
             </button>
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
-              search
-            </span>
-            <input
-              type="text"
-              placeholder={`Search ${activeTab === "connections" ? "accounts, providers..." : "providers..."}`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-surface-2 border border-border-subtle rounded-lg pl-8 pr-3 py-1.5 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Sorting Dropdown */}
+            <div className="flex items-center gap-1.5 text-xs text-text-muted">
+              <span>Sort by:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="rounded-lg border border-border bg-input px-2.5 py-1.5 text-xs font-medium text-text-main focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setSortDir((prev) => (prev === "desc" ? "asc" : "desc"))}
+                title="Toggle Sort Order"
+                className="rounded-lg border border-border bg-input px-2 py-1 text-xs font-mono text-text-main hover:bg-surface-2"
+              >
+                {sortDir === "desc" ? "▼ High→Low" : "▲ Low→High"}
+              </button>
+            </div>
+
+            {/* Search Filter */}
+            <div className="relative min-w-[180px]">
+              <input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-border bg-input px-3 py-1.5 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-text-muted hover:text-text-main"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
         </div>
+      </Card>
 
-        {/* Loading State */}
-        {loading && (
-          <div className="p-6 space-y-3">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-12 bg-surface-2/60 animate-pulse rounded-lg" />
-            ))}
+      {/* Main Data Table */}
+      <Card padding="none" className="overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center p-12 text-sm text-text-muted">
+            <span className="inline-block animate-spin mr-2">⌛</span> Loading leaderboard data...
           </div>
-        )}
-
-        {/* Connections / Accounts Table */}
-        {!loading && activeTab === "connections" && (
+        ) : activeTab === "connections" ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-border-subtle bg-surface-2/30 text-text-muted font-medium">
-                  <th className="py-3 px-4 w-12 text-center">Rank</th>
-                  <th className="py-3 px-4 min-w-[200px]">Connection / Account</th>
-                  <th className="py-3 px-4">Provider</th>
-                  <th className="py-3 px-4 text-right min-w-[140px]">Requests & Share</th>
-                  <th className="py-3 px-4 text-right">Input Tokens</th>
-                  <th className="py-3 px-4 text-right">Output Tokens</th>
-                  <th className="py-3 px-4 text-right">Total Tokens</th>
-                  <th className="py-3 px-4 text-right">Avg Latency</th>
-                  <th className="py-3 px-4 text-right">Cost</th>
+                <tr className="border-b border-border bg-surface-2 text-text-muted uppercase tracking-wider font-semibold">
+                  <th className="py-3 px-3 w-12 text-center">Rank</th>
+                  {renderSortHeader("Connection Name", "name", false)}
+                  <th className="py-3 px-3">Provider</th>
+                  {renderSortHeader("Requests", "requests", true)}
+                  {renderSortHeader("Input Tokens", "input", true)}
+                  {renderSortHeader("Output Tokens", "output", true)}
+                  {renderSortHeader("Total Tokens", "tokens", true)}
+                  {renderSortHeader("Total Cost ($)", "cost", true)}
+                  {renderSortHeader("Cost / Req", "cost_per_req", true)}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {filteredKeys.length === 0 ? (
+              <tbody className="divide-y divide-border">
+                {sortedAndFilteredKeys.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-12 text-center text-text-muted">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <span className="material-symbols-outlined text-[32px] opacity-40">query_stats</span>
-                        <p className="font-medium">No connection activity found for this period.</p>
-                        <p className="text-[11px] text-text-muted">Requests made to 9router will be ranked here automatically.</p>
-                      </div>
+                      No connections found for the selected period.
                     </td>
                   </tr>
                 ) : (
-                  filteredKeys.map((item, idx) => {
-                    const shareOfTotal = totals.requests > 0 
-                      ? ((item.total_requests / totals.requests) * 100).toFixed(1)
-                      : 0;
-                    const progressWidth = `${Math.min(100, Math.max(4, (item.total_requests / maxKeyRequests) * 100))}%`;
-
+                  sortedAndFilteredKeys.map((item, idx) => {
+                    const reqPct = Math.round(((item.total_requests || 0) / maxKeyRequests) * 100);
                     return (
-                      <tr
-                        key={item.id || idx}
-                        className="hover:bg-surface-2/40 transition group"
-                      >
-                        <td className="py-3 px-4 text-center">
+                      <tr key={item.id || idx} className="hover:bg-surface-2/40 transition-colors">
+                        <td className="py-3 px-3 text-center">
                           <RankBadge rank={idx + 1} />
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-text-main truncate text-sm">
-                              {item.key_name}
-                            </span>
-                            <span className="font-mono text-[10px] text-text-muted truncate">
-                              ID: {item.id ? item.id.slice(0, 16) : "unknown"}
-                            </span>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-text-main text-xs">{item.key_name}</span>
+                            <span className="font-mono text-[10px] text-text-muted">{item.id || item.key_masked}</span>
                           </div>
                         </td>
-                        <td className="py-3 px-4">
-                          {item.provider ? (
-                            <div className="flex items-center gap-1.5">
-                              <ProviderIcon providerId={item.provider} className="size-4 rounded" />
-                              <Badge size="sm" variant="default" className="font-medium capitalize truncate max-w-[140px]">
-                                {item.provider.replace(/^openai-compatible-chat-/, 'custom-')}
-                              </Badge>
-                            </div>
-                          ) : (
-                            <span className="text-text-muted">-</span>
-                          )}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <ProviderIcon provider={item.raw_provider || item.provider} className="size-4" />
+                            <span className="font-semibold text-text-main text-xs">{item.provider}</span>
+                          </div>
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3 px-3 text-right">
                           <div className="flex flex-col items-end gap-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-text-main tabular-nums">
-                                {item.total_requests.toLocaleString()}
-                              </span>
-                              <span className="text-[10px] text-text-muted font-medium">
-                                ({shareOfTotal}%)
-                              </span>
-                            </div>
-                            <div className="w-24 h-1.5 bg-surface-2 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-primary rounded-full transition-all duration-300"
-                                style={{ width: progressWidth }}
-                              />
+                            <span className="font-bold font-mono text-text-main">{fmtNum(item.total_requests)}</span>
+                            <div className="w-16 h-1 bg-surface-2 rounded-full overflow-hidden border border-border-subtle">
+                              <div className="h-full bg-primary rounded-full" style={{ width: `${reqPct}%` }} />
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-right font-mono text-text-muted tabular-nums">
-                          {fmtNum(item.input_tokens)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono text-text-main tabular-nums font-medium">
-                          {fmtNum(item.output_tokens)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono text-primary font-bold tabular-nums">
-                          {fmtNum(item.total_tokens)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono tabular-nums">
-                          <span className={item.avg_latency_ms > 5000 ? "text-amber-500 font-semibold" : "text-text-muted"}>
-                            {item.avg_latency_ms > 0 ? `${item.avg_latency_ms}ms` : "-"}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-500 tabular-nums">
-                          {fmtCost(item.total_cost)}
-                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(item.input_tokens)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(item.output_tokens)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-text-main">{fmtNum(item.total_tokens)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-500">{fmtCost(item.total_cost)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtCost(item.cost_per_request)}</td>
                       </tr>
                     );
                   })
@@ -463,99 +546,63 @@ export default function LeaderboardPage() {
               </tbody>
             </table>
           </div>
-        )}
-
-        {/* Providers Table */}
-        {!loading && activeTab === "providers" && (
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-border-subtle bg-surface-2/30 text-text-muted font-medium">
-                  <th className="py-3 px-4 w-12 text-center">Rank</th>
-                  <th className="py-3 px-4 min-w-[200px]">AI Provider</th>
-                  <th className="py-3 px-4 text-right min-w-[140px]">Requests & Volume</th>
-                  <th className="py-3 px-4 text-right">Input Tokens</th>
-                  <th className="py-3 px-4 text-right">Output Tokens</th>
-                  <th className="py-3 px-4 text-right">Total Tokens</th>
-                  <th className="py-3 px-4 text-right">Tracked Cost</th>
-                  <th className="py-3 px-4 text-right">Cost / 1M Tokens</th>
+                <tr className="border-b border-border bg-surface-2 text-text-muted uppercase tracking-wider font-semibold">
+                  <th className="py-3 px-3 w-12 text-center">Rank</th>
+                  {renderSortHeader("Provider Name", "name", false)}
+                  {renderSortHeader("Requests", "requests", true)}
+                  {renderSortHeader("Input Tokens", "input", true)}
+                  {renderSortHeader("Output Tokens", "output", true)}
+                  {renderSortHeader("Total Tokens", "tokens", true)}
+                  {renderSortHeader("Total Cost ($)", "cost", true)}
+                  {renderSortHeader("Cost / Req", "cost_per_req", true)}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {filteredProviders.length === 0 ? (
+              <tbody className="divide-y divide-border">
+                {sortedAndFilteredProviders.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-text-muted">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <span className="material-symbols-outlined text-[32px] opacity-40">dns</span>
-                        <p className="font-medium">No provider records found for this period.</p>
-                      </div>
+                      No provider activity recorded for this period.
                     </td>
                   </tr>
                 ) : (
-                  filteredProviders.map((prov, idx) => {
-                    const costItem = (data?.providersByCost || []).find(p => p.provider === prov.provider);
-                    const cost = costItem?.total_cost || 0;
+                  sortedAndFilteredProviders.map((prov, idx) => {
+                    const reqPct = Math.round(((prov.total_requests || 0) / maxProvRequests) * 100);
                     const totalTokens = prov.total_tokens || (prov.input_tokens + prov.output_tokens);
-                    const costPerMillion = totalTokens > 0 ? (cost / (totalTokens / 1_000_000)) : 0;
-                    const shareOfTotal = totals.requests > 0 
-                      ? ((prov.total_requests / totals.requests) * 100).toFixed(1)
-                      : 0;
-                    const progressWidth = `${Math.min(100, Math.max(4, (prov.total_requests / maxProvRequests) * 100))}%`;
-
                     return (
-                      <tr
-                        key={prov.provider || idx}
-                        className="hover:bg-surface-2/40 transition group"
-                      >
-                        <td className="py-3 px-4 text-center">
+                      <tr key={prov.provider || idx} className="hover:bg-surface-2/40 transition-colors">
+                        <td className="py-3 px-3 text-center">
                           <RankBadge rank={idx + 1} />
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <ProviderIcon providerId={prov.provider} className="size-6 rounded" />
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <ProviderIcon provider={prov.raw_provider || prov.provider} className="size-5" />
                             <div className="flex flex-col">
-                              <span className="font-semibold text-text-main capitalize text-sm">
-                                {prov.provider.replace(/^openai-compatible-chat-/, 'Custom Endpoint')}
-                              </span>
-                              <span className="text-[10px] font-mono text-text-muted">
-                                {prov.provider}
-                              </span>
+                              <span className="font-bold text-text-main text-xs">{prov.provider}</span>
+                              {prov.raw_provider && prov.raw_provider !== prov.provider && (
+                                <span className="text-[10px] text-text-muted font-mono truncate max-w-[180px]">
+                                  {prov.raw_provider}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3 px-3 text-right">
                           <div className="flex flex-col items-end gap-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-text-main tabular-nums">
-                                {prov.total_requests.toLocaleString()}
-                              </span>
-                              <span className="text-[10px] text-text-muted font-medium">
-                                ({shareOfTotal}%)
-                              </span>
-                            </div>
-                            <div className="w-24 h-1.5 bg-surface-2 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-primary rounded-full transition-all duration-300"
-                                style={{ width: progressWidth }}
-                              />
+                            <span className="font-bold font-mono text-text-main">{fmtNum(prov.total_requests)}</span>
+                            <div className="w-16 h-1 bg-surface-2 rounded-full overflow-hidden border border-border-subtle">
+                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${reqPct}%` }} />
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-right font-mono text-text-muted tabular-nums">
-                          {fmtNum(prov.input_tokens)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono text-text-main tabular-nums font-medium">
-                          {fmtNum(prov.output_tokens)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono text-primary font-bold tabular-nums">
-                          {fmtNum(totalTokens)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-500 tabular-nums">
-                          {fmtCost(cost)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono text-text-muted tabular-nums">
-                          {costPerMillion > 0 ? fmtCost(costPerMillion) : "-"}
-                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(prov.input_tokens)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(prov.output_tokens)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-text-main">{fmtNum(totalTokens)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-500">{fmtCost(prov.total_cost)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtCost(prov.cost_per_request)}</td>
                       </tr>
                     );
                   })
