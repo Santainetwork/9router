@@ -31,6 +31,7 @@ const navItems = [
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/custom-credits", label: "Custom Credits", icon: "account_balance_wallet" },
   { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions" },
+  { href: "/dashboard/error-response", label: "Custom Error Response", icon: "warning" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },

@@ -72,7 +72,12 @@ const DEFAULT_SETTINGS = {
   // Basic Chat metadata footer. Admin-controlled and shared by every dashboard user.
   responseFooterBasicChatEnabled: true,
   responseFooterBasicChatFields: { ...DEFAULT_FOOTER_FIELDS },
-  responseFooterBasicChatText: "",
+  // Custom Error Response: format OpenAI error with user-defined messages
+  customErrorResponseEnabled: false,
+  customError429Message: "Server upstream sedang padat atau mencapai batas paralel. Silakan coba beberapa saat lagi.",
+  customError502Message: "Server upstream tidak merespons atau mengalami koneksi timeout. Silakan coba lagi.",
+  customError503Message: "Layanan upstream sedang tidak tersedia saat ini. Silakan coba beberapa saat lagi.",
+  customErrorFallbackMessage: "Terjadi kendala pada penyedia AI upstream. Silakan coba beberapa saat lagi.",
 };
 
 async function readRaw() {

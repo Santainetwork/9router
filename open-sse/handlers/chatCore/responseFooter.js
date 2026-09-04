@@ -171,6 +171,9 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
       // Last resort: stream ended with no recognizable terminal line.
       emitFooter(controller);
     },
+    cancel(reason) {
+      try { readable.cancel(reason); } catch {}
+    },
   });
 
   return readable.pipeThrough(transform);
@@ -218,6 +221,9 @@ export function rewriteStreamModel(readable, requestedModel) {
     },
     flush(controller) {
       if (buffer) controller.enqueue(encoder.encode(rewriteLine(buffer)));
+    },
+    cancel(reason) {
+      try { readable.cancel(reason); } catch {}
     },
   });
 

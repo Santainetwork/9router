@@ -267,6 +267,18 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
+  // Transient parallel/concurrency limits should not lock the model or mark connection unavailable
+  const isParallelLimit = typeof errorText === "string" && (
+    errorText.includes("parallel_limit") ||
+    errorText.includes("permintaan sekaligus") ||
+    errorText.includes("parallel request") ||
+    errorText.includes("concurrency limit")
+  );
+  if (isParallelLimit) {
+    log.info("AUTH", `${conn?.name || connectionId.slice(0, 8)} hit upstream parallel limit (not locking model)`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
   const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
 

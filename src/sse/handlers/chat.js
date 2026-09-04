@@ -17,6 +17,7 @@ import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { resolveCustomErrorMessage } from "open-sse/utils/customErrorResolver.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
@@ -78,12 +79,14 @@ export async function handleChat(request, clientRawRequest = null) {
 }
 
 async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeReleaseApiKey) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    log.warn("CHAT", "Invalid JSON body");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  let body = clientRawRequest?.body;
+  if (!body) {
+    try {
+      body = await request.json();
+    } catch {
+      log.warn("CHAT", "Invalid JSON body");
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+    }
   }
 
   // Build clientRawRequest for logging (if not provided)
@@ -140,7 +143,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
 
   // Per-API-key RPM rate limit + concurrency + queue (applies whenever a known key is presented).
   {
-    const gateResult = await enforceApiKeyRateLimit(apiKey, clientRawRequest?.responseMetadata);
+    const gateResult = await enforceApiKeyRateLimit(apiKey, clientRawRequest?.responseMetadata, request?.signal);
     if (gateResult?.limited) return gateResult.limited;
     if (gateResult?.release) {
       setReleaseApiKey(gateResult.release);
@@ -328,14 +331,20 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
         log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
+        const chatSettings = await getSettings().catch(() => null);
+        const finalMsg = resolveCustomErrorMessage(status, `[${provider}/${model}] ${errorMsg}`, chatSettings);
+        return unavailableResponse(status, finalMsg, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+        const chatSettings = await getSettings().catch(() => null);
+        const finalMsg = resolveCustomErrorMessage(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`, chatSettings);
+        return errorResponse(HTTP_STATUS.NOT_FOUND, finalMsg);
       }
       log.warn("CHAT", "No more accounts available", { provider });
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      const chatSettings = await getSettings().catch(() => null);
+      const finalMsg = resolveCustomErrorMessage(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable", chatSettings);
+      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, finalMsg);
     }
 
     // Account selection shown in the unified "▶" line (acc:...)
@@ -351,6 +360,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           concurrency: credentials.concurrency,
           timeoutMs: credentials.queueTimeoutMs,
           onQueued: () => { queued = true; },
+          signal: request?.signal,
         });
         if (releaseFn) releaseProvider = releaseFn;
         if (responseMetadata && queued) {
@@ -364,7 +374,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             : `[${provider}/${model}] connection ${credentials.connectionName} exceeded limit (${credentials.rpm} rpm / ${credentials.concurrency} concurrent)`;
           log.warn("RATELIMIT", reason);
           try { releaseApiKey(); } catch {}
-          return unavailableResponse(HTTP_STATUS.RATE_LIMITED, e.message || `[${provider}/${model}] provider rate limit / concurrency exceeded`, e.retryAfter, `${e.retryAfter}s`);
+          const chatSettings = await getSettings().catch(() => null);
+          const finalMsg = resolveCustomErrorMessage(HTTP_STATUS.RATE_LIMITED, e.message || `[${provider}/${model}] provider rate limit / concurrency exceeded`, chatSettings);
+          return unavailableResponse(HTTP_STATUS.RATE_LIMITED, finalMsg, e.retryAfter, `${e.retryAfter}s`);
         }
         try { releaseApiKey(); } catch {}
         throw e;
@@ -402,6 +414,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       connectionId: credentials.connectionId,
       userAgent,
       apiKey,
+      settings: chatSettings,
       ccFilterNaming: !!chatSettings.ccFilterNaming,
       rtkEnabled: !!chatSettings.rtkEnabled,
       headroomEnabled: !!chatSettings.headroomEnabled,

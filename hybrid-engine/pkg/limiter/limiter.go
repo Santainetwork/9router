@@ -155,6 +155,10 @@ func (e *Engine) Acquire(ctx context.Context, scope, key string, rpm, concurrenc
 
 	select {
 	case <-w.done:
+		if ctx.Err() != nil {
+			e.Release(scope, key)
+			return ctx.Err()
+		}
 		return nil
 	case <-timer.C:
 		b.mu.Lock()

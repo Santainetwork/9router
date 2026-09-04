@@ -62,6 +62,7 @@ const QUICK_LINKS = [
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
   { href: "/dashboard/rpm-tester", label: "Rate & Concurrency Tester", icon: "speed" },
   { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions" },
+  { href: "/dashboard/error-response", label: "Custom Error Response", icon: "warning" },
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { href: "/dashboard/custom-credits", label: "Custom Credits", icon: "account_balance_wallet" },
   { href: "/dashboard/usage", label: "Usage & Logs", icon: "bar_chart" },

@@ -18,7 +18,7 @@ import * as log from "../utils/logger.js";
  * @returns {Promise<Response|null>} a 429 Response when the limit is exceeded,
  *          otherwise null (caller proceeds).
  */
-export async function enforceApiKeyRateLimit(apiKey, queueMeta = null) {
+export async function enforceApiKeyRateLimit(apiKey, queueMeta = null, signal = null) {
   if (!apiKey) return { limited: null, release: () => {} };
 
   const limits = await getApiKeyLimits(apiKey);
@@ -37,6 +37,7 @@ export async function enforceApiKeyRateLimit(apiKey, queueMeta = null) {
       concurrency: limits.concurrency,
       timeoutMs: limits.queueTimeoutMs,
       onQueued: () => { queued = true; },
+      signal,
     });
     if (queueMeta && queued) {
       queueMeta.apiKeyQueued = true;
