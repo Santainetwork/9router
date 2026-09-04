@@ -362,10 +362,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       try {
         let queued = false;
         const startedAt = Date.now();
+        const timeoutMs = Number(credentials.queueTimeoutMs) > 0 ? credentials.queueTimeoutMs : 60000;
         const releaseFn = await acquire("provider", credentials.connectionId, {
           rpm: credentials.rpm,
           concurrency: credentials.concurrency,
-          timeoutMs: credentials.queueTimeoutMs,
+          timeoutMs,
           onQueued: () => { queued = true; },
           signal: request?.signal,
         });

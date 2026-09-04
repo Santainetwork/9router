@@ -32,10 +32,11 @@ export async function enforceApiKeyRateLimit(apiKey, queueMeta = null, signal = 
   try {
     let queued = false;
     const startedAt = Date.now();
+    const timeoutMs = Number(limits.queueTimeoutMs) > 0 ? limits.queueTimeoutMs : 60000;
     const releaseFn = await acquire("apikey", limits.id, {
       rpm: limits.rpm,
       concurrency: limits.concurrency,
-      timeoutMs: limits.queueTimeoutMs,
+      timeoutMs,
       onQueued: () => { queued = true; },
       signal,
     });
