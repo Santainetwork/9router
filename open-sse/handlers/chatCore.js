@@ -308,7 +308,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
   log?.debug?.("REQUEST", `${provider.toUpperCase()} | ${model} | ${msgCount} msgs`);
 
+  let releaseCalled = false;
   const callRelease = () => {
+    if (releaseCalled) return;
+    releaseCalled = true;
     if (typeof onRelease === "function") {
       try { onRelease(); } catch {}
     }
@@ -441,6 +444,7 @@ upstreamModel,
 
   // Provider returned error
   if (!providerResponse.ok) {
+    callRelease();
     trackPendingRequest(model, provider, connectionId, false, true);
     const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });

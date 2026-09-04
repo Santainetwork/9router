@@ -49,6 +49,35 @@ function attachBasicChatMetadata(response, metadata) {
  * Format detection and translation handled by translator
  */
 export async function handleChat(request, clientRawRequest = null) {
+  let releaseApiKey = () => {};
+  let apiKeyReleased = false;
+  const safeReleaseApiKey = () => {
+    if (apiKeyReleased) return;
+    apiKeyReleased = true;
+    try { releaseApiKey(); } catch {}
+  };
+
+  if (clientRawRequest) {
+    clientRawRequest._releaseApiKey = safeReleaseApiKey;
+  }
+
+  try {
+    const res = await doHandleChat(request, clientRawRequest, (rel) => {
+      releaseApiKey = rel;
+    }, safeReleaseApiKey);
+
+    const contentType = res?.headers?.get ? (res.headers.get("content-type") || "") : "";
+    if (!contentType.includes("text/event-stream")) {
+      safeReleaseApiKey();
+    }
+    return res;
+  } catch (err) {
+    safeReleaseApiKey();
+    throw err;
+  }
+}
+
+async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeReleaseApiKey) {
   let body;
   try {
     body = await request.json();
@@ -110,28 +139,36 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Per-API-key RPM rate limit + concurrency + queue (applies whenever a known key is presented).
-  let releaseApiKey = () => {};
   {
-    const gateResult = await enforceApiKeyRateLimit(apiKey, clientRawRequest.responseMetadata);
+    const gateResult = await enforceApiKeyRateLimit(apiKey, clientRawRequest?.responseMetadata);
     if (gateResult?.limited) return gateResult.limited;
-    if (gateResult?.release) releaseApiKey = gateResult.release;
+    if (gateResult?.release) {
+      setReleaseApiKey(gateResult.release);
+    }
   }
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
+    try { releaseApiKey(); } catch {}
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {
     const denied = await enforceApiKeyAccess(apiKey, modelStr);
-    if (denied) return denied;
+    if (denied) {
+      try { releaseApiKey(); } catch {}
+      return denied;
+    }
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
-  if (bypassResponse) return bypassResponse.response || bypassResponse;
+  if (bypassResponse) {
+    try { releaseApiKey(); } catch {}
+    return bypassResponse.response || bypassResponse;
+  }
 
   const requiredCapabilities = detectRequiredCapabilities(body);
 
@@ -261,6 +298,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       });
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
+    try { releaseApiKey(); } catch {}
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   }
 
@@ -285,6 +323,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
+      try { releaseApiKey(); } catch {}
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
@@ -324,12 +363,20 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             ? `[${provider}/${model}] connection ${credentials.connectionName} reached ${credentials.concurrency} max concurrency`
             : `[${provider}/${model}] connection ${credentials.connectionName} exceeded limit (${credentials.rpm} rpm / ${credentials.concurrency} concurrent)`;
           log.warn("RATELIMIT", reason);
+          try { releaseApiKey(); } catch {}
           return unavailableResponse(HTTP_STATUS.RATE_LIMITED, e.message || `[${provider}/${model}] provider rate limit / concurrency exceeded`, e.retryAfter, `${e.retryAfter}s`);
         }
+        try { releaseApiKey(); } catch {}
         throw e;
       }
     }
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+    if (!refreshedCredentials || !refreshedCredentials.accessToken) {
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = "Failed to refresh credentials";
+      try { releaseProvider(); } catch {}
+      continue;
+    }
     if (responseMetadata) responseMetadata.connectionName = credentials.connectionName || "";
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
@@ -390,7 +437,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onRelease: () => {
         try { releaseProvider(); } catch {}
-        try { releaseApiKey(); } catch {}
+        try { clientRawRequest?._releaseApiKey?.(); } catch {}
       },
       onCredentialsRefreshed: async (newCreds) => {
         await updateProviderCredentials(credentials.connectionId, {
@@ -430,9 +477,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
+      try { releaseProvider(); } catch {}
       continue;
     }
 
+    try { releaseProvider(); } catch {}
+    try { clientRawRequest?._releaseApiKey?.(); } catch {}
     return result.response;
   }
 }

@@ -197,6 +197,45 @@ export function _stats(scope, key) {
   };
 }
 
+// Manual or auto reset of stuck concurrency slots.
+export function resetActiveConcurrency(scope, key) {
+  const b = scopes.get(scope)?.get(key);
+  if (!b) return 0;
+  const before = b.activeConcurrency;
+  b.activeConcurrency = 0;
+  pump(scope, key);
+  return before;
+}
+
+export function resetAllActiveConcurrency() {
+  let cleared = 0;
+  for (const [scope, m] of scopes.entries()) {
+    for (const [key, b] of m.entries()) {
+      cleared += b.activeConcurrency || 0;
+      b.activeConcurrency = 0;
+      pump(scope, key);
+    }
+  }
+  return cleared;
+}
+
+export function getBucketDetail(scope, key) {
+  const b = scopes.get(scope)?.get(key);
+  if (!b) return { count: 0, activeConcurrency: 0, queued: 0, inWindow: 0 };
+  const t = now();
+  const inWindow = t - b.windowStart < WINDOW_MS ? b.count : 0;
+  const queued = b.queue.filter((w) => !w.settled).length;
+  return {
+    count: b.count,
+    activeConcurrency: b.activeConcurrency || 0,
+    queued,
+    inWindow,
+    rpm: b.rpmLast || 0,
+    concurrency: b.concurrencyLast || 0,
+    windowResetInMs: Math.max(0, WINDOW_MS - (t - b.windowStart)),
+  };
+}
+
 // Admin introspection: snapshot of every bucket that currently has waiters or in-flight requests.
 export function queueSnapshot() {
   const t = now();

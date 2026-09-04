@@ -515,6 +515,22 @@ export function createSSEStream(options = {}) {
         console.log("Error in flush:", error);
         finalizeStream();
       }
+    },
+    cancel(reason) {
+      try {
+        if (onStreamComplete) {
+          onStreamComplete({
+            content: accumulatedContent,
+            providerContent,
+            thinking: accumulatedThinking,
+            aborted: true,
+          }, state?.usage, ttftAt);
+        }
+      } catch (err) {
+        console.log("Error in stream cancel:", err);
+      } finally {
+        finalizeStream();
+      }
     }
   });
 }
