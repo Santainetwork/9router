@@ -18,6 +18,8 @@ export class RateLimitTimeoutError extends Error {
   }
 }
 
+import { goAcquire, goRelease, isGoLimiterActive } from "./hybrid/goLimiterClient.js";
+
 // scope -> Map<key, bucket>
 const scopes = new Map();
 
@@ -142,6 +144,25 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
     return Promise.resolve(() => {});
   }
 
+  // Check hybrid Go engine
+  if (process.env.ENABLE_GO_HYBRID === "true") {
+    return goAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued }).then((rel) => {
+      if (rel) return rel;
+      // Fallback to JS implementation below
+      return jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency });
+    }).catch((err) => {
+      if (err instanceof RateLimitTimeoutError || err.status === 429) {
+        throw err;
+      }
+      // Network/IPC error: fallback to JS
+      return jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency });
+    });
+  }
+
+  return jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency });
+}
+
+function jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency }) {
   const b = bucketFor(scope, key);
   b.rpmLast = rpm;
   b.concurrencyLast = concurrency;
