@@ -52,7 +52,7 @@ const QUICK_LINKS = [
   { href: "/dashboard/api-keys", label: "Key Access Control", icon: "tune" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
-  { href: "/dashboard/rpm-tester", label: "RPM Tester", icon: "speed" },
+  { href: "/dashboard/rpm-tester", label: "Rate & Concurrency Tester", icon: "speed" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },

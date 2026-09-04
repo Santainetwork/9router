@@ -11,10 +11,9 @@
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { toFiniteNumber } from "./shared.js";
 
-import { getProviderNodes } from "@/lib/localDb";
-
 async function getProviderNodesSafe() {
   try {
+    const { getProviderNodes } = await import("../../../src/lib/db/repos/nodesRepo.js");
     return await getProviderNodes();
   } catch {
     return [];
@@ -128,6 +127,7 @@ async function fetchAmanaiCredits(baseUrl, apiKey, proxyOptions) {
       url,
       {
         method: "GET",
+        signal: AbortSignal.timeout(4000),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           Accept: "application/json",
@@ -282,6 +282,7 @@ async function fetchNewApiCredits(baseUrl, apiKey, proxyOptions) {
       url,
       {
         method: "GET",
+        signal: AbortSignal.timeout(4000),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           Accept: "application/json",
@@ -327,6 +328,7 @@ async function fetchUserBalanceCredits(baseUrl, apiKey, proxyOptions) {
       url,
       {
         method: "GET",
+        signal: AbortSignal.timeout(4000),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           Accept: "application/json",
@@ -367,6 +369,7 @@ async function fetchCustomUrlCredits(url, jsonPath, apiKey, proxyOptions) {
       url,
       {
         method: "GET",
+        signal: AbortSignal.timeout(4000),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           Accept: "application/json",

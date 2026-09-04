@@ -1,9 +1,9 @@
 "use client";
 
-// RPM Tester — fires a burst of real requests at /v1/chat/completions (or
-// /v1/messages) using a chosen API key so you can watch the per-API-key /
-// per-provider RPM gate reject with 429 + Retry-After. This hits the SAME gated
-// endpoint external clients use, so it is a true end-to-end test of the limiter.
+// Rate & Concurrency Tester — fires real requests at /v1/chat/completions (or
+// /v1/messages) using a chosen API key so you can watch both per-API-key /
+// per-provider RPM limits AND in-flight simultaneous concurrency limits reject
+// with 429 + Retry-After.
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { cn } from "@/shared/utils/cn";
@@ -15,27 +15,28 @@ const ENDPOINTS = [
 
 function statusColor(status) {
   if (status === 0) return "text-neutral-400";
-  if (status === 429) return "text-amber-500";
+  if (status === 429) return "text-amber-500 font-semibold";
   if (status >= 200 && status < 300) return "text-emerald-500";
   if (status >= 400) return "text-red-500";
   return "text-neutral-500";
 }
 
-function buildBody(endpointId, model, prompt) {
+function buildBody(endpointId, model, prompt, isStream) {
   if (endpointId === "anthropic") {
-    return { model, max_tokens: 16, messages: [{ role: "user", content: prompt }] };
+    return { model, max_tokens: 16, messages: [{ role: "user", content: prompt }], stream: isStream };
   }
-  return { model, messages: [{ role: "user", content: prompt }], max_tokens: 16, stream: false };
+  return { model, messages: [{ role: "user", content: prompt }], max_tokens: 16, stream: isStream };
 }
 
 export default function RpmTesterPageClient() {
   const [keys, setKeys] = useState([]);
   const [keyId, setKeyId] = useState("");
+  const [testType, setTestType] = useState("concurrency"); // "concurrency" | "rpm"
   const [endpointId, setEndpointId] = useState("openai");
   const [model, setModel] = useState("openai/gpt-4o-mini");
   const [prompt, setPrompt] = useState("ping");
   const [count, setCount] = useState(6);
-  const [concurrent, setConcurrent] = useState(true);
+  const [useStream, setUseStream] = useState(true);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState([]);
   const [loadError, setLoadError] = useState("");
@@ -66,21 +67,31 @@ export default function RpmTesterPageClient() {
             Authorization: `Bearer ${selectedKey.key}`,
             ...(endpointId === "anthropic" ? { "anthropic-version": "2023-06-01" } : {}),
           },
-          body: JSON.stringify(buildBody(endpointId, model, prompt)),
+          body: JSON.stringify(buildBody(endpointId, model, prompt, useStream)),
         });
         const ms = Math.round(performance.now() - t0);
         const retryAfter = res.headers.get("retry-after");
         let detail = "";
+        let isConcurrencyLimit = false;
+        let isRpmLimit = false;
+
         if (!res.ok) {
           const data = await res.json().catch(() => null);
           detail = data?.error?.message || data?.error || data?.message || "";
+          if (res.status === 429) {
+            if (/concurrency/i.test(detail)) {
+              isConcurrencyLimit = true;
+            } else {
+              isRpmLimit = true;
+            }
+          }
         }
-        return { i, status: res.status, ms, retryAfter, detail };
+        return { i, status: res.status, ms, retryAfter, detail, isConcurrencyLimit, isRpmLimit };
       } catch (e) {
-        return { i, status: 0, ms: Math.round(performance.now() - t0), retryAfter: null, detail: String(e?.message || e) };
+        return { i, status: 0, ms: Math.round(performance.now() - t0), retryAfter: null, detail: String(e?.message || e), isConcurrencyLimit: false, isRpmLimit: false };
       }
     },
-    [endpoint, endpointId, model, prompt, selectedKey],
+    [endpoint, endpointId, model, prompt, selectedKey, useStream],
   );
 
   const run = useCallback(async () => {
@@ -88,13 +99,23 @@ export default function RpmTesterPageClient() {
     setLoadError("");
     setRunning(true);
     const n = Math.max(1, Math.min(100, Number(count) || 1));
-    const pending = Array.from({ length: n }, (_, i) => ({ i, status: null, ms: null, retryAfter: null, detail: "" }));
+    const pending = Array.from({ length: n }, (_, i) => ({
+      i,
+      status: null,
+      ms: null,
+      retryAfter: null,
+      detail: "",
+      isConcurrencyLimit: false,
+      isRpmLimit: false,
+    }));
     setResults(pending);
 
-    if (concurrent) {
+    if (testType === "concurrency") {
+      // Fire all simultaneous requests instantly at once to test concurrent in-flight limit
       const settled = await Promise.all(pending.map((p) => fireOne(p.i)));
       setResults(settled.sort((a, b) => a.i - b.i));
     } else {
+      // Sequential rapid bursts to observe RPM limits
       const acc = [];
       for (const p of pending) {
         // eslint-disable-next-line no-await-in-loop
@@ -104,64 +125,106 @@ export default function RpmTesterPageClient() {
       }
     }
     setRunning(false);
-  }, [selectedKey, count, concurrent, fireOne]);
+  }, [selectedKey, count, testType, fireOne]);
 
   const summary = useMemo(() => {
     const done = results.filter((r) => r.status !== null);
     const ok = done.filter((r) => r.status >= 200 && r.status < 300).length;
-    const limited = done.filter((r) => r.status === 429).length;
-    const other = done.length - ok - limited;
-    return { total: done.length, ok, limited, other };
+    const concurrency429 = done.filter((r) => r.status === 429 && r.isConcurrencyLimit).length;
+    const rpm429 = done.filter((r) => r.status === 429 && !r.isConcurrencyLimit).length;
+    const total429 = done.filter((r) => r.status === 429).length;
+    const other = done.length - ok - total429;
+    return { total: done.length, ok, concurrency429, rpm429, total429, other };
   }, [results]);
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">RPM Tester</h1>
-        <p className="text-sm text-neutral-500 mt-1">
-          Fire a burst of real requests at the gated endpoint to watch per-key / per-provider RPM limits reject with 429 + Retry-After.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border pb-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-text-main">Rate & Concurrency Tester</h1>
+          <p className="text-sm text-text-muted mt-1">
+            Test live limits for RPM (Requests per Minute) and in-flight simultaneous Concurrency against gateway endpoints.
+          </p>
+        </div>
+        <div className="inline-flex rounded-lg border border-border p-1 bg-surface-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => { setTestType("concurrency"); setCount(6); }}
+            className={cn(
+              "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+              testType === "concurrency" ? "bg-primary text-primary-foreground shadow-sm" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            ⚡ Concurrency Test (Simultaneous)
+          </button>
+          <button
+            type="button"
+            onClick={() => { setTestType("rpm"); setCount(10); }}
+            className={cn(
+              "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+              testType === "rpm" ? "bg-primary text-primary-foreground shadow-sm" : "text-text-muted hover:text-text-main"
+            )}
+          >
+            ⏱️ RPM Burst Test (Per-Minute)
+          </button>
+        </div>
       </div>
 
-      {loadError && <div className="text-sm text-red-500">{loadError}</div>}
+      {loadError && <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded-lg border border-red-500/20">{loadError}</div>}
+
+      {/* Selected Key Parameters Card */}
+      {selectedKey && (
+        <div className="rounded-xl border border-border bg-surface-1 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-text-main">{selectedKey.name || "API Key"}</span>
+              <span className="font-mono text-text-muted">{selectedKey.key.slice(0, 10)}...</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cn("px-2 py-0.5 rounded-md font-mono font-medium border", selectedKey.concurrency > 0 ? "bg-blue-500/10 text-blue-500 border-blue-500/30" : "bg-surface-2 text-text-muted border-border")}>
+                Max Concurrency: {selectedKey.concurrency > 0 ? selectedKey.concurrency : "Unlimited"}
+              </span>
+              <span className={cn("px-2 py-0.5 rounded-md font-mono font-medium border", selectedKey.rpm > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/30" : "bg-surface-2 text-text-muted border-border")}>
+                RPM Limit: {selectedKey.rpm > 0 ? `${selectedKey.rpm}/min` : "Unlimited"}
+              </span>
+              <span className="px-2 py-0.5 rounded-md font-mono text-text-muted bg-surface-2 border border-border">
+                Queue Timeout: {selectedKey.queueTimeoutMs > 0 ? `${selectedKey.queueTimeoutMs}ms` : "0 (Immediate Reject)"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">API key</span>
-          <select className="border rounded px-2 py-1.5 bg-transparent" value={keyId} onChange={(e) => setKeyId(e.target.value)}>
+          <span className="text-text-muted font-medium">API Key</span>
+          <select className="border border-border rounded-lg px-3 py-2 bg-input text-text-main focus:outline-none focus:ring-1 focus:ring-primary" value={keyId} onChange={(e) => setKeyId(e.target.value)}>
             {keys.length === 0 && <option value="">No active keys</option>}
             {keys.map((k) => (
               <option key={k.id} value={k.id}>
-                {k.name || k.id} {k.rpm > 0 ? `· rpm=${k.rpm}` : "· no limit"}{k.queueTimeoutMs > 0 ? ` · queue=${k.queueTimeoutMs}ms` : ""}
+                {k.name || k.id} {k.concurrency > 0 ? `· conc=${k.concurrency}` : ""}{k.rpm > 0 ? ` · rpm=${k.rpm}` : ""}
               </option>
             ))}
           </select>
-          {selectedKey && (
-            <span className="text-xs text-neutral-400">
-              {selectedKey.rpm > 0
-                ? `Limit ${selectedKey.rpm}/min` + (selectedKey.queueTimeoutMs > 0 ? `, queue up to ${selectedKey.queueTimeoutMs}ms` : ", no queue (immediate 429)")
-                : "This key has no RPM limit — set one on Endpoint & Key to see 429s."}
-            </span>
-          )}
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">Endpoint</span>
-          <select className="border rounded px-2 py-1.5 bg-transparent" value={endpointId} onChange={(e) => setEndpointId(e.target.value)}>
+          <span className="text-text-muted font-medium">Target Endpoint</span>
+          <select className="border border-border rounded-lg px-3 py-2 bg-input text-text-main focus:outline-none focus:ring-1 focus:ring-primary" value={endpointId} onChange={(e) => setEndpointId(e.target.value)}>
             {ENDPOINTS.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
           </select>
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">Model</span>
-          <input className="border rounded px-2 py-1.5 bg-transparent" value={model} onChange={(e) => setModel(e.target.value)} placeholder="provider/model" />
-          <div className="flex flex-wrap items-center gap-1.5 mt-1">
-            {["deepseek-v4-flash", "claude-sonnet-4-6", "qwen3.8-max", "gemini-3.7-flash-high"].map((preset) => (
+          <span className="text-text-muted font-medium">Model</span>
+          <input className="border border-border rounded-lg px-3 py-2 bg-input text-text-main focus:outline-none focus:ring-1 focus:ring-primary" value={model} onChange={(e) => setModel(e.target.value)} placeholder="provider/model" />
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            {["qmodel_38max", "deepseek-v4-flash", "claude-sonnet-4-6", "qwen3.8-max", "gemini-3.7-flash-high"].map((preset) => (
               <button
                 key={preset}
                 type="button"
                 onClick={() => setModel(preset)}
-                className={`text-[10px] px-2 py-0.5 rounded-full border transition ${model === preset ? "border-primary bg-primary/10 text-primary" : "border-border-subtle bg-surface-2 text-text-muted hover:text-text-main"}`}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition ${model === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-surface-2 text-text-muted hover:text-text-main"}`}
               >
                 {preset}
               </button>
@@ -170,50 +233,110 @@ export default function RpmTesterPageClient() {
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">Prompt</span>
-          <input className="border rounded px-2 py-1.5 bg-transparent" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          <span className="text-text-muted font-medium">Prompt</span>
+          <input className="border border-border rounded-lg px-3 py-2 bg-input text-text-main focus:outline-none focus:ring-1 focus:ring-primary" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">Requests</span>
-          <input type="number" min={1} max={100} className="border rounded px-2 py-1.5 bg-transparent w-28" value={count} onChange={(e) => setCount(e.target.value)} />
+          <span className="text-text-muted font-medium">
+            {testType === "concurrency" ? "Simultaneous In-Flight Requests" : "Burst Requests Count"}
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            className="border border-border rounded-lg px-3 py-2 bg-input text-text-main focus:outline-none focus:ring-1 focus:ring-primary w-32"
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+          />
+          <span className="text-[11px] text-text-muted">
+            {testType === "concurrency"
+              ? "All requests will fire simultaneously in Promise.all() to trigger concurrency cap."
+              : "Requests will fire in rapid sequence to verify RPM threshold."}
+          </span>
         </label>
 
-        <label className="flex items-center gap-2 text-sm mt-6">
-          <input type="checkbox" checked={concurrent} onChange={(e) => setConcurrent(e.target.checked)} />
-          <span>Fire concurrently (burst)</span>
-        </label>
+        <div className="flex flex-col justify-end gap-2 text-sm">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={useStream} onChange={(e) => setUseStream(e.target.checked)} className="rounded text-primary" />
+            <span className="text-text-main text-xs">Enable SSE Streaming (holds slot longer for concurrency test)</span>
+          </label>
+        </div>
       </div>
 
-      <button
-        onClick={run}
-        disabled={running || !selectedKey}
-        className={cn("px-4 py-2 rounded text-white text-sm", running || !selectedKey ? "bg-neutral-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700")}
-      >
-        {running ? "Running…" : `Send ${Math.max(1, Math.min(100, Number(count) || 1))} request(s)`}
-      </button>
+      <div>
+        <button
+          onClick={run}
+          disabled={running || !selectedKey}
+          className={cn(
+            "px-5 py-2.5 rounded-lg text-white font-medium text-sm transition shadow-sm",
+            running || !selectedKey ? "bg-neutral-500 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+          )}
+        >
+          {running ? "Sending Requests..." : `🚀 Run ${testType === "concurrency" ? "Concurrency" : "RPM"} Test (${Math.max(1, Math.min(100, Number(count) || 1))} requests)`}
+        </button>
+      </div>
 
       {results.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex gap-4 text-sm">
-            <span>Total: <b>{summary.total}</b></span>
-            <span className="text-emerald-500">2xx: <b>{summary.ok}</b></span>
-            <span className="text-amber-500">429: <b>{summary.limited}</b></span>
-            <span className="text-red-500">other: <b>{summary.other}</b></span>
-          </div>
-          <div className="border rounded divide-y text-sm">
-            <div className="grid grid-cols-[3rem_5rem_5rem_7rem_1fr] gap-2 px-3 py-1.5 font-medium text-neutral-500">
-              <span>#</span><span>status</span><span>ms</span><span>retry-after</span><span>detail</span>
+        <div className="space-y-4 pt-2">
+          {/* Summary KPI Pills */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+            <div className="p-3 rounded-lg border border-border bg-surface-1">
+              <p className="text-text-muted">Total Requests</p>
+              <p className="text-lg font-bold text-text-main mt-0.5">{summary.total}</p>
             </div>
-            {results.map((r) => (
-              <div key={r.i} className="grid grid-cols-[3rem_5rem_5rem_7rem_1fr] gap-2 px-3 py-1.5">
-                <span className="text-neutral-400">{r.i + 1}</span>
-                <span className={cn("font-mono", statusColor(r.status ?? -1))}>{r.status === null ? "…" : r.status}</span>
-                <span className="text-neutral-500">{r.ms ?? ""}</span>
-                <span className="text-amber-500">{r.retryAfter || ""}</span>
-                <span className="text-neutral-500 truncate" title={r.detail}>{r.detail}</span>
-              </div>
-            ))}
+            <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
+              <p className="text-emerald-600 font-medium">2xx OK</p>
+              <p className="text-lg font-bold text-emerald-600 mt-0.5">{summary.ok}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-500/5">
+              <p className="text-blue-600 font-medium">429 Concurrency Cap</p>
+              <p className="text-lg font-bold text-blue-600 mt-0.5">{summary.concurrency429}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+              <p className="text-amber-600 font-medium">429 RPM Limit</p>
+              <p className="text-lg font-bold text-amber-600 mt-0.5">{summary.rpm429}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/5 col-span-2 sm:col-span-1">
+              <p className="text-red-500 font-medium">Other Errors</p>
+              <p className="text-lg font-bold text-red-500 mt-0.5">{summary.other}</p>
+            </div>
+          </div>
+
+          <div className="border border-border rounded-xl overflow-hidden shadow-sm bg-surface-1">
+            <div className="grid grid-cols-[3rem_5.5rem_5rem_7rem_1fr] gap-2 px-3 py-2 bg-surface-2 border-b border-border font-medium text-xs text-text-muted">
+              <span>#</span>
+              <span>HTTP Status</span>
+              <span>Duration</span>
+              <span>Retry-After</span>
+              <span>Gateway Response</span>
+            </div>
+            <div className="divide-y divide-border text-xs max-h-96 overflow-y-auto">
+              {results.map((r) => (
+                <div key={r.i} className="grid grid-cols-[3rem_5.5rem_5rem_7rem_1fr] gap-2 px-3 py-2 items-center hover:bg-surface-2/50 transition-colors">
+                  <span className="text-text-muted font-mono">{r.i + 1}</span>
+                  <div>
+                    <span className={cn("font-mono px-1.5 py-0.5 rounded text-[11px]", statusColor(r.status ?? -1))}>
+                      {r.status === null ? "..." : r.status}
+                    </span>
+                  </div>
+                  <span className="text-text-muted font-mono">{r.ms !== null ? `${r.ms}ms` : "-"}</span>
+                  <span className="text-amber-500 font-mono">{r.retryAfter || "-"}</span>
+                  <div className="truncate" title={r.detail}>
+                    {r.isConcurrencyLimit ? (
+                      <span className="text-blue-500 font-medium bg-blue-500/10 px-1.5 py-0.5 rounded text-[10px] mr-1.5">
+                        CONCURRENCY CAP
+                      </span>
+                    ) : r.isRpmLimit ? (
+                      <span className="text-amber-500 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px] mr-1.5">
+                        RPM RATE LIMIT
+                      </span>
+                    ) : null}
+                    <span className="text-text-muted font-mono text-[11px]">{r.detail || (r.status >= 200 && r.status < 300 ? "OK" : "-")}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
