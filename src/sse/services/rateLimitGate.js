@@ -79,7 +79,23 @@ export function isModelAllowedBy(allowedModels, model) {
   if (allow.length === 0) return true;
   const requested = String(model || "").trim();
   if (!requested) return false;
-  return allow.some((entry) => String(entry || "").trim() === requested);
+
+  return allow.some((entry) => {
+    const pattern = String(entry || "").trim();
+    if (!pattern) return false;
+    if (pattern === "*" || pattern === requested) return true;
+
+    // Wildcard prefix matching e.g. "hx/*" matches "hx/claude-sonnet-5", "hx/x-ai/grok-4.6"
+    if (pattern.endsWith("/*")) {
+      const pfx = pattern.slice(0, -2);
+      if (requested.startsWith(pfx + "/")) return true;
+    } else if (pattern.endsWith("*")) {
+      const pfx = pattern.slice(0, -1);
+      if (requested.startsWith(pfx)) return true;
+    }
+
+    return false;
+  });
 }
 
 /**

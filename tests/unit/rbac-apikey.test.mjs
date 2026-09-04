@@ -7,12 +7,24 @@
 // logic changes.
 import assert from "node:assert";
 
-// EXACT match: an allowlist entry permits only that exact model string.
+// EXACT or WILDCARD match: e.g. "hx/*" permits any model under "hx/".
 function modelPermitted(allow, model) {
   if (!allow || allow.length === 0) return true; // empty allowlist = all models
   const requested = String(model || "").trim();
   if (!requested) return false;
-  return allow.some((entry) => String(entry || "").trim() === requested);
+  return allow.some((entry) => {
+    const pattern = String(entry || "").trim();
+    if (!pattern) return false;
+    if (pattern === "*" || pattern === requested) return true;
+    if (pattern.endsWith("/*")) {
+      const pfx = pattern.slice(0, -2);
+      if (requested.startsWith(pfx + "/")) return true;
+    } else if (pattern.endsWith("*")) {
+      const pfx = pattern.slice(0, -1);
+      if (requested.startsWith(pfx)) return true;
+    }
+    return false;
+  });
 }
 
 function quotaExhausted(tokenQuota, used) {
@@ -40,6 +52,12 @@ function main() {
   assert.equal(modelPermitted(["openai/gpt-4o"], "anthropic/claude-3"), false);
   // Multiple allowed.
   assert.equal(modelPermitted(["a/x", "b/y"], "b/y"), true);
+
+  // Wildcard allowlist: "hx/*" permits any model with "hx/" prefix
+  assert.equal(modelPermitted(["hx/*"], "hx/claude-sonnet-5"), true);
+  assert.equal(modelPermitted(["hx/*"], "hx/x-ai/grok-4.6"), true);
+  assert.equal(modelPermitted(["hx/*"], "ag/gemini-3.8-flash"), false);
+  assert.equal(modelPermitted(["*"], "any/model/at/all"), true);
 
   // Quota: 0 = unlimited.
   assert.equal(quotaExhausted(0, 999999), false);
