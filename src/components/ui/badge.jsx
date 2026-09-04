@@ -18,6 +18,14 @@ const badgeVariants = cva(
           "border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
         warning:
           "border-transparent bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+        neoYellow:
+          "rounded-md border-2 border-black dark:border-white bg-yellow-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+        neoCyan:
+          "rounded-md border-2 border-black dark:border-white bg-cyan-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+        neoPink:
+          "rounded-md border-2 border-black dark:border-white bg-pink-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+        neoGreen:
+          "rounded-md border-2 border-black dark:border-white bg-emerald-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
       },
     },
     defaultVariants: {

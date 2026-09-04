@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const PERIODS = [
@@ -22,25 +20,38 @@ function fmt(n) {
   return String(Math.round(v));
 }
 
-function StatBox({ label, value, sub, color = "default" }) {
-  const colorMap = {
-    default: "text-text-main",
-    primary: "text-primary",
-    emerald: "text-emerald-500",
-    amber: "text-amber-500",
-  };
-
+function NeoBox({ children, className = "", bg = "bg-white dark:bg-neutral-900" }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-2/30 p-3.5 flex flex-col justify-between">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+    <div
+      className={cn(
+        "rounded-2xl border-2 border-black dark:border-white/90 shadow-[4px_4px_0px_#000] dark:shadow-[4px_4px_0px_#fff] p-6 transition-all",
+        bg,
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function NeoStat({ label, value, sub, bg = "bg-yellow-400 text-black", border = "border-black" }) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border-2 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] p-4 flex flex-col justify-between",
+        border,
+        bg
+      )}
+    >
+      <span className="text-[11px] font-black uppercase tracking-wider opacity-85">
         {label}
       </span>
-      <div className="mt-1.5">
-        <p className={cn("text-2xl font-bold tabular-nums tracking-tight font-mono", colorMap[color])}>
+      <div className="mt-2">
+        <p className="text-2xl font-black tabular-nums tracking-tight font-mono">
           {value}
         </p>
         {sub ? (
-          <p className="mt-0.5 text-[11px] text-text-muted font-medium">{sub}</p>
+          <p className="mt-0.5 text-[11px] font-bold opacity-80">{sub}</p>
         ) : null}
       </div>
     </div>
@@ -89,118 +100,127 @@ export default function UsageCheckPage() {
   const models = data ? Object.entries(data.usage.byModel || {}) : [];
 
   return (
-    <div className="min-h-screen bg-bg text-text-main px-4 py-12 flex flex-col items-center justify-start">
-      <div className="w-full max-w-2xl flex flex-col gap-6">
+    <div className="min-h-screen bg-[#FFFDF9] dark:bg-[#0B0F19] text-black dark:text-white px-4 py-12 selection:bg-yellow-400 selection:text-black">
+      <div className="mx-auto flex max-w-2xl flex-col gap-6">
         {/* Header Section */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 self-start">
-            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20">
-              9Router Gateway
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            <span className="rounded-md border-2 border-black dark:border-white bg-yellow-400 text-black px-2.5 py-0.5 text-xs font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+              9Router AI
             </span>
-            <span className="px-2 py-0.5 text-[11px] font-mono text-text-muted rounded-full bg-surface-2 border border-border">
+            <span className="rounded-md border-2 border-black dark:border-white bg-cyan-400 text-black px-2 py-0.5 text-[11px] font-black uppercase tracking-wide shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
               Self-Service Portal
             </span>
           </div>
 
-          <h1 className="text-3xl font-bold tracking-tight text-text-main mt-1 flex items-center gap-2.5">
-            <span className="material-symbols-outlined text-primary text-[32px]">manage_search</span>
-            API Usage & Quota Check
+          <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tight mt-1">
+            Usage & Quota Check
           </h1>
-          <p className="text-sm text-text-muted">
-            Inspect real-time token quotas, concurrency parameters, and model permissions for your API key.
+          <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300">
+            Paste your API key below to inspect real-time token quotas, concurrency parameters, and model permissions.
           </p>
         </div>
 
         {/* Input Card */}
-        <div className="rounded-2xl border border-border bg-surface p-6 shadow-xs space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-              Your API Key
-            </label>
-            <Input
-              type="password"
-              placeholder="sk-..."
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && check()}
-              className="font-mono text-sm"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            {/* Period Selector */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-text-muted mr-1">
-                Period:
-              </span>
-              {PERIODS.map((p) => (
-                <button
-                  key={p.d}
-                  type="button"
-                  onClick={() => {
-                    setDays(p.d);
-                    if (data) check(p.d);
-                  }}
-                  className={cn(
-                    "px-3 py-1 text-xs font-semibold rounded-lg transition-all",
-                    days === p.d
-                      ? "bg-primary text-white shadow-xs"
-                      : "bg-surface-2 text-text-muted hover:text-text-main"
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
+        <NeoBox bg="bg-white dark:bg-neutral-900">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-black uppercase tracking-wide text-neutral-800 dark:text-neutral-200">
+                Your API Key
+              </label>
+              <input
+                type="password"
+                placeholder="sk-..."
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && check()}
+                aria-label="API key"
+                className="w-full rounded-xl border-2 border-black dark:border-white bg-[#FAF8F5] dark:bg-neutral-800 px-3.5 py-2.5 text-sm font-mono font-bold text-black dark:text-white placeholder:text-neutral-400 focus:outline-none focus:bg-yellow-50 dark:focus:bg-neutral-800 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] transition-all"
+              />
             </div>
 
-            <Button
-              type="button"
-              onClick={() => check()}
-              disabled={loading}
-              className="gap-2"
-            >
-              {loading ? "Checking..." : "Inspect Usage"}
-            </Button>
-          </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              {/* Period Selector Buttons */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-black uppercase mr-1 text-neutral-600 dark:text-neutral-400">
+                  Window:
+                </span>
+                {PERIODS.map((p) => (
+                  <button
+                    key={p.d}
+                    type="button"
+                    onClick={() => {
+                      setDays(p.d);
+                      if (data) check(p.d);
+                    }}
+                    className={cn(
+                      "px-3 py-1 text-xs font-black rounded-lg border-2 border-black dark:border-white transition-all shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+                      days === p.d
+                        ? "bg-cyan-400 text-black translate-x-[-1px] translate-y-[-1px]"
+                        : "bg-white dark:bg-neutral-800 text-black dark:text-white hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
 
-          {error ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-500 font-medium">
-              {error}
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => check()}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-black dark:border-white bg-yellow-400 hover:bg-yellow-300 text-black font-black uppercase text-xs px-5 py-2.5 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] hover:translate-x-[-1px] hover:translate-y-[-1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {loading ? "Checking..." : "Inspect Usage ⚡"}
+              </button>
             </div>
-          ) : null}
-        </div>
+
+            {error ? (
+              <div className="rounded-xl border-2 border-black dark:border-red-400 bg-red-400 text-black p-3 text-xs font-black shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff]">
+                ⚠️ {error}
+              </div>
+            ) : null}
+          </div>
+        </NeoBox>
 
         {/* Results Section */}
         {data ? (
           <div className="flex flex-col gap-6 animate-in fade-in duration-200">
-            {/* Overview Card */}
-            <div className="rounded-2xl border border-border bg-surface p-6 shadow-xs space-y-5">
-              <div className="flex items-center justify-between border-b border-border/70 pb-3">
+            {/* Key Information & Metrics Card */}
+            <NeoBox bg="bg-white dark:bg-neutral-900">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b-2 border-black dark:border-white/30 pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="size-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-sm font-bold text-text-main">
+                  <span className="inline-block h-3 w-3 rounded-full bg-emerald-400 border-2 border-black" />
+                  <span className="text-sm font-black uppercase tracking-wide text-black dark:text-white">
                     Key: {data.key?.name || "Active Key"}
                   </span>
                 </div>
-                <span className="text-xs font-mono text-text-muted">
+                <span className="rounded-md border-2 border-black dark:border-white bg-[#FAF8F5] dark:bg-neutral-800 px-2 py-0.5 text-xs font-mono font-bold text-neutral-800 dark:text-neutral-200 shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
                   {data.key?.keyMasked || ""}
                 </span>
               </div>
 
-              {/* Token Quota Progress */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-medium">
-                  <span className="text-text-muted">All-Time Token Quota</span>
+              {/* Token Quota Progress Bar */}
+              <div className="mb-6 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs font-black">
+                  <span className="text-neutral-800 dark:text-neutral-200 uppercase">
+                    All-Time Token Quota
+                  </span>
                   <span className="font-mono">
                     {fmt(used)} {quota > 0 ? `/ ${fmt(quota)} (${pct}%)` : "(Unlimited)"}
                   </span>
                 </div>
                 {quota > 0 ? (
-                  <div className="h-2 w-full rounded-full bg-border overflow-hidden">
+                  <div className="h-4 w-full rounded-lg border-2 border-black dark:border-white bg-[#FAF8F5] dark:bg-neutral-800 p-0.5 shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
                     <div
                       className={cn(
-                        "h-full rounded-full transition-all",
-                        pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-primary"
+                        "h-full rounded-md border-r-2 border-black transition-all",
+                        pct >= 100
+                          ? "bg-red-500"
+                          : pct >= 80
+                          ? "bg-amber-400"
+                          : "bg-emerald-400"
                       )}
                       style={{ width: `${pct}%` }}
                     />
@@ -208,49 +228,49 @@ export default function UsageCheckPage() {
                 ) : null}
               </div>
 
-              {/* 3 Stats in Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <StatBox
-                  label={`Requests (${days}d)`}
+              {/* 3 NeoStats Grid */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <NeoStat
+                  label={`Requests (${days}D)`}
                   value={fmt(data.usage?.requestsInPeriod || 0)}
                   sub="HTTP requests processed"
-                  color="primary"
+                  bg="bg-cyan-300 text-black"
                 />
-                <StatBox
-                  label={`Tokens (${days}d)`}
+                <NeoStat
+                  label={`Tokens (${days}D)`}
                   value={fmt(data.usage?.tokensInPeriod || 0)}
                   sub="Prompt + completion"
-                  color="default"
+                  bg="bg-pink-300 text-black"
                 />
-                <StatBox
+                <NeoStat
                   label="Remaining Quota"
                   value={remaining != null ? fmt(remaining) : "Unl"}
-                  sub={remaining != null ? "Tokens left" : "No hard ceiling"}
-                  color={remaining != null && remaining < 10000 ? "amber" : "emerald"}
+                  sub={remaining != null ? "Tokens available" : "No hard limit"}
+                  bg="bg-yellow-300 text-black"
                 />
               </div>
 
-              {/* Rate Limits Pills */}
-              <div className="rounded-xl border border-border bg-surface-2/20 p-4 space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                  Governed Traffic Throttles
+              {/* Traffic Throttle Pills */}
+              <div className="mt-5 rounded-xl border-2 border-black dark:border-white/80 bg-[#FAF8F5] dark:bg-neutral-800 p-4 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff]">
+                <p className="text-[11px] font-black uppercase tracking-wider text-black dark:text-neutral-200 mb-2">
+                  Traffic Throttle Parameters
                 </p>
-                <div className="flex flex-wrap gap-2 text-xs font-mono">
-                  <span className="px-2.5 py-1 rounded-lg bg-surface border border-border text-text-main">
-                    RPM: <strong className="text-primary">{data.limits?.requestsPerMinute || "Unlimited"}</strong>
+                <div className="flex flex-wrap gap-2 text-xs font-mono font-black">
+                  <span className="rounded-md border-2 border-black dark:border-white bg-white dark:bg-neutral-900 px-2.5 py-1 text-black dark:text-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                    RPM: {data.limits?.requestsPerMinute || "Unlimited"}
                   </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-surface border border-border text-text-main">
-                    Concurrency: <strong className="text-primary">{data.limits?.concurrency || "Unlimited"}</strong>
+                  <span className="rounded-md border-2 border-black dark:border-white bg-white dark:bg-neutral-900 px-2.5 py-1 text-black dark:text-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                    Concurrency: {data.limits?.concurrency || "Unlimited"}
                   </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-surface border border-border text-text-main">
-                    Queue Buffer: <strong className="text-primary">{data.limits?.queueTimeoutMs ? `${data.limits.queueTimeoutMs}ms` : "60s (default)"}</strong>
+                  <span className="rounded-md border-2 border-black dark:border-white bg-white dark:bg-neutral-900 px-2.5 py-1 text-black dark:text-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                    Queue: {data.limits?.queueTimeoutMs ? `${data.limits.queueTimeoutMs}ms` : "60s"}
                   </span>
                 </div>
               </div>
 
               {/* Allowed Models */}
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+              <div className="mt-4">
+                <p className="text-[11px] font-black uppercase tracking-wider text-black dark:text-neutral-200 mb-2">
                   Allowed Models
                 </p>
                 {data.limits?.allowedModels && data.limits.allowedModels.length > 0 ? (
@@ -259,10 +279,10 @@ export default function UsageCheckPage() {
                       <span
                         key={m}
                         className={cn(
-                          "px-2 py-0.5 rounded-md text-xs font-mono border",
+                          "rounded-md border-2 border-black dark:border-white px-2 py-0.5 text-xs font-mono font-bold shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
                           m.includes("*")
-                            ? "bg-primary/10 border-primary/20 text-primary font-semibold"
-                            : "bg-surface-2 border-border text-text-main"
+                            ? "bg-yellow-400 text-black"
+                            : "bg-white dark:bg-neutral-800 text-black dark:text-white"
                         )}
                       >
                         {m}
@@ -270,40 +290,40 @@ export default function UsageCheckPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-text-muted">
-                    All models permitted (unrestricted access).
-                  </p>
+                  <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">
+                    All models permitted (unrestricted).
+                  </span>
                 )}
               </div>
-            </div>
+            </NeoBox>
 
-            {/* Model Breakdown */}
+            {/* Model Usage Breakdown Card */}
             {models.length > 0 ? (
-              <div className="rounded-2xl border border-border bg-surface p-6 shadow-xs space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Usage by Model ({days}d)
+              <NeoBox bg="bg-white dark:bg-neutral-900">
+                <p className="text-xs font-black uppercase tracking-wider text-black dark:text-white mb-3">
+                  Token Breakdown by Model ({days}D)
                 </p>
-                <div className="divide-y divide-border/60">
+                <div className="flex flex-col divide-y-2 divide-black dark:divide-white/20">
                   {models.map(([modelName, modelUsage]) => (
                     <div key={modelName} className="flex items-center justify-between py-2.5 text-xs">
-                      <span className="font-mono font-semibold text-text-main truncate max-w-[260px]">
+                      <span className="font-mono font-bold truncate max-w-[240px] text-black dark:text-white">
                         {modelName}
                       </span>
-                      <div className="text-right font-mono">
-                        <span className="font-bold text-text-main">{fmt(modelUsage.total_tokens || 0)} tok</span>
-                        <span className="text-text-muted ml-2">({modelUsage.requests || 0} reqs)</span>
+                      <div className="text-right font-mono font-black">
+                        <span>{fmt(modelUsage.total_tokens || 0)} tok</span>
+                        <span className="ml-2 opacity-60">({modelUsage.requests || 0} reqs)</span>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </NeoBox>
             ) : null}
           </div>
         ) : null}
 
-        {/* Footer info */}
-        <div className="text-center text-xs text-text-muted pt-4">
-          <p>Powered by SantaiNetwork 9Router AI Gateway</p>
+        {/* Footer */}
+        <div className="text-center text-xs font-bold text-neutral-600 dark:text-neutral-400 pt-2">
+          SantaiNetwork 9Router Gateway
         </div>
       </div>
     </div>
