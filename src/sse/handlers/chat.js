@@ -108,6 +108,9 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
       headers: Object.fromEntries(request.headers.entries())
     };
   }
+  if (clientRawRequest && typeof safeReleaseApiKey === "function") {
+    clientRawRequest._releaseApiKey = safeReleaseApiKey;
+  }
   if (isBasicChatRequest(clientRawRequest)) clientRawRequest.responseMetadata ||= {};
   // Claude Code marks a 1M-context request as `<model>[1m]`; the marker matches
   // no combo, alias or provider/model pair, so it must not reach resolution.
@@ -196,7 +199,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, modelStr);
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, modelStr, safeReleaseApiKey);
         },
         log,
         comboName: modelStr,
@@ -211,7 +214,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
       body,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, modelStr),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, modelStr, safeReleaseApiKey),
         adapterAdded
       ),
       log,
@@ -231,7 +234,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, modelStr),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, modelStr, safeReleaseApiKey),
         adapterAdded
       ),
       log,
@@ -240,13 +243,17 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
     });
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, safeReleaseApiKey);
 }
 
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, displayModel = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, displayModel = null, safeReleaseApiKey = null) {
+  const doReleaseApiKey = () => {
+    try { clientRawRequest?._releaseApiKey?.(); } catch {}
+    try { safeReleaseApiKey?.(); } catch {}
+  };
   // The model id to REPORT to the client (response.model + footer). For combos
   // this is the combo name the caller sent, not the resolved member model.
   const reportModel = displayModel || modelStr;
@@ -301,7 +308,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       });
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
-    try { releaseApiKey(); } catch {}
+    doReleaseApiKey();
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   }
 
@@ -326,7 +333,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
-      try { releaseApiKey(); } catch {}
+      doReleaseApiKey();
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
@@ -373,12 +380,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             ? `[${provider}/${model}] connection ${credentials.connectionName} reached ${credentials.concurrency} max concurrency`
             : `[${provider}/${model}] connection ${credentials.connectionName} exceeded limit (${credentials.rpm} rpm / ${credentials.concurrency} concurrent)`;
           log.warn("RATELIMIT", reason);
-          try { releaseApiKey(); } catch {}
+          doReleaseApiKey();
           const chatSettings = await getSettings().catch(() => null);
           const finalMsg = resolveCustomErrorMessage(HTTP_STATUS.RATE_LIMITED, e.message || `[${provider}/${model}] provider rate limit / concurrency exceeded`, chatSettings);
           return unavailableResponse(HTTP_STATUS.RATE_LIMITED, finalMsg, e.retryAfter, `${e.retryAfter}s`);
         }
-        try { releaseApiKey(); } catch {}
+        doReleaseApiKey();
         throw e;
       }
     }
@@ -451,7 +458,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onRelease: () => {
         try { releaseProvider(); } catch {}
-        try { clientRawRequest?._releaseApiKey?.(); } catch {}
+        doReleaseApiKey();
       },
       onCredentialsRefreshed: async (newCreds) => {
         await updateProviderCredentials(credentials.connectionId, {
@@ -484,7 +491,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Do not persist a modelLock_* for this path.
     const shouldFallback = provider === "antigravity" && quotaResetMs
       ? true
-      : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+      : (await markAccountUnavailable(credentials.connectionId, result.status, result.rawError || result.error, provider, model, resetsAtMs)).shouldFallback;
 
     if (shouldFallback) {
       log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
@@ -496,7 +503,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     try { releaseProvider(); } catch {}
-    try { clientRawRequest?._releaseApiKey?.(); } catch {}
+    doReleaseApiKey();
     return result.response;
   }
 }

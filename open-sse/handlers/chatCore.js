@@ -408,7 +408,7 @@ upstreamModel,
       log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${model} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
     }
     const customMsg = resolveCustomErrorMessage(HTTP_STATUS.BAD_GATEWAY, errMsg, settings);
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, customMsg);
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, customMsg, null, errMsg);
   }
 
   // Handle 401/403 - try token refresh (skip for noAuth providers)
@@ -475,7 +475,7 @@ upstreamModel,
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     const customMsg = resolveCustomErrorMessage(statusCode, errMsg, settings);
-    return createErrorResult(statusCode, customMsg, resetsAtMs);
+    return createErrorResult(statusCode, customMsg, resetsAtMs, errMsg);
   }
 
   const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log, responseFooterEnabled, responseFooterText, requestedModel, upstreamModel };

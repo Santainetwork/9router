@@ -230,6 +230,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   }
 }
 
+export function isParallelLimitError(errorText) {
+  if (typeof errorText !== "string") return false;
+  const lower = errorText.toLowerCase();
+  return (
+    lower.includes("parallel_limit") ||
+    lower.includes("permintaan sekaligus") ||
+    lower.includes("request paralel") ||
+    lower.includes("parallel request") ||
+    lower.includes("concurrency limit")
+  );
+}
+
 /**
  * Mark account+model as unavailable — locks modelLock_${model} in DB.
  * All errors (429, 401, 5xx, etc.) lock per model, not per account.
@@ -268,13 +280,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
   // Transient parallel/concurrency limits should not lock the model or mark connection unavailable
-  const isParallelLimit = typeof errorText === "string" && (
-    errorText.includes("parallel_limit") ||
-    errorText.includes("permintaan sekaligus") ||
-    errorText.includes("parallel request") ||
-    errorText.includes("concurrency limit")
-  );
-  if (isParallelLimit) {
+  if (isParallelLimitError(errorText)) {
     log.info("AUTH", `${conn?.name || connectionId.slice(0, 8)} hit upstream parallel limit (not locking model)`);
     return { shouldFallback: true, cooldownMs: 0 };
   }

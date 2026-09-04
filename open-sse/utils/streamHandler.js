@@ -169,8 +169,8 @@ export function createDisconnectAwareStream(transformStream, streamController, o
 
     cancel(reason) {
       streamController.handleDisconnect(reason || "cancelled");
-      reader.cancel();
-      writer.abort();
+      try { reader.cancel(reason).catch(() => {}); } catch {}
+      try { writer.abort(reason).catch(() => {}); } catch {}
     }
   });
 }

@@ -88,6 +88,18 @@ export async function parseUpstreamError(response, executor = null) {
   return { statusCode: response.status, message: finalMessage };
 }
 
+export function isParallelLimitError(errorText) {
+  if (typeof errorText !== "string") return false;
+  const lower = errorText.toLowerCase();
+  return (
+    lower.includes("parallel_limit") ||
+    lower.includes("permintaan sekaligus") ||
+    lower.includes("request paralel") ||
+    lower.includes("parallel request") ||
+    lower.includes("concurrency limit")
+  );
+}
+
 /**
  * Create error result for chatCore handler
  * @param {number} statusCode - HTTP status code
@@ -95,11 +107,12 @@ export async function parseUpstreamError(response, executor = null) {
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs) {
+export function createErrorResult(statusCode, message, resetsAtMs, rawError = null) {
   return {
     success: false,
     status: statusCode,
     error: message,
+    rawError: rawError || message,
     resetsAtMs,
     response: errorResponse(statusCode, message)
   };

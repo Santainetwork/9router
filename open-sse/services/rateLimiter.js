@@ -157,6 +157,10 @@ function createReleaseFn(scope, key, hasConcurrency) {
 export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, onQueued, signal } = {}) {
   const hasRpm = Number(rpm) > 0;
   const hasConcurrency = Number(concurrency) > 0;
+  // Normalize seconds to milliseconds if user provided small integer (e.g. 10s, 60s)
+  const effectiveTimeoutMs = Number(timeoutMs) > 0 && Number(timeoutMs) <= 300
+    ? Number(timeoutMs) * 1000
+    : Number(timeoutMs) || 0;
 
   // If client request is already aborted, reject immediately
   if (signal && signal.aborted) {
@@ -170,20 +174,20 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
 
   // Check hybrid Go engine
   if (process.env.ENABLE_GO_HYBRID === "true") {
-    return goAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued }).then((rel) => {
+    return goAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued }).then((rel) => {
       if (rel) return rel;
       // Fallback to JS implementation below
-      return jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency, signal });
+      return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
     }).catch((err) => {
       if (err instanceof RateLimitTimeoutError || err.status === 429) {
         throw err;
       }
       // Network/IPC error: fallback to JS
-      return jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency, signal });
+      return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
     });
   }
 
-  return jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency, signal });
+  return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
 }
 
 function jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, hasConcurrency, signal }) {
