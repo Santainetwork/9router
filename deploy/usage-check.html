@@ -386,7 +386,6 @@
     var remaining = data.usage ? data.usage.tokensRemaining : null;
     var pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
     var barColor = pct >= 100 ? "var(--red)" : pct >= 80 ? "var(--yellow)" : "var(--emerald)";
-    var models = (data.usage && data.usage.byModel) ? Object.entries(data.usage.byModel) : [];
     var pdays = (data.usage && data.usage.period && data.usage.period.days) || days;
 
     var html = '<div style="display:flex;flex-direction:column;gap:24px;">';
@@ -459,26 +458,6 @@
     html += '</div>';
 
     html += '</div>'; // End Summary Card
-
-    // Model Usage Breakdown Card
-    if (models.length > 0) {
-      html += '<div class="neo-card">';
-      html += '<div style="font-size:12px;font-weight:900;text-transform:uppercase;border-bottom:2px solid var(--border);padding-bottom:10px;">Token Breakdown by Model (' + esc(pdays) + 'D)</div>';
-      html += '<div>';
-      models.forEach(function (pair) {
-        var name = pair[0];
-        var info = pair[1];
-        var tok = (info && info.total_tokens) || (info && (info.promptTokens + info.completionTokens)) || 0;
-        var reqs = (info && (info.requests || info.count)) || 0;
-        html += '<div class="model-row">';
-        html += '<span style="font-family:monospace;font-weight:700;">' + esc(name) + '</span>';
-        html += '<span style="font-family:monospace;font-weight:900;">' + fmt(tok) + ' tok <span style="font-weight:700;opacity:0.6;margin-left:6px;">(' + reqs + ' reqs)</span></span>';
-        html += '</div>';
-      });
-      html += '</div>';
-      html += '</div>';
-    }
-
     html += '</div>';
     resEl.innerHTML = html;
   }

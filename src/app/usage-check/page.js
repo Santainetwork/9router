@@ -97,7 +97,6 @@ export default function UsageCheckPage() {
   const used = data?.usage?.tokensUsedAllTime || 0;
   const remaining = data?.usage?.tokensRemaining;
   const pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
-  const models = data ? Object.entries(data.usage.byModel || {}) : [];
 
   return (
     <div className="min-h-screen bg-[#FFFDF9] dark:bg-[#0B0F19] text-black dark:text-white px-4 py-12 selection:bg-yellow-400 selection:text-black">
@@ -296,28 +295,6 @@ export default function UsageCheckPage() {
                 )}
               </div>
             </NeoBox>
-
-            {/* Model Usage Breakdown Card */}
-            {models.length > 0 ? (
-              <NeoBox bg="bg-white dark:bg-neutral-900">
-                <p className="text-xs font-black uppercase tracking-wider text-black dark:text-white mb-3">
-                  Token Breakdown by Model ({days}D)
-                </p>
-                <div className="flex flex-col divide-y-2 divide-black dark:divide-white/20">
-                  {models.map(([modelName, modelUsage]) => (
-                    <div key={modelName} className="flex items-center justify-between py-2.5 text-xs">
-                      <span className="font-mono font-bold truncate max-w-[240px] text-black dark:text-white">
-                        {modelName}
-                      </span>
-                      <div className="text-right font-mono font-black">
-                        <span>{fmt(modelUsage.total_tokens || 0)} tok</span>
-                        <span className="ml-2 opacity-60">({modelUsage.requests || 0} reqs)</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </NeoBox>
-            ) : null}
           </div>
         ) : null}
 

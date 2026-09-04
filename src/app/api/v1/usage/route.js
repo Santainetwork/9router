@@ -84,6 +84,7 @@ export async function GET(req) {
     },
     limits: {
       requestsPerMinute: info.rpm || 0,        // 0 = unlimited
+      concurrency: info.concurrency || 0,       // 0 = unlimited
       queueTimeoutMs: info.queueTimeoutMs || 0, // 0 = provider default
       tokenQuota: quota,                        // 0 = unlimited
     },

@@ -136,7 +136,7 @@ export async function getApiKeyTokenUsage(key) {
 export async function getApiKeyByKey(key) {
   const db = await getAdapter();
   const row = db.get(
-    `SELECT id, name, isActive, createdAt, rpm, queueTimeoutMs, allowedModels, tokenQuota FROM apiKeys WHERE key = ?`,
+    `SELECT id, name, isActive, createdAt, rpm, concurrency, queueTimeoutMs, allowedModels, tokenQuota FROM apiKeys WHERE key = ?`,
     [key]
   );
   if (!row) return null;
@@ -146,6 +146,7 @@ export async function getApiKeyByKey(key) {
     isActive: row.isActive === 1 || row.isActive === true,
     createdAt: row.createdAt || null,
     rpm: row.rpm ?? 0,
+    concurrency: row.concurrency ?? 0,
     queueTimeoutMs: row.queueTimeoutMs ?? 0,
     allowedModels: parseAllowedModels(row.allowedModels),
     tokenQuota: row.tokenQuota ?? 0,
