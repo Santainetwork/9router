@@ -25,6 +25,7 @@ const navItems = [
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
   { href: "/dashboard/footer", label: "Response Footer", icon: "subtitles" },
   { href: "/dashboard/rpm-tester", label: "Rate & Concurrency Tester", icon: "speed" },
+  { href: "/dashboard/model-probe", label: "Model Identity Probe", icon: "verified_user" },
   { href: "/dashboard/combos", label: "Combo & Vision Adapter", icon: "layers" },
  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },

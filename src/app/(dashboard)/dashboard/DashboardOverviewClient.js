@@ -61,6 +61,7 @@ const QUICK_LINKS = [
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
   { href: "/dashboard/rpm-tester", label: "Rate & Concurrency Tester", icon: "speed" },
+  { href: "/dashboard/model-probe", label: "Model Identity Probe", icon: "verified_user" },
   { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions" },
   { href: "/dashboard/error-response", label: "Custom Error Response", icon: "warning" },
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },
