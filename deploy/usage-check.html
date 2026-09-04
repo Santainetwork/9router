@@ -445,9 +445,10 @@
     // Allowed Models
     html += '<div>';
     html += '<div style="font-size:11px;font-weight:900;text-transform:uppercase;margin-bottom:8px;">Allowed Models</div>';
-    if (data.limits.allowedModels && data.limits.allowedModels.length > 0) {
+    var allowedList = (data.access && data.access.allowedModels) || (data.limits && data.limits.allowedModels) || [];
+    if (allowedList.length > 0) {
       html += '<div>';
-      data.limits.allowedModels.forEach(function (m) {
+      allowedList.forEach(function (m) {
         var isWildcard = m.indexOf("*") !== -1;
         html += '<span class="pill-item ' + (isWildcard ? 'pill-wildcard' : '') + '">' + esc(m) + '</span>';
       });

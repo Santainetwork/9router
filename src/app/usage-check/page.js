@@ -272,27 +272,33 @@ export default function UsageCheckPage() {
                 <p className="text-[11px] font-black uppercase tracking-wider text-black dark:text-neutral-200 mb-2">
                   Allowed Models
                 </p>
-                {data.limits?.allowedModels && data.limits.allowedModels.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.limits.allowedModels.map((m) => (
-                      <span
-                        key={m}
-                        className={cn(
-                          "rounded-md border-2 border-black dark:border-white px-2 py-0.5 text-xs font-mono font-bold shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
-                          m.includes("*")
-                            ? "bg-yellow-400 text-black"
-                            : "bg-white dark:bg-neutral-800 text-black dark:text-white"
-                        )}
-                      >
-                        {m}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">
-                    All models permitted (unrestricted).
-                  </span>
-                )}
+                {(() => {
+                  const allowed = data.access?.allowedModels || data.limits?.allowedModels || [];
+                  if (allowed.length > 0) {
+                    return (
+                      <div className="flex flex-wrap gap-1.5">
+                        {allowed.map((m) => (
+                          <span
+                            key={m}
+                            className={cn(
+                              "rounded-md border-2 border-black dark:border-white px-2 py-0.5 text-xs font-mono font-bold shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+                              m.includes("*")
+                                ? "bg-yellow-400 text-black"
+                                : "bg-white dark:bg-neutral-800 text-black dark:text-white"
+                            )}
+                          >
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  }
+                  return (
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">
+                      All models permitted (unrestricted).
+                    </span>
+                  );
+                })()}
               </div>
             </NeoBox>
           </div>

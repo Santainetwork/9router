@@ -87,6 +87,7 @@ export async function GET(req) {
       concurrency: info.concurrency || 0,       // 0 = unlimited
       queueTimeoutMs: info.queueTimeoutMs || 0, // 0 = provider default
       tokenQuota: quota,                        // 0 = unlimited
+      allowedModels: info.allowedModels || [],  // [] when unrestricted
     },
     access: {
       restricted,                               // false = can use all models
