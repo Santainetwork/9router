@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -54,7 +54,18 @@ export default function CombosPage() {
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const { getCaps } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
+  const [comboSearch, setComboSearch] = useState("");
   const { copied, copy } = useCopyToClipboard();
+
+  const filteredCombos = useMemo(() => {
+    const q = comboSearch.trim().toLowerCase();
+    if (!q) return combos;
+    return combos.filter(
+      (c) =>
+        c.name?.toLowerCase().includes(q) ||
+        (c.models || []).some((m) => m.toLowerCase().includes(q))
+    );
+  }, [combos, comboSearch]);
 
   useEffect(() => {
     fetchData();
@@ -212,23 +223,59 @@ export default function CombosPage() {
         </Button>
       </div>
 
+      {/* Combos List Header & Search */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-text-main">
+            Configured Combos ({filteredCombos.length}{combos.length !== filteredCombos.length ? ` / ${combos.length}` : ""})
+          </span>
+        </div>
+
+        <div className="relative w-full sm:w-72">
+          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
+            search
+          </span>
+          <input
+            type="text"
+            placeholder="Search combo or model..."
+            value={comboSearch}
+            onChange={(e) => setComboSearch(e.target.value)}
+            className="w-full rounded-xl border border-border bg-input pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-text-muted"
+          />
+          {comboSearch ? (
+            <button
+              onClick={() => setComboSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted hover:text-text-main"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+      </div>
+
       {/* Combos List */}
-      {combos.length === 0 ? (
+      {filteredCombos.length === 0 ? (
         <Card>
           <div className="text-center py-12">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
               <span className="material-symbols-outlined text-[32px]">layers</span>
             </div>
-            <p className="text-text-main font-medium mb-1">No combos yet</p>
-            <p className="text-sm text-text-muted mb-4">Create model combos with fallback support</p>
-            <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
-              Create Combo
-            </Button>
+            <p className="text-text-main font-medium mb-1">
+              {comboSearch ? "No combos match your search" : "No combos yet"}
+            </p>
+            <p className="text-sm text-text-muted mb-4">
+              {comboSearch ? "Try adjusting your search query" : "Create model combos with fallback support"}
+            </p>
+            {!comboSearch ? (
+              <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
+                Create Combo
+              </Button>
+            ) : null}
           </div>
         </Card>
       ) : (
-        <div className="flex flex-col gap-4">
-          {combos.map((combo) => (
+        <div className="flex flex-col gap-3">
+          {filteredCombos.map((combo) => (
             <ComboCard
               key={combo.id}
               combo={combo}

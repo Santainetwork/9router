@@ -1,26 +1,41 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Card } from "@/shared/components";
-import { cn } from "@/shared/utils/cn";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 function StatusBadge({ status }) {
   if (status === "full") {
-    return <span className="rounded-full bg-red-500/15 text-red-500 px-2 py-0.5 text-xs font-semibold">Full Cap</span>;
+    return <Badge variant="destructive">Full Cap</Badge>;
   }
   if (status === "queued") {
-    return <span className="rounded-full bg-amber-500/15 text-amber-500 px-2 py-0.5 text-xs font-semibold">Queued</span>;
+    return <Badge variant="warning">Queued</Badge>;
   }
   if (status === "in_flight") {
-    return <span className="rounded-full bg-blue-500/15 text-blue-500 px-2 py-0.5 text-xs font-semibold">In-Flight</span>;
+    return (
+      <Badge variant="default" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+        In-Flight
+      </Badge>
+    );
   }
   if (status === "active") {
-    return <span className="rounded-full bg-emerald-500/15 text-emerald-500 px-2 py-0.5 text-xs font-semibold">Active Window</span>;
+    return <Badge variant="success">Active</Badge>;
   }
   if (status === "disabled") {
-    return <span className="rounded-full bg-neutral-500/15 text-neutral-400 px-2 py-0.5 text-xs">Disabled</span>;
+    return <Badge variant="secondary">Disabled</Badge>;
   }
-  return <span className="rounded-full bg-neutral-500/10 text-text-muted px-2 py-0.5 text-xs">Idle</span>;
+  return <Badge variant="outline" className="text-text-muted">Idle</Badge>;
 }
 
 export default function QueueMonitorClient() {
@@ -54,14 +69,16 @@ export default function QueueMonitorClient() {
     };
     load();
     const id = setInterval(tick, 3000);
-    return () => { alive = false; clearInterval(id); };
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, []);
 
   const handleReset = async (scope = null, key = null) => {
-    if (!confirm(scope ? `Reset concurrency for this ${scope}?` : "Reset all active concurrency slots?")) return;
     setResetting(true);
     try {
-      const body = scope && key ? { action: "reset", scope, key } : { action: "reset-all" };
+      const body = scope && key ? { scope, key } : {};
       const res = await fetch("/api/queue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,362 +87,438 @@ export default function QueueMonitorClient() {
       if (res.ok) {
         await load();
       }
-    } catch (err) {
-      alert("Failed to reset: " + err.message);
+    } catch (e) {
+      console.log("Reset error:", e);
     } finally {
       setResetting(false);
     }
   };
 
-  const keysList = (data?.apiKeys?.items || []).filter((k) =>
-    !search || k.name.toLowerCase().includes(search.toLowerCase()) || k.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const activeBuckets = useMemo(() => {
+    return data?.buckets || data?.activeBuckets || [];
+  }, [data]);
 
-  const providersList = (data?.providers?.items || []).filter((p) =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.provider.toLowerCase().includes(search.toLowerCase())
-  );
+  const keysList = useMemo(() => {
+    if (!data?.apiKeys?.list) return [];
+    let list = data.apiKeys.list;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (k) =>
+          k.name?.toLowerCase().includes(q) ||
+          k.maskedKey?.toLowerCase().includes(q) ||
+          k.id?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [data?.apiKeys?.list, search]);
 
-  const activeBuckets = data?.activeBuckets || [];
+  const providersList = useMemo(() => {
+    if (!data?.providers?.list) return [];
+    let list = data.providers.list;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.provider?.toLowerCase().includes(q) ||
+          p.id?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [data?.providers?.list, search]);
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto py-2">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/70 pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-text-main">Request Queue & Concurrency Limits</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Inspect real-time RPM, simultaneous concurrency, and queued in-flight requests across all keys and providers.
+          <h1 className="text-2xl font-bold tracking-tight text-text-main flex items-center gap-2.5">
+            <span className="material-symbols-outlined text-primary text-[26px]">pending_actions</span>
+            Concurrency & Queue Engine
+          </h1>
+          <p className="text-sm text-text-muted mt-1">
+            Real-time in-flight slot tracking, auto-buffering queues, and emergency slot release controls.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
+
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <Button
+            variant="destructive"
+            size="sm"
             onClick={() => handleReset()}
             disabled={resetting}
-            title="Clear all in-flight concurrency locks if requests are stuck"
-            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-500/20 transition disabled:opacity-50"
+            title="Force-clear all active in-flight slot locks if requests are stuck"
+            className="flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[16px]">restart_alt</span>
-            {resetting ? "Resetting..." : "Reset Concurrency"}
-          </button>
-          <button
-            type="button"
+            {resetting ? "Resetting..." : "Reset All Locks"}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setPaused((p) => !p)}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium hover:bg-surface-2 transition"
+            className="flex items-center gap-1.5"
           >
-            <span className="material-symbols-outlined text-[16px]">{paused ? "play_arrow" : "pause"}</span>
+            <span className="material-symbols-outlined text-[16px]">
+              {paused ? "play_arrow" : "pause"}
+            </span>
             {paused ? "Resume" : "Pause"}
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* KPI Overview Cards */}
+      {/* 4 Bento KPI Overview Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card>
-          <p className="text-xs uppercase tracking-wide text-text-muted">In-Flight Concurrency</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-blue-500">{data?.totalActiveConcurrent ?? "0"}</p>
-          <p className="text-[11px] text-text-muted mt-0.5">active simultaneous streams</p>
-        </Card>
-        <Card>
-          <p className="text-xs uppercase tracking-wide text-text-muted">Total In Queue</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-amber-500">{data?.totalQueued ?? "0"}</p>
-          <p className="text-[11px] text-text-muted mt-0.5">waiting for available slot</p>
-        </Card>
-        <Card>
-          <p className="text-xs uppercase tracking-wide text-text-muted">Active Keys</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-text-main">{data?.apiKeys?.total ?? "…"}</p>
-          <p className="text-[11px] text-text-muted mt-0.5">configured access tokens</p>
-        </Card>
-        <Card>
-          <p className="text-xs uppercase tracking-wide text-text-muted">Monitor Status</p>
-          <p className="mt-1 flex items-center gap-2 text-sm font-semibold">
-            <span className={cn("inline-flex size-2 rounded-full", paused ? "bg-text-subtle" : "bg-green-500 animate-pulse")} />
-            {paused ? "Paused" : "Live Stream (3s)"}
+        <div className="rounded-2xl border border-border bg-surface p-4 shadow-xs">
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">In-Flight Concurrency</p>
+          <p className="mt-1.5 text-2xl font-bold tabular-nums text-blue-500">
+            {data?.totalActiveConcurrent ?? 0}
           </p>
-          <p className="text-[11px] text-text-muted mt-0.5">{updatedAt ? `Synced ${updatedAt.toLocaleTimeString()}` : "…"}</p>
-        </Card>
+          <p className="text-[11px] text-text-muted mt-0.5">active concurrent streams</p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface p-4 shadow-xs">
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">Waiting In Queue</p>
+          <p className="mt-1.5 text-2xl font-bold tabular-nums text-amber-500">
+            {data?.totalQueued ?? 0}
+          </p>
+          <p className="text-[11px] text-text-muted mt-0.5">requests buffered in queue</p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface p-4 shadow-xs">
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">Configured Keys</p>
+          <p className="mt-1.5 text-2xl font-bold tabular-nums text-text-main">
+            {data?.apiKeys?.total ?? "..."}
+          </p>
+          <p className="text-[11px] text-text-muted mt-0.5">governed access tokens</p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface p-4 shadow-xs">
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">Engine Status</p>
+          <div className="mt-1.5 flex items-center gap-2 text-sm font-semibold">
+            <span
+              className={cn(
+                "inline-flex size-2 rounded-full",
+                paused ? "bg-text-subtle" : "bg-emerald-500 animate-pulse"
+              )}
+            />
+            <span className={paused ? "text-text-muted" : "text-emerald-600 dark:text-emerald-400"}>
+              {paused ? "Paused" : "Live Polling (3s)"}
+            </span>
+          </div>
+          <p className="text-[10px] text-text-muted mt-0.5 font-mono">
+            {updatedAt ? `Synced ${updatedAt.toLocaleTimeString()}` : "Syncing..."}
+          </p>
+        </div>
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-400">{error}</div>
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
+          {error}
+        </div>
       ) : null}
 
-      {/* Tab Switcher & Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setActiveTab("all-keys")}
-            className={cn(
-              "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition",
-              activeTab === "all-keys"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-text-muted hover:text-text-main bg-surface-2"
-            )}
-          >
-            🔑 API Keys Limits ({data?.apiKeys?.total || 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("all-providers")}
-            className={cn(
-              "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition",
-              activeTab === "all-providers"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-text-muted hover:text-text-main bg-surface-2"
-            )}
-          >
-            🌐 Provider Connections Limits ({data?.providers?.total || 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("live-queue")}
-            className={cn(
-              "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-1.5",
-              activeTab === "live-queue"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-text-muted hover:text-text-main bg-surface-2"
-            )}
-          >
-            ⚡ Live Waiters ({activeBuckets.length})
-          </button>
+      {/* Main Table Card with Tabs and Search */}
+      <div className="rounded-2xl border border-border bg-surface shadow-xs overflow-hidden flex flex-col">
+        {/* Controls toolbar */}
+        <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-2/20">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setActiveTab("all-keys")}
+              className={cn(
+                "px-3 py-1.5 text-xs font-semibold rounded-xl transition-all",
+                activeTab === "all-keys"
+                  ? "bg-primary text-white shadow-xs"
+                  : "text-text-muted hover:text-text-main bg-surface border border-border"
+              )}
+            >
+              API Keys Limits ({data?.apiKeys?.total || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("all-providers")}
+              className={cn(
+                "px-3 py-1.5 text-xs font-semibold rounded-xl transition-all",
+                activeTab === "all-providers"
+                  ? "bg-primary text-white shadow-xs"
+                  : "text-text-muted hover:text-text-main bg-surface border border-border"
+              )}
+            >
+              Provider Connections ({data?.providers?.total || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("live-queue")}
+              className={cn(
+                "px-3 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5",
+                activeTab === "live-queue"
+                  ? "bg-primary text-white shadow-xs"
+                  : "text-text-muted hover:text-text-main bg-surface border border-border"
+              )}
+            >
+              Live Waiters ({activeBuckets.length})
+            </button>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
+              search
+            </span>
+            <input
+              type="text"
+              placeholder="Search key, provider, id..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-border bg-input pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
         </div>
 
-        <input
-          type="text"
-          placeholder="Filter by name, id, provider..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="rounded-lg border border-border bg-input px-3 py-1.5 text-xs text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-64"
-        />
-      </div>
+        {/* TAB 1: API KEYS */}
+        {activeTab === "all-keys" && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Key Name</TableHead>
+                <TableHead>Token Mask</TableHead>
+                <TableHead className="text-right">RPM</TableHead>
+                <TableHead className="text-right">Capacity & In-Flight</TableHead>
+                <TableHead className="text-right">Buffer Timeout</TableHead>
+                <TableHead className="text-right">Queued</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {keysList.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-text-muted">
+                    No API keys match filter.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                keysList.map((k) => {
+                  const cap = k.concurrency || 0;
+                  const active = k.activeConcurrency || 0;
+                  const pct = cap > 0 ? Math.min(100, Math.round((active / cap) * 100)) : 0;
 
-      {/* TAB 1: ALL API KEYS LIMITS */}
-      {activeTab === "all-keys" && (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border text-text-muted uppercase tracking-wider font-semibold">
-                  <th className="py-2.5 px-3">API Key Name</th>
-                  <th className="py-2.5 px-3">Key Token</th>
-                  <th className="py-2.5 px-3 text-right">RPM Limit</th>
-                  <th className="py-2.5 px-3 text-right">Max Concurrency</th>
-                  <th className="py-2.5 px-3 text-right">Queue Timeout</th>
-                  <th className="py-2.5 px-3 text-right">In-Flight</th>
-                  <th className="py-2.5 px-3 text-right">Queued</th>
-                  <th className="py-2.5 px-3 text-center">Status</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {keysList.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="py-8 text-center text-text-muted">No API keys match filter.</td>
-                  </tr>
-                ) : (
-                  keysList.map((k) => (
-                    <tr key={k.id} className="hover:bg-surface-2/40 transition-colors">
-                      <td className="py-2.5 px-3 font-semibold text-text-main">{k.name}</td>
-                      <td className="py-2.5 px-3 font-mono text-text-muted">{k.maskedKey}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium">
-                        {k.rpm > 0 ? `${k.rpm} /min` : <span className="text-text-subtle">Unlimited</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium">
-                        {k.concurrency > 0 ? (
-                          <span className="text-blue-500 font-bold">{k.concurrency} concurrent</span>
-                        ) : (
-                          <span className="text-text-subtle">Unlimited</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-text-muted">
-                        {k.queueTimeoutMs > 0 ? `${k.queueTimeoutMs}ms` : "0 (Reject)"}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">
-                        {k.activeConcurrency > 0 ? (
-                          <span className="text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">{k.activeConcurrency}</span>
-                        ) : (
-                          <span className="text-text-subtle">0</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">
+                  return (
+                    <TableRow key={k.id}>
+                      <TableCell className="font-semibold text-text-main">
+                        {k.name || "Unnamed"}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-text-muted">
+                        {k.maskedKey}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-medium text-xs">
+                        {k.rpm > 0 ? `${k.rpm} /min` : <span className="text-text-muted">Unl</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-1 min-w-[120px]">
+                          <div className="text-xs font-mono font-bold">
+                            <span className={active > 0 ? "text-blue-500" : "text-text-muted"}>
+                              {active}
+                            </span>
+                            <span className="text-text-muted font-normal"> / {cap > 0 ? cap : "Unl"}</span>
+                          </div>
+                          {cap > 0 ? (
+                            <div className="h-1.5 w-24 rounded-full bg-border overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all",
+                                  pct >= 100 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500"
+                                )}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-text-muted">
+                        {k.queueTimeoutMs > 0
+                          ? `${k.queueTimeoutMs >= 1000 ? Math.round(k.queueTimeoutMs / 1000) : k.queueTimeoutMs}s`
+                          : "60s (def)"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-bold text-xs">
                         {k.queued > 0 ? (
-                          <span className="text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">{k.queued}</span>
+                          <span className="text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                            {k.queued}
+                          </span>
                         ) : (
-                          <span className="text-text-subtle">0</span>
+                          <span className="text-text-muted">0</span>
                         )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
+                      </TableCell>
+                      <TableCell className="text-center">
                         <StatusBadge status={k.status} />
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {k.activeConcurrency > 0 ? (
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {active > 0 ? (
                           <button
                             type="button"
                             onClick={() => handleReset("apikey", k.id)}
-                            className="text-[11px] text-red-500 hover:underline font-medium"
+                            className="text-xs text-red-500 hover:underline font-medium"
                           >
                             Release Slot
                           </button>
                         ) : (
-                          <span className="text-[11px] text-text-subtle">-</span>
+                          <span className="text-xs text-text-muted">-</span>
                         )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        )}
 
-      {/* TAB 2: ALL PROVIDERS LIMITS */}
-      {activeTab === "all-providers" && (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border text-text-muted uppercase tracking-wider font-semibold">
-                  <th className="py-2.5 px-3">Provider</th>
-                  <th className="py-2.5 px-3">Connection Name</th>
-                  <th className="py-2.5 px-3 text-right">RPM Limit</th>
-                  <th className="py-2.5 px-3 text-right">Max Concurrency</th>
-                  <th className="py-2.5 px-3 text-right">Queue Timeout</th>
-                  <th className="py-2.5 px-3 text-right">In-Flight</th>
-                  <th className="py-2.5 px-3 text-right">Queued</th>
-                  <th className="py-2.5 px-3 text-center">Status</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {providersList.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="py-8 text-center text-text-muted">No provider connections match filter.</td>
-                  </tr>
-                ) : (
-                  providersList.map((p) => (
-                    <tr key={p.id} className="hover:bg-surface-2/40 transition-colors">
-                      <td className="py-2.5 px-3 font-semibold uppercase text-text-main">{p.provider}</td>
-                      <td className="py-2.5 px-3 font-medium text-text-muted truncate max-w-[200px]">{p.name}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium">
-                        {p.rpm > 0 ? `${p.rpm} /min` : <span className="text-text-subtle">Unlimited</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium">
-                        {p.concurrency > 0 ? (
-                          <span className="text-blue-500 font-bold">{p.concurrency} concurrent</span>
-                        ) : (
-                          <span className="text-text-subtle">Unlimited</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-text-muted">
-                        {p.queueTimeoutMs > 0 ? `${p.queueTimeoutMs}ms` : "0 (Reject)"}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">
-                        {p.activeConcurrency > 0 ? (
-                          <span className="text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">{p.activeConcurrency}</span>
-                        ) : (
-                          <span className="text-text-subtle">0</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">
+        {/* TAB 2: PROVIDERS */}
+        {activeTab === "all-providers" && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Provider</TableHead>
+                <TableHead>Connection Name</TableHead>
+                <TableHead className="text-right">RPM</TableHead>
+                <TableHead className="text-right">Capacity & In-Flight</TableHead>
+                <TableHead className="text-right">Buffer Timeout</TableHead>
+                <TableHead className="text-right">Queued</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {providersList.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-text-muted">
+                    No provider connections match filter.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                providersList.map((p) => {
+                  const cap = p.concurrency || 0;
+                  const active = p.activeConcurrency || 0;
+                  const pct = cap > 0 ? Math.min(100, Math.round((active / cap) * 100)) : 0;
+
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-semibold uppercase text-text-main text-xs">
+                        {p.provider}
+                      </TableCell>
+                      <TableCell className="font-medium text-text-muted text-xs truncate max-w-[200px]">
+                        {p.name}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-medium text-xs">
+                        {p.rpm > 0 ? `${p.rpm} /min` : <span className="text-text-muted">Unl</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-1 min-w-[120px]">
+                          <div className="text-xs font-mono font-bold">
+                            <span className={active > 0 ? "text-blue-500" : "text-text-muted"}>
+                              {active}
+                            </span>
+                            <span className="text-text-muted font-normal"> / {cap > 0 ? cap : "Unl"}</span>
+                          </div>
+                          {cap > 0 ? (
+                            <div className="h-1.5 w-24 rounded-full bg-border overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all",
+                                  pct >= 100 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500"
+                                )}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-text-muted">
+                        {p.queueTimeoutMs > 0
+                          ? `${p.queueTimeoutMs >= 1000 ? Math.round(p.queueTimeoutMs / 1000) : p.queueTimeoutMs}s`
+                          : "60s (def)"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-bold text-xs">
                         {p.queued > 0 ? (
-                          <span className="text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">{p.queued}</span>
+                          <span className="text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                            {p.queued}
+                          </span>
                         ) : (
-                          <span className="text-text-subtle">0</span>
+                          <span className="text-text-muted">0</span>
                         )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
+                      </TableCell>
+                      <TableCell className="text-center">
                         <StatusBadge status={p.status} />
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {p.activeConcurrency > 0 ? (
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {active > 0 ? (
                           <button
                             type="button"
                             onClick={() => handleReset("provider", p.id)}
-                            className="text-[11px] text-red-500 hover:underline font-medium"
+                            className="text-xs text-red-500 hover:underline font-medium"
                           >
                             Release Slot
                           </button>
                         ) : (
-                          <span className="text-[11px] text-text-subtle">-</span>
+                          <span className="text-xs text-text-muted">-</span>
                         )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        )}
 
-      {/* TAB 3: LIVE WAITERS & ACTIVE BUCKETS */}
-      {activeTab === "live-queue" && (
-        <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-text-main">Currently Active Buckets</h3>
-              <p className="text-xs text-text-muted">Buckets that currently have requests waiting in queue, active in-flight, or used within 60s window.</p>
-            </div>
-            <span className="text-xs rounded-full bg-primary/10 text-primary px-2.5 py-0.5 font-medium font-mono">
-              {activeBuckets.length} buckets active
-            </span>
-          </div>
-
-          {activeBuckets.length === 0 ? (
-            <div className="py-12 text-center">
-              <span className="material-symbols-outlined text-4xl text-text-subtle">done_all</span>
-              <p className="mt-2 text-sm text-text-muted font-medium">All queues are clear. No waiting or in-flight requests right now.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border text-text-muted uppercase tracking-wider font-semibold">
-                    <th className="py-2.5 px-3">Scope</th>
-                    <th className="py-2.5 px-3">Target Name</th>
-                    <th className="py-2.5 px-3 text-right">In-Flight</th>
-                    <th className="py-2.5 px-3 text-right">Queued</th>
-                    <th className="py-2.5 px-3 text-right">60s Window Usage</th>
-                    <th className="py-2.5 px-3 text-right">Window Reset</th>
-                    <th className="py-2.5 px-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+        {/* TAB 3: LIVE WAITERS */}
+        {activeTab === "live-queue" && (
+          <div className="p-4">
+            {activeBuckets.length === 0 ? (
+              <div className="py-12 text-center text-xs text-text-muted border border-dashed border-border rounded-xl">
+                All queues clear. No requests currently waiting.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Target ID</TableHead>
+                    <TableHead className="text-right">Active In-Flight</TableHead>
+                    <TableHead className="text-right">Waiting in Queue</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {activeBuckets.map((b) => (
-                    <tr key={`${b.scope}:${b.key}`} className="hover:bg-surface-2/40 transition-colors">
-                      <td className="py-2.5 px-3 font-mono font-bold uppercase text-primary">{b.scope}</td>
-                      <td className="py-2.5 px-3 font-medium text-text-main truncate max-w-[200px]">{b.label}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-500">
-                        {b.activeConcurrency || 0}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-500">
-                        {b.queued || 0}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-text-muted">
-                        {b.inWindow} reqs
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-text-muted">
-                        {(b.windowResetInMs / 1000).toFixed(1)}s
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
+                    <TableRow key={`${b.scope}-${b.key}`}>
+                      <TableCell className="font-semibold text-xs capitalize">{b.scope}</TableCell>
+                      <TableCell className="font-mono text-xs text-text-muted">{b.key}</TableCell>
+                      <TableCell className="text-right font-mono font-bold text-blue-500 text-xs">
+                        {b.activeConcurrency}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-bold text-amber-500 text-xs">
+                        {b.queued}
+                      </TableCell>
+                      <TableCell className="text-right">
                         <button
                           type="button"
                           onClick={() => handleReset(b.scope, b.key)}
-                          className="text-[11px] text-red-500 hover:underline font-medium"
+                          className="text-xs text-red-500 hover:underline font-medium"
                         >
                           Clear
                         </button>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      )}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
