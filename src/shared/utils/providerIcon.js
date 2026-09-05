@@ -6,6 +6,25 @@ const ICON_ALIASES = {
   "gitlab-duo": "gitlab",
   "vercel-ai-gateway": "vercel",
   "ollama-search": "ollama",
+  "gemini-cli": "gemini",
+  "grok-cli": "xai",
+  "grok-web": "xai",
+  "opencode": "opencode-go",
+  "heraxles": "openai",
+  "hx": "openai",
+  "amanai": "openai",
+  "amai": "openai",
+  "b.ai": "openai",
+  "bai": "openai",
+  "bai-nebula": "openai",
+  "moyra": "openai",
+  "srbyte": "openai",
+  "geraikita": "openai",
+  "lapakvip": "openai",
+  "qwenbaik": "openai",
+  "yogathedev": "openai",
+  "minervax": "openai",
+  "nexus": "openai",
 };
 
 // Runtime only — first 404 remembers id for the whole session
@@ -14,7 +33,14 @@ const failedIds = new Set();
 function normalizeId(providerId) {
   if (!providerId || typeof providerId !== "string") return "";
   const id = providerId.trim().toLowerCase();
-  if (id.startsWith("openai-compatible-") || id.startsWith("custom-embedding-") || id.startsWith("custom-")) {
+  if (
+    id.startsWith("openai-compatible-") ||
+    id.startsWith("anthropic-compatible-") ||
+    id.startsWith("custom-embedding-") ||
+    id.startsWith("custom-") ||
+    id.includes("-compatible-")
+  ) {
+    if (id.startsWith("anthropic-compatible-") || id.includes("anthropic")) return "anthropic";
     return "openai";
   }
   return id;

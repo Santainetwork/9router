@@ -492,7 +492,7 @@ export default function LeaderboardPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          <ProviderIcon provider={item.raw_provider || item.provider} className="size-4" />
+                          <ProviderIcon providerId={item.raw_provider || item.provider} provider={item.raw_provider || item.provider} className="size-4" />
                           <span className="font-semibold text-text-main text-xs">{item.provider}</span>
                         </div>
                       </TableCell>
@@ -544,7 +544,7 @@ export default function LeaderboardPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <ProviderIcon provider={prov.provider} className="size-5" />
+                        <ProviderIcon providerId={prov.raw_provider || prov.provider} provider={prov.raw_provider || prov.provider} className="size-5" />
                         <span className="font-bold text-text-main text-xs">{prov.provider}</span>
                       </div>
                     </TableCell>
