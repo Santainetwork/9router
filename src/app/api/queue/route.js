@@ -113,6 +113,7 @@ export async function GET() {
       activeBuckets: apiKeyBuckets.length,
       buckets: apiKeyBuckets,
       items: allKeys,
+      list: allKeys,
     },
     providers: {
       total: allProviders.length,
@@ -121,6 +122,7 @@ export async function GET() {
       activeBuckets: providerBuckets.length,
       buckets: providerBuckets,
       items: allProviders,
+      list: allProviders,
     },
     at: new Date().toISOString(),
   });

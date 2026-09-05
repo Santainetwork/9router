@@ -99,8 +99,9 @@ export default function QueueMonitorClient() {
   }, [data]);
 
   const keysList = useMemo(() => {
-    if (!data?.apiKeys?.list) return [];
-    let list = data.apiKeys.list;
+    const raw = data?.apiKeys?.items || data?.apiKeys?.list;
+    if (!Array.isArray(raw)) return [];
+    let list = raw;
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -111,11 +112,12 @@ export default function QueueMonitorClient() {
       );
     }
     return list;
-  }, [data?.apiKeys?.list, search]);
+  }, [data?.apiKeys?.items, data?.apiKeys?.list, search]);
 
   const providersList = useMemo(() => {
-    if (!data?.providers?.list) return [];
-    let list = data.providers.list;
+    const raw = data?.providers?.items || data?.providers?.list;
+    if (!Array.isArray(raw)) return [];
+    let list = raw;
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -126,7 +128,7 @@ export default function QueueMonitorClient() {
       );
     }
     return list;
-  }, [data?.providers?.list, search]);
+  }, [data?.providers?.items, data?.providers?.list, search]);
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto py-2">
