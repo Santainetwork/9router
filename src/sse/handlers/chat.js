@@ -448,9 +448,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       responseFooterEnabled: !!chatSettings.responseFooterEnabled
         && !isBasicChatRequest(clientRawRequest)
         && (() => {
-          const scope = chatSettings.responseFooterApiVersions || "both";
+          const scope = String(chatSettings.responseFooterApiVersions || "both").trim();
           const ver = clientRawRequest?.apiVersion || "v1";
-          if (scope === "both") return true;
+          if (scope === "both" || scope === "all" || scope === "v1,v2" || scope === "v2,v1") return true;
+          if (scope.includes(",")) return scope.split(",").map((s) => s.trim()).includes(ver);
           return scope === ver;
         })(),
       responseFooterText: chatSettings.responseFooterText || "",

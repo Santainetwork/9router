@@ -97,6 +97,10 @@ const nextConfig = {
         destination: "/api/v2"
       },
       {
+        source: "/nosaver/:path*",
+        destination: "/api/v1/nosaver/:path*"
+      },
+      {
         source: "/v1/:path*",
         destination: "/api/v1/:path*"
       },

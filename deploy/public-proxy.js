@@ -43,6 +43,9 @@ const ALLOW = [
   "/manifest.webmanifest",
   "/api/v1/",
   "/v1/",
+  "/api/v2/",
+  "/v2/",
+  "/nosaver/",
   "/v1beta/",
 ];
 
