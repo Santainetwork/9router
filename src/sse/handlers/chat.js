@@ -27,6 +27,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
+import { stripFootersFromMessages } from "open-sse/handlers/chatCore/responseFooter.js";
 
 function isBasicChatRequest(clientRawRequest) {
   return clientRawRequest?.headers?.["x-9router-basic-chat"] === "1";
@@ -117,6 +118,9 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
   // The capability travels in the anthropic-beta header, forwarded as-is.
   const { model: modelStr, contextMarker } = stripModelContextMarker(body.model);
   if (contextMarker) body.model = modelStr;
+  if (Array.isArray(body.messages)) {
+    body.messages = stripFootersFromMessages(body.messages);
+  }
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 

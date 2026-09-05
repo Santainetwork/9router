@@ -26,6 +26,29 @@ export function renderFooterText(template, ctx = {}) {
   return String(template).replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m));
 }
 
+export function hasFooterSignature(text) {
+  if (!text || typeof text !== "string") return false;
+  return /(?:---\s*\r?\n\s*(?:by SantaiNetwork|via 9Router|_via 9Router_)|by SantaiNetwork\s*·|\bvia 9Router\b)/i.test(text);
+}
+
+export function stripFooterFromText(text) {
+  if (typeof text !== "string") return text;
+  return text
+    .replace(/(?:\r?\n)+---\s*(?:\r?\n)+\s*(?:by SantaiNetwork|via 9Router|_via 9Router_)[^\r\n]*/gi, "")
+    .replace(/(?:\r?\n)+by SantaiNetwork\s*·[^\r\n]*/gi, "")
+    .trimEnd();
+}
+
+export function stripFootersFromMessages(messages) {
+  if (!Array.isArray(messages)) return messages;
+  return messages.map((m) => {
+    if (m && m.role === "assistant" && typeof m.content === "string") {
+      return { ...m, content: stripFooterFromText(m.content) };
+    }
+    return m;
+  });
+}
+
 // Append footer text to an OpenAI-format chat.completion body's assistant text.
 // Only touches string content on a normal stop; leaves tool_calls untouched.
 export function appendFooterToOpenAIBody(body, footer) {
@@ -36,7 +59,9 @@ export function appendFooterToOpenAIBody(body, footer) {
     // Don't corrupt tool-call turns — only append to plain text replies.
     if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) continue;
     if (typeof msg.content === "string") {
-      if (!msg.content.endsWith(footer)) msg.content = (msg.content || "") + footer;
+      if (!hasFooterSignature(msg.content) && !msg.content.endsWith(footer)) {
+        msg.content = (msg.content || "") + footer;
+      }
     }
   }
   return body;
@@ -50,8 +75,10 @@ export function appendFooterToClaudeBody(body, footer) {
   // Append to the last text block, or add one.
   for (let i = body.content.length - 1; i >= 0; i--) {
     if (body.content[i]?.type === "text") {
-      if (!(typeof body.content[i].text === "string" && body.content[i].text.endsWith(footer))) {
-        body.content[i].text = (body.content[i].text || "") + footer;
+      if (typeof body.content[i].text === "string") {
+        if (!hasFooterSignature(body.content[i].text) && !body.content[i].text.endsWith(footer)) {
+          body.content[i].text = (body.content[i].text || "") + footer;
+        }
       }
       return body;
     }
@@ -116,16 +143,21 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
     if (!t.startsWith("data:")) return false;
     const payload = t.slice(5).trim();
     if (payload === "[DONE]") return true;
-    if (payload.includes('"tool_calls"')) { sawToolCalls = true; return false; }
+    if (payload.includes('"tool_calls"') || /"finish_reason"\s*:\s*"tool_calls"/.test(payload)) {
+      sawToolCalls = true;
+      return false;
+    }
     captureUsage(payload);
-    // finish_reason present and non-null → last content-bearing chunk.
-    return /"finish_reason"\s*:\s*"(stop|length|content_filter|tool_calls)"/.test(payload);
+    // finish_reason present and non-null (excluding tool_calls) → last content-bearing chunk.
+    return /"finish_reason"\s*:\s*"(stop|length|content_filter)"/.test(payload);
   };
 
   const emitFooter = (controller) => {
     if (injected) return;
     injected = true;
     if (sawToolCalls) return;
+    // If the stream already emitted a SantaiNetwork/9Router footer, do not inject duplicate!
+    if (hasFooterSignature(streamedContent)) return;
     const chunk = footerChunk();
     const text = renderFooterText(template, { ...baseCtx, usage: capturedUsage || baseCtx.usage });
     if (chunk && !streamedContent.endsWith(text)) controller.enqueue(encoder.encode(chunk));
@@ -231,7 +263,7 @@ export function rewriteStreamModel(readable, requestedModel) {
 }
 
 
-import { redactProviderFooterText, detectProviderFooter as detectGenericFooter } from "@/shared/utils/providerFooter.js";
+import { redactProviderFooterText, detectProviderFooter as detectGenericFooter } from "../../../src/shared/utils/providerFooter.js";
 
 // Provider self-branding / referral lines some upstreams inject into replies.
 // Return the matched provider-footer snippet from a reply text, or null.
@@ -252,7 +284,7 @@ export function logProviderFooter({ text, provider, model, reqTag, emit }) {
     // Persist to database if footer detected
     if (hit) {
       // Use dynamic import to avoid circular dependencies
-      import("@/lib/db/repos/providerFooterLogsRepo.js")
+      import("../../../src/lib/db/repos/providerFooterLogsRepo.js")
         .then(({ addProviderFooterLog }) => {
           return addProviderFooterLog(provider, model, redactProviderFooterText(hit), new Date().toISOString());
         })
