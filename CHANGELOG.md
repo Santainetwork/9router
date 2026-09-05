@@ -1,12 +1,30 @@
-# v0.5.65-custom (2026-09-03)
+# v0.5.69-custom (2026-09-05)
+
+## Features (Upstream v0.5.69)
+- **Codex**: add GPT 6.0 Astra (`gpt-6-astra`) with vision, thinking and search capabilities
+- **Usage**: add Claude Fable quota tracker support with weekly window normalization (`weekly fable (7d)`)
+- **Dashboard**: group Antigravity Gemini and Claude quotas in Quota Tracker, prune stale hidden keys
+- **OpenCode Go**: add `muse-spark-1.3-contributor` model and support parallel tool calls on Responses path (#3819)
+- **Providers & Models**: align CodeBuddy-CN catalog/capabilities with server config; add GPT-5.6 Sol, Terra, Luna image aliases on Codex (#3806); refresh Qoder catalog with capability mapping and image pass-through
+- **CLI tools**: replace Copilot MITM with VS Code extension setup guide
+- **Gemini**: persist and replay `thoughtSignature` scoped by session namespace
+
+## Fixes (Upstream v0.5.69)
+- **Claude**: normalize adaptive auto effort (`output_config.effort`) (#3792)
+- **Antigravity**: prevent Google anti-abuse rate limits during multi-account refresh (#3813)
+- **Anthropic-compatible**: forward Claude beta flags to nodes fronting Anthropic (#3797)
+- **Dashboard**: dynamic mode label for local/remote detection (#3801)
+- **Codex**: format reset credit API errors cleanly (#3778)
+- **Security**: guard cowork MCP tools probe against SSRF (#3783)
+- **OpenCode Go**: track OpenCode Go quota (#3791) and send stable session headers (#3800)
+- **Logger**: suppress noisy background token refresh logs
+- **CLI**: export packed `.tgz` directly into workspace root instead of parent directory
 
 ## Custom Enhancements (SantaiNetwork AI Infrastructure)
-- **Custom Credits & Quota**: Dedicated `/dashboard/custom-credits` tracker with automatic credit & balance checking for custom OpenAI-compatible and Custom Embedding endpoints (Amanai `/v1/usage`, OpenRouter, SiliconFlow, NewAPI/OneAPI, User Balance, Custom JSON path).
-- **Compact Duplicate Accounts**: Automatically deduplicate multiple connections sharing the same API key across Chat and RAG/Embedding with active service badges.
-- **Batch Limits**: Batch configure RPM and Queue Timeout (ms) simultaneously across selected or all provider connections.
-- **Leaderboard**: Real-time volume, token, and cost tracking dashboard with relative progress bars, search filtering, and RFC-4180 CSV export.
-- **Upstream Prefix Consistency**: Preserve provider prefix (`ag/`, `bai/`, `amanai/`) in usage ring memory and database storage across restarts.
-- **Provider Icons**: Normalize custom and openai-compatible provider node IDs to `/providers/openai.png` to eliminate 404 image errors.
+- **In-Flight Concurrency & Limiter Engine**: FIFO request queue with zero-leak watchdog auto-decay and customizable concurrency limits per key and provider.
+- **Electric Indigo & Neobrutalism UI**: Redesigned dashboard and `/usage-check` portal with shadcn/ui components and tactile Neobrutalist design.
+- **Model Allowlist Wildcard**: Flexible prefix pattern matching (`hx/*`, `myr/*`, `*`) across API gateway and catalog endpoints.
+- **Dedicated Public Endpoints**: Added `/v1/nosaver` to disable token reduction algorithms while preserving response footers.
 
 # v0.5.65 (2026-09-03)
 
