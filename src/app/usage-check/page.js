@@ -67,6 +67,16 @@ export default function UsageCheckPage() {
   const [liveConcurrency, setLiveConcurrency] = useState(null);
   const [liveActive, setLiveActive] = useState(true);
   const [lastLivePing, setLastLivePing] = useState(null);
+  const [appName, setAppName] = useState("SantaiNetwork");
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then((res) => res.json())
+      .then((d) => {
+        if (d?.appName) setAppName(d.appName);
+      })
+      .catch(() => {});
+  }, []);
 
   async function check(period = days) {
     const k = key.trim();
@@ -149,7 +159,7 @@ export default function UsageCheckPage() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2 self-start">
             <span className="rounded-md border-2 border-black dark:border-white bg-yellow-400 text-black px-2.5 py-0.5 text-xs font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
-              9Router AI
+              {appName || "SantaiNetwork"}
             </span>
             <span className="rounded-md border-2 border-black dark:border-white bg-cyan-400 text-black px-2 py-0.5 text-[11px] font-black uppercase tracking-wide shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
               Self-Service Portal

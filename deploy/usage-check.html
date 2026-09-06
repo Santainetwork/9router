@@ -309,7 +309,7 @@
   <div class="wrap">
     <div>
       <div class="badge-row">
-        <span class="badge badge-yellow">9Router AI</span>
+        <span id="portalBrandBadge" class="badge badge-yellow">SantaiNetwork</span>
         <span class="badge badge-cyan">Self-Service Portal</span>
       </div>
       <h1>Usage & Quota Check</h1>
@@ -336,7 +336,7 @@
     <!-- Results Section -->
     <div id="results"></div>
 
-    <div class="footer">
+    <div id="portalBrandFooter" class="footer">
       SantaiNetwork 9Router Gateway
     </div>
   </div>
@@ -650,6 +650,26 @@
   checkBtn.addEventListener("click", function () { check(); });
 
   renderPeriods();
+
+  // Dynamic branding fetch
+  try {
+    var brandXhr = new XMLHttpRequest();
+    brandXhr.open("GET", "/api/auth/status");
+    brandXhr.onload = function () {
+      if (brandXhr.status === 200) {
+        try {
+          var bdata = JSON.parse(brandXhr.responseText);
+          if (bdata && bdata.appName) {
+            var bBadge = document.getElementById("portalBrandBadge");
+            var bFoot = document.getElementById("portalBrandFooter");
+            if (bBadge) bBadge.textContent = bdata.appName;
+            if (bFoot) bFoot.textContent = bdata.appName + " 9Router Gateway";
+          }
+        } catch (e) {}
+      }
+    };
+    brandXhr.send();
+  } catch (e) {}
 })();
 </script>
 </body>
