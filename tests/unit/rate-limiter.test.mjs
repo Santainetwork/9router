@@ -1,7 +1,7 @@
 // Self-check for open-sse/services/rateLimiter.js
 // Run: node tests/unit/rate-limiter.test.mjs
 import assert from "node:assert";
-import { acquire, RateLimitTimeoutError, _reset, _stats } from "../../open-sse/services/rateLimiter.js";
+import { acquire, RateLimitTimeoutError, _reset, _stats, getBucketDetail } from "../../open-sse/services/rateLimiter.js";
 
 async function main() {
   // 1. rpm=0 → always pass, no bucket.
@@ -77,6 +77,30 @@ async function main() {
     (e) => Number.isInteger(e.retryAfter) && e.retryAfter >= 1 && e.retryAfter <= 60,
     "retryAfter is int in [1,60]"
   );
+
+  // 10. getBucketDetail tracks in-flight concurrency acquisition and release accurately.
+  _reset();
+  const rel1 = await acquire("apikey", 42, { concurrency: 2 });
+  let b42 = getBucketDetail("apikey", 42);
+  assert.equal(b42.activeConcurrency, 1, "activeConcurrency increments on acquire");
+
+  // String lookup for numeric key
+  let b42str = getBucketDetail("apikey", "42");
+  assert.equal(b42str.activeConcurrency, 1, "numeric key found via string lookup");
+
+  const rel2 = await acquire("apikey", 42, { concurrency: 2 });
+  b42 = getBucketDetail("apikey", 42);
+  assert.equal(b42.activeConcurrency, 2, "activeConcurrency reaches limit 2");
+
+  // Release first slot
+  rel1();
+  b42 = getBucketDetail("apikey", 42);
+  assert.equal(b42.activeConcurrency, 1, "activeConcurrency decrements after release");
+
+  // Release second slot
+  rel2();
+  b42 = getBucketDetail("apikey", 42);
+  assert.equal(b42.activeConcurrency, 0, "activeConcurrency returns to 0 after all released");
 
   console.log("rate-limiter: all assertions passed");
 }

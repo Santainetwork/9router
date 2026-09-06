@@ -473,7 +473,7 @@ export default function UsageCheckPage() {
 
         {/* Footer */}
         <div className="text-center text-xs font-bold text-neutral-600 dark:text-neutral-400 pt-2">
-          SantaiNetwork 9Router Gateway
+          {appName || "SantaiNetwork"} 9Router Gateway
         </div>
       </div>
     </div>

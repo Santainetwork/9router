@@ -101,6 +101,35 @@
 
 ---
 
+### 10. Dynamic System Branding & Gateway Name ✅ DEPLOYED
+**Purpose**: Allow administrators to customize the system branding name in real-time defaulting to `SantaiNetwork` with immediate persistence and live broadcast across the UI and endpoints.
+
+**Implementation**:
+- `src/lib/db/repos/settingsRepo.js`: `appName` setting with fallback to `process.env.APP_NAME || "SantaiNetwork"`.
+- `src/app/api/settings/route.js`: Admin-protected `appName` normalization and SQLite persistence in `settings` table.
+- `src/app/api/auth/status/route.js`: Public `appName` reflection for login, pre-auth, and external portals.
+- `src/app/(dashboard)/dashboard/profile/page.js`: Branding settings card with instant inline update, loading feedback, and `app-name-changed` custom window event dispatch.
+- `src/shared/components/Sidebar.js`, `src/app/login/page.js`, `src/app/layout.js`, and `src/app/usage-check/page.js`: Real-time consumption of dynamic gateway name.
+
+---
+
+### 11. Real-Time Live Concurrency Telemetry on Usage Check ✅ DEPLOYED
+**Purpose**: Provide key owners with live telemetry on in-flight concurrency slots, buffer queue waiters, and saturation percentage without running heavy token historical queries.
+
+**Implementation**:
+- `src/app/api/v1/usage/route.js`:
+  - Enriched response with `live: { activeConcurrency, queuedRequests, requestsInWindow, windowResetInMs, updatedAt }` from `getBucketDetail("apikey", id)`.
+  - Fast-path sub-millisecond query (`?live=1` or `?live_only=true`) bypassing token aggregation queries.
+- `src/app/usage-check/page.js` & `deploy/usage-check.html`:
+  - Real-Time Live Concurrency Tracker card in Neobrutalism design tokens.
+  - Animated pulsing indicator with 2.5-second polling interval and manual pause/resume control.
+  - Three real-time telemetry metrics:
+    - **In-Flight Active**: Current consumed slots vs configured maximum limit (`active / limit`).
+    - **Buffered in Queue**: Number of requests waiting in memory for available concurrency slots.
+    - **Concurrency Load**: Color-coded load bar (emerald <75%, yellow 75-99%, red saturated at 100%).
+
+---
+
 ## 🔧 Verification & Testing
 
 ```bash
@@ -125,6 +154,6 @@ curl http://localhost:20128/api/health
 
 ---
 
-*Last Updated: September 5, 2026*  
+*Last Updated: September 6, 2026*  
 *Version: v0.5.69-custom*  
 *Maintained by: SantaiNetwork AI Infrastructure Team*

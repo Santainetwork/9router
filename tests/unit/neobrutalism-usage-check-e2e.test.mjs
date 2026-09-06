@@ -44,14 +44,20 @@ test("/api/v1/usage returns accurate concurrency and allowedModels for API key",
   assert.equal(typeof data.live.queuedRequests, "number", "live.queuedRequests must be number");
 
   // Fast path /api/v1/usage?live=1 check
+  const tStart = Date.now();
   const liveRes = await fetch(`${BASE_URL_GATEWAY}/api/v1/usage?live=1`, {
     headers: { Authorization: `Bearer ${TEST_API_KEY}` }
   });
+  const tElapsed = Date.now() - tStart;
   assert.equal(liveRes.status, 200);
+  assert.ok(tElapsed < 500, `fast path should respond promptly (took ${tElapsed}ms)`);
   const liveData = await liveRes.json();
   assert.ok(liveData.live, "fast path must return live object");
   assert.equal(typeof liveData.live.activeConcurrency, "number");
   assert.equal(typeof liveData.live.queuedRequests, "number");
+  assert.equal(typeof liveData.live.requestsInWindow, "number");
+  assert.ok(typeof liveData.live.updatedAt === "string", "updatedAt must be string");
+  assert.ok(!isNaN(Date.parse(liveData.live.updatedAt)), "updatedAt must parse as valid timestamp");
 
   // Allowed models check
   const allowed = data.access?.allowedModels || data.limits?.allowedModels;

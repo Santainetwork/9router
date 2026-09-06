@@ -6,6 +6,23 @@ Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
 
 ---
 
+## 2026-09-06 — Live Concurrency Telemetry & Dynamic Branding
+
+### Dynamic System Branding
+- Added configurable `appName` in `settingsRepo.js` (defaulting to `SantaiNetwork`).
+- Added Branding management card in `/dashboard/profile` allowing immediate inline renaming and persistence to SQLite database (`settings` table).
+- Broadcasts changes across the active browser window via `app-name-changed` custom event.
+- Propagates dynamic name to `Sidebar`, `Header`, `layout.js`, `login/page.js`, and `usage-check/page.js`.
+- Public endpoint `/api/auth/status` reflects `appName` for pre-authenticated views.
+
+### Real-Time In-Flight Concurrency Live Tracking
+- Enriched `/api/v1/usage` with real-time `live` object: `activeConcurrency`, `queuedRequests`, `requestsInWindow`, and `windowResetInMs` derived from in-memory semaphore bucket (`getBucketDetail("apikey", id)`).
+- Added sub-millisecond fast-path `/api/v1/usage?live=1` that bypasses token aggregation history queries.
+- Built Neobrutalism **Live Concurrency Tracker** card on `/usage-check` (served on port `:20128` and public proxy `:20140`).
+- Features 2.5s auto-polling, pulsing live indicator, manual pause/resume, and color-coded load saturation bar (emerald, amber, red).
+
+---
+
 ## 2026-08-14 — SantaiNetwork feature set
 
 ### Dashboard
