@@ -1,17 +1,63 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById, getProviderConnections, getProviderNodes } from "@/lib/localDb";
+import { DEFAULT_BASELINES, resolveClaimedModel } from "@/shared/utils/modelProbe";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180; // 3 minutes timeout
 
 const BAZAARLINK_API = "https://bazaarlink.ai/api/probe/run";
+const BAZAARLINK_BASELINES_API = "https://bazaarlink.ai/api/probe/baselines";
 
-// GET /api/model-probe - List available provider connections for quick select
-export async function GET() {
+let cachedBaselines = null;
+let lastBaselinesFetch = 0;
+
+async function fetchBaselines() {
+  const now = Date.now();
+  if (cachedBaselines && now - lastBaselinesFetch < 10 * 60 * 1000) {
+    return cachedBaselines;
+  }
   try {
-    const [conns, nodes] = await Promise.all([
+    const res = await fetch(BAZAARLINK_BASELINES_API, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.models) && data.models.length > 0) {
+        cachedBaselines = data.models;
+        lastBaselinesFetch = now;
+        return cachedBaselines;
+      }
+    }
+  } catch {}
+  cachedBaselines = DEFAULT_BASELINES;
+  return cachedBaselines;
+}
+
+// GET /api/model-probe - List available provider connections or poll active run status
+export async function GET(request) {
+  try {
+    const url = new URL(request.url);
+    const runId = url.searchParams.get("runId");
+
+    // If runId is provided, proxy poll status from BazaarLink
+    if (runId) {
+      const res = await fetch(`https://bazaarlink.ai/api/probe/run/${encodeURIComponent(runId)}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: data.error || data.message || `Failed to fetch run status (HTTP ${res.status})` },
+          { status: res.status }
+        );
+      }
+      return NextResponse.json(data);
+    }
+
+    // Default: return available connections and official baselines
+    const [conns, nodes, baselines] = await Promise.all([
       getProviderConnections().catch(() => []),
       getProviderNodes().catch(() => []),
+      fetchBaselines().catch(() => DEFAULT_BASELINES),
     ]);
 
     const nodeMap = new Map((nodes || []).map((n) => [n.id, n]));
@@ -34,7 +80,7 @@ export async function GET() {
       })
       .filter((c) => c.baseUrl && c.hasApiKey);
 
-    return NextResponse.json({ connections: items });
+    return NextResponse.json({ connections: items, baselines });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -44,7 +90,18 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    let { connectionId, baseUrl, apiKey, modelId, claimedModel, mode = "fast" } = body;
+    let {
+      connectionId,
+      baseUrl,
+      apiKey,
+      modelId,
+      claimedModel,
+      upstreamFormat,
+      mode = "fast",
+      runContextCheck = false,
+      lang,
+      sync = false,
+    } = body;
 
     if (connectionId) {
       const conn = await getProviderConnectionById(connectionId);
@@ -57,6 +114,11 @@ export async function POST(request) {
       baseUrl = baseUrl || conn.providerSpecificData?.baseUrl || node?.data?.baseUrl || "";
       apiKey = apiKey || conn.apiKey || "";
       modelId = modelId || conn.defaultModel || "";
+      if (!upstreamFormat) {
+        if (conn.provider?.includes("anthropic") || baseUrl.includes("/messages")) {
+          upstreamFormat = "anthropic";
+        }
+      }
     }
 
     if (!baseUrl || !apiKey || !modelId) {
@@ -66,21 +128,28 @@ export async function POST(request) {
       );
     }
 
+    const baselines = await fetchBaselines();
+    const effectiveClaimedModel = resolveClaimedModel(claimedModel, modelId, baselines);
+
     const payload = {
       baseUrl: baseUrl.replace(/\/+$/, ""),
       apiKey,
       modelId: modelId.trim(),
-      claimedModel: claimedModel ? claimedModel.trim() : modelId.trim(),
+      claimedModel: effectiveClaimedModel,
+      upstreamFormat: upstreamFormat === "anthropic" ? "anthropic" : "openai",
       quickMode: mode === "fast",
       identityOnly: mode === "fast",
-      sync: true,
+      sync: sync === true,
     };
+
+    if (runContextCheck) payload.runContextCheck = true;
+    if (lang) payload.lang = lang;
 
     const res = await fetch(BAZAARLINK_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(sync === true ? 180_000 : 30_000),
     });
 
     const data = await res.json().catch(() => ({}));

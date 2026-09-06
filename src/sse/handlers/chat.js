@@ -451,6 +451,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // Allows footer to be enabled only on /v1 or only on /v2 endpoints.
       responseFooterEnabled: !!chatSettings.responseFooterEnabled
         && !isBasicChatRequest(clientRawRequest)
+        && !(() => {
+          const h = clientRawRequest?.headers || {};
+          return h["x-no-footer"] === "1" || h["x-footer"] === "off" || h["x-9router-footer"] === "off";
+        })()
         && (() => {
           const scope = String(chatSettings.responseFooterApiVersions || "both").trim();
           const ver = clientRawRequest?.apiVersion || "v1";

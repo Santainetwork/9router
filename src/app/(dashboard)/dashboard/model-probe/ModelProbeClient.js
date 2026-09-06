@@ -1,22 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, Button } from "@/shared/components";
 import { cn } from "@/shared/utils/cn";
 
 export default function ModelProbeClient() {
   const [connections, setConnections] = useState([]);
+  const [baselines, setBaselines] = useState([]);
   const [selectedConnId, setSelectedConnId] = useState("");
   
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [modelId, setModelId] = useState("");
   const [claimedModel, setClaimedModel] = useState("");
+  const [upstreamFormat, setUpstreamFormat] = useState("openai"); // "openai" | "anthropic"
   const [mode, setMode] = useState("fast"); // "fast" | "full"
+  const [runContextCheck, setRunContextCheck] = useState(false);
 
   const [running, setRunning] = useState(false);
+  const [progressText, setProgressText] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const pollTimerRef = useRef(null);
 
   useEffect(() => {
     fetch("/api/model-probe", { cache: "no-store" })
@@ -24,28 +29,56 @@ export default function ModelProbeClient() {
       .then((d) => {
         const list = d.connections || [];
         setConnections(list);
+        if (Array.isArray(d.baselines)) {
+          setBaselines(d.baselines);
+        }
         if (list.length > 0) {
-          handleSelectConnection(list[0].id, list);
+          handleSelectConnection(list[0].id, list, d.baselines || []);
         }
       })
       .catch(() => {});
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
   }, []);
 
-  const handleSelectConnection = (id, list = connections) => {
+  const handleSelectConnection = (id, list = connections, baseList = baselines) => {
     setSelectedConnId(id);
     const conn = list.find((c) => c.id === id);
     if (conn) {
       setBaseUrl(conn.baseUrl || "");
-      setModelId(conn.defaultModel || "");
-      setClaimedModel(conn.defaultModel || "");
+      const defM = conn.defaultModel || "";
+      setModelId(defM);
+      
+      // Auto-determine format
+      const isAnthropic = conn.provider?.includes("anthropic") || (conn.baseUrl && conn.baseUrl.includes("/messages"));
+      setUpstreamFormat(isAnthropic ? "anthropic" : "openai");
+
+      // Auto-suggest canonical baseline if available
+      const clean = defM.includes("/") ? defM.split("/").pop() : defM;
+      const matchedBaseline = baseList.find((b) => {
+        const sub = b.split("/")[1] || b;
+        return sub.toLowerCase() === clean.toLowerCase() || sub.replace(/[-_.]/g, "") === clean.replace(/[-_.]/g, "");
+      });
+      setClaimedModel(matchedBaseline || defM);
       setApiKey("••••••••••••••••"); // Masked, handled by connectionId on backend
     }
   };
 
+  const stopPolling = () => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
+
   const handleRunProbe = async () => {
+    stopPolling();
     setError("");
     setResult(null);
     setRunning(true);
+    setProgressText("Initializing probe session with BazaarLink...");
 
     try {
       const payload = {
@@ -54,7 +87,10 @@ export default function ModelProbeClient() {
         apiKey: apiKey.includes("••") ? undefined : apiKey.trim(),
         modelId: modelId.trim(),
         claimedModel: claimedModel ? claimedModel.trim() : modelId.trim(),
+        upstreamFormat,
         mode,
+        runContextCheck,
+        sync: false, // Use async polling for live updates and no timeouts
       };
 
       const res = await fetch("/api/model-probe", {
@@ -67,18 +103,55 @@ export default function ModelProbeClient() {
       if (!res.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
-      setResult(data);
+
+      const runId = data.runId;
+      if (!runId) {
+        // Immediate sync response fallback
+        setResult(data);
+        setRunning(false);
+        return;
+      }
+
+      setProgressText(`Probe run started (ID: ${runId.slice(0, 8)}...). Polling live results...`);
+
+      // Poll run status every 2.5 seconds
+      let attempts = 0;
+      pollTimerRef.current = setInterval(async () => {
+        attempts++;
+        try {
+          const pollRes = await fetch(`/api/model-probe?runId=${encodeURIComponent(runId)}`, { cache: "no-store" });
+          if (!pollRes.ok) return;
+          const pollData = await pollRes.json();
+          const items = pollData.items || [];
+          const completedCount = items.filter((i) => i.status === "completed" || i.status === "error" || i.passed !== null).length;
+          const totalCount = items.length || (mode === "fast" ? 46 : 98);
+          
+          setProgressText(`Running probes... (${completedCount}/${totalCount} complete - ${Math.round((completedCount / (totalCount || 1)) * 100)}%)`);
+
+          if (pollData.status === "completed" || pollData.status === "failed" || attempts >= 80) {
+            stopPolling();
+            setResult(pollData);
+            setRunning(false);
+          }
+        } catch {
+          // Keep polling on transient network hitch
+        }
+      }, 2500);
+
     } catch (err) {
       setError(err.message || "Failed to execute model probe");
-    } finally {
       setRunning(false);
     }
   };
 
   const ident = result?.identityAssessment;
-  const v3f = ident?.subModelMatchV3F;
+  const v3f = ident?.subModelMatchV3F || (result?.v3fModelId ? { modelId: result.v3fModelId, score: result.v3fScore } : null);
   const flags = ident?.riskFlags || [];
-  const status = ident?.status || "unknown";
+  const status = ident?.status || (result?.status === "failed" ? "failed" : result?.identityConfirmed ? "confirmed" : "unknown");
+
+  // Detect if preflight failed
+  const firstItemError = result?.items?.find((i) => i.error)?.error;
+  const isPreflightFailure = result?.status === "failed" || (result?.items && result.items.length > 0 && result.items.every((i) => i.status === "error"));
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -89,7 +162,7 @@ export default function ModelProbeClient() {
           <div>
             <h1 className="text-xl font-bold tracking-tight text-text-main">Upstream Model Identity Probe</h1>
             <p className="text-sm text-text-muted mt-0.5">
-              Verify upstream AI providers via BazaarLink Probe API — detect silent model swap, token inflation, and spoofing.
+              Verify upstream AI providers via BazaarLink Probe API (V3F/V4) — detect silent model swap, token inflation, and spoofing.
             </p>
           </div>
         </div>
@@ -128,7 +201,7 @@ export default function ModelProbeClient() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-text-main">Base URL (OpenAI-compatible)</label>
+              <label className="text-xs font-semibold text-text-main">Base URL</label>
               <input
                 type="text"
                 placeholder="https://api.upstream.com/v1"
@@ -146,7 +219,7 @@ export default function ModelProbeClient() {
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
-                  setSelectedConnId(""); // Manual key overrides saved connection
+                  setSelectedConnId("");
                 }}
                 className="w-full rounded-lg border border-border bg-input px-3 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
               />
@@ -156,7 +229,7 @@ export default function ModelProbeClient() {
               <label className="text-xs font-semibold text-text-main">Model ID on Endpoint</label>
               <input
                 type="text"
-                placeholder="anthropic/claude-opus-4.7"
+                placeholder="anthropic/claude-sonnet-5"
                 value={modelId}
                 onChange={(e) => setModelId(e.target.value)}
                 className="w-full rounded-lg border border-border bg-input px-3 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
@@ -164,18 +237,69 @@ export default function ModelProbeClient() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-text-main">Claimed Model (Expected Identity)</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-text-main">Claimed Model (BazaarLink Baseline)</label>
+                <span className="text-[10px] text-text-muted font-mono">vendor/model format</span>
+              </div>
               <input
                 type="text"
-                placeholder="anthropic/claude-opus-4.7"
+                list="bazaarlink-baselines"
+                placeholder="e.g. anthropic/claude-sonnet-5"
                 value={claimedModel}
                 onChange={(e) => setClaimedModel(e.target.value)}
                 className="w-full rounded-lg border border-border bg-input px-3 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
               />
+              <datalist id="bazaarlink-baselines">
+                {baselines.map((b) => (
+                  <option key={b} value={b} />
+                ))}
+              </datalist>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-border">
+          {/* Options Row: Format & Context check */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold text-text-muted">Protocol Format:</span>
+              <div className="inline-flex rounded-lg border border-border p-0.5 bg-surface-2 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setUpstreamFormat("openai")}
+                  className={cn(
+                    "px-3 py-1 rounded-md transition",
+                    upstreamFormat === "openai" ? "bg-primary text-primary-foreground shadow-sm" : "text-text-muted hover:text-text-main"
+                  )}
+                >
+                  OpenAI Chat (/chat/completions)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUpstreamFormat("anthropic")}
+                  className={cn(
+                    "px-3 py-1 rounded-md transition",
+                    upstreamFormat === "anthropic" ? "bg-primary text-primary-foreground shadow-sm" : "text-text-muted hover:text-text-main"
+                  )}
+                >
+                  Claude (/messages)
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="contextCheck"
+                checked={runContextCheck}
+                onChange={(e) => setRunContextCheck(e.target.checked)}
+                className="rounded border-border text-primary focus:ring-primary"
+              />
+              <label htmlFor="contextCheck" className="text-xs font-semibold text-text-main cursor-pointer select-none">
+                Include 4K→128K context window check (+2 mins)
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-border">
             {/* Mode selection */}
             <div className="inline-flex rounded-lg border border-border p-1 bg-surface-2 self-start sm:self-auto">
               <button
@@ -208,7 +332,7 @@ export default function ModelProbeClient() {
               {running ? (
                 <>
                   <span className="inline-block animate-spin">⌛</span>
-                  Running 50+ Probes...
+                  <span>{progressText || "Running Probes..."}</span>
                 </>
               ) : (
                 <>
@@ -221,16 +345,43 @@ export default function ModelProbeClient() {
         </div>
       </Card>
 
+      {/* Progress banner while running */}
+      {running && (
+        <div className="p-4 bg-primary/10 border border-primary/20 text-primary rounded-xl flex items-center justify-between animate-pulse">
+          <div className="flex items-center gap-2.5 text-xs font-bold font-mono">
+            <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+            <span>{progressText}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={stopPolling} className="text-xs">
+            Cancel
+          </Button>
+        </div>
+      )}
+
       {/* Result Presentation */}
-      {result && (
+      {result && !running && (
         <div className="space-y-6">
+          {/* Preflight failure alert */}
+          {isPreflightFailure && firstItemError && (
+            <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-semibold rounded-xl flex items-start gap-2.5">
+              <span className="material-symbols-outlined text-[20px] shrink-0 mt-0.5">cancel</span>
+              <div>
+                <p className="font-bold uppercase tracking-wider">Upstream Pre-flight Check Failed</p>
+                <p className="font-mono mt-1 text-[11px] opacity-90">{firstItemError}</p>
+                <p className="mt-1 text-[11px] text-text-muted">
+                  The upstream endpoint rejected or failed the initial probe requests. Check baseUrl, API key, model ID availability, or protocol format (OpenAI vs Claude).
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Verdict Banner */}
           <div
             className={cn(
               "rounded-xl border p-5 shadow-sm transition-all",
               status === "confirmed"
                 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
-                : status === "mismatch"
+                : status === "mismatch" || status === "failed"
                 ? "bg-red-500/10 border-red-500/30 text-red-500"
                 : "bg-amber-500/10 border-amber-500/30 text-amber-600"
             )}
@@ -238,7 +389,7 @@ export default function ModelProbeClient() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3.5">
                 <span className="material-symbols-outlined text-[36px] mt-0.5">
-                  {status === "confirmed" ? "check_circle" : status === "mismatch" ? "dangerous" : "warning"}
+                  {status === "confirmed" ? "check_circle" : status === "mismatch" || status === "failed" ? "dangerous" : "warning"}
                 </span>
                 <div>
                   <div className="flex items-center gap-2">
@@ -247,15 +398,22 @@ export default function ModelProbeClient() {
                         ? "Model Identity Confirmed ✅"
                         : status === "mismatch"
                         ? "Model Mismatch / Spoof Detected 🚨"
+                        : status === "failed"
+                        ? "Probe Failed / Upstream Error ❌"
                         : "Insufficient Data / Inconclusive ⚠️"}
                     </h2>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-mono font-bold bg-surface-1 border border-current">
-                      Confidence: {Math.round((ident?.confidence || 0) * 100)}%
-                    </span>
+                    {ident?.confidence != null && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-mono font-bold bg-surface-1 border border-current">
+                        Confidence: {Math.round((ident.confidence || 0) * 100)}%
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-text-main mt-1">
-                    Claimed: <b className="font-mono">{ident?.claimedModel || modelId}</b> · Detected Family:{" "}
-                    <b className="font-mono uppercase">{ident?.predictedFamily || "unknown"}</b>
+                    Claimed: <b className="font-mono">{ident?.claimedModel || claimedModel || modelId}</b> · Detected Family:{" "}
+                    <b className="font-mono uppercase">{ident?.predictedFamily || result?.predictedFamily || "unknown"}</b>
+                    {result?.mostSimilarDisplayName && (
+                      <span> · Most Similar Model: <b className="font-mono">{result.mostSimilarDisplayName} ({Math.round((result.mostSimilarScore || 0) * 100)}%)</b></span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -264,7 +422,9 @@ export default function ModelProbeClient() {
               <div className="flex items-center gap-3 self-start sm:self-auto bg-surface-1 border border-border px-4 py-2 rounded-xl">
                 <div>
                   <p className="text-[10px] uppercase font-bold text-text-muted">Quality Score</p>
-                  <p className="text-2xl font-black tabular-nums font-mono text-text-main">{result.score}/100</p>
+                  <p className="text-2xl font-black tabular-nums font-mono text-text-main">
+                    {result.score != null ? result.score : 0}/100
+                  </p>
                 </div>
               </div>
             </div>
@@ -282,12 +442,12 @@ export default function ModelProbeClient() {
             )}
           </div>
 
-          {/* V3F Classifier Details */}
+          {/* V3F / V4 Classifier Details */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card>
               <p className="text-xs uppercase tracking-wider font-semibold text-text-muted">V3F Classifier Match</p>
               <p className="mt-1.5 text-base font-bold font-mono text-text-main truncate" title={v3f?.modelId || "N/A"}>
-                {v3f?.modelId || "No exact match"}
+                {v3f?.displayName || v3f?.modelId || "No exact match"}
               </p>
               <p className="text-xs text-text-muted mt-1 font-mono">
                 Match Score: {v3f?.score ? (v3f.score * 100).toFixed(1) + "%" : "0%"}
@@ -309,7 +469,9 @@ export default function ModelProbeClient() {
               <p className="mt-1.5 text-xl font-bold font-mono text-text-main tabular-nums">
                 {(result.items || []).filter((i) => i.passed === true).length} / {(result.items || []).length} Passed
               </p>
-              <p className="text-xs text-text-muted mt-1 font-mono">Run ID: {result.runId?.slice(0, 12)}...</p>
+              <p className="text-xs text-text-muted mt-1 font-mono">
+                {result.runId ? `Run ID: ${result.runId.slice(0, 12)}...` : `Status: ${result.status}`}
+              </p>
             </Card>
           </div>
 
@@ -322,33 +484,37 @@ export default function ModelProbeClient() {
                 </span>
                 <span className="text-xs text-text-muted">Multi-layer diagnostic tests</span>
               </div>
-              <div className="overflow-x-auto max-h-96 divide-y divide-border">
+              <div className="overflow-x-auto max-h-[30rem] divide-y divide-border">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surface-2 text-text-muted font-semibold uppercase tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3">Status</th>
                       <th className="py-2.5 px-3">Group</th>
                       <th className="py-2.5 px-3">Probe ID</th>
-                      <th className="py-2.5 px-3">TTFT</th>
+                      <th className="py-2.5 px-3">Reason / Details</th>
                       <th className="py-2.5 px-3">Response Preview</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border font-mono">
                     {result.items.map((item, idx) => (
                       <tr key={idx} className="hover:bg-surface-2/40 transition-colors">
-                        <td className="py-2 px-3">
+                        <td className="py-2 px-3 whitespace-nowrap">
                           {item.passed === true ? (
                             <span className="text-emerald-500 font-bold">PASS</span>
                           ) : item.passed === false ? (
                             <span className="text-red-500 font-bold">FAIL</span>
+                          ) : item.status === "error" ? (
+                            <span className="text-red-500 font-bold">ERR</span>
                           ) : (
                             <span className="text-amber-500 font-bold">WARN</span>
                           )}
                         </td>
                         <td className="py-2 px-3 uppercase text-[11px] text-text-muted">{item.group || "identity"}</td>
-                        <td className="py-2 px-3 font-semibold text-text-main">{item.probeId}</td>
-                        <td className="py-2 px-3 text-text-muted">{item.ttftMs ? `${item.ttftMs}ms` : "-"}</td>
-                        <td className="py-2 px-3 max-w-md truncate text-text-muted" title={item.response || ""}>
+                        <td className="py-2 px-3 font-semibold text-text-main whitespace-nowrap">{item.label || item.probeId}</td>
+                        <td className="py-2 px-3 max-w-xs truncate text-text-muted font-sans" title={item.passReason || item.error || ""}>
+                          {item.passReason || item.error || (item.passed === true ? "Passed criteria" : "-")}
+                        </td>
+                        <td className="py-2 px-3 max-w-xs truncate text-text-muted" title={item.response || ""}>
                           {item.response || "-"}
                         </td>
                       </tr>

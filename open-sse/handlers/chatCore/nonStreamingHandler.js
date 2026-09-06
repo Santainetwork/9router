@@ -370,6 +370,25 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
   }
 
+  // Extract and clean raw <thinking> tags if emitted directly in message.content (e.g. from upstream Kiro relays)
+  if (!isClaudeMessageResponse && !isResponsesResponse && translatedResponse?.choices) {
+    for (const choice of translatedResponse.choices) {
+      if (typeof choice?.message?.content === "string" && choice.message.content.includes("<thinking>")) {
+        const match = /<thinking>([\s\S]*?)<\/thinking>\s*/i.exec(choice.message.content);
+        if (match) {
+          const thinkingText = match[1].trim();
+          const cleanText = choice.message.content.replace(/<thinking>[\s\S]*?<\/thinking>\s*/i, "").trimStart();
+          if (cleanText) {
+            choice.message.content = cleanText;
+            if (!choice.message.reasoning_content && thinkingText) {
+              choice.message.reasoning_content = thinkingText;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Strip reasoning_content only when content is non-empty.
   // When content is empty (e.g. thinking models that used all tokens for reasoning),
   // reasoning_content is the only useful output and must be preserved.
