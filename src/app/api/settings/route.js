@@ -43,6 +43,10 @@ export async function PATCH(request) {
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
+    if (Object.prototype.hasOwnProperty.call(body, "appName")) {
+      body.appName = String(body.appName ?? "").trim().slice(0, 50) || "SantaiNetwork";
+    }
+
     // Normalize admin-controlled Basic Chat footer values at the API boundary.
     if (Object.prototype.hasOwnProperty.call(body, "responseFooterBasicChatEnabled")) {
       body.responseFooterBasicChatEnabled = body.responseFooterBasicChatEnabled !== false;

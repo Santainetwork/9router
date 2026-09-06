@@ -15,6 +15,7 @@ test("Public proxy (:20140) serves Neobrutalist usage-check HTML with concrete d
   assert.ok(html.includes("box-shadow: 4px 4px 0 var(--shadow)"), "must have 4px 4px 0 hard offset shadow");
   assert.ok(html.includes("badge-yellow"), "must have yellow neobrutalist badge");
   assert.ok(html.includes("badge-cyan"), "must have cyan neobrutalist badge");
+  assert.ok(html.includes("Live Concurrency Tracker"), "must render live concurrency tracker");
   assert.ok(html.includes("Traffic Throttle Parameters"), "must render traffic throttle parameters");
 
   // Assert Token Breakdown by Model is removed per user request
@@ -38,6 +39,19 @@ test("/api/v1/usage returns accurate concurrency and allowedModels for API key",
   // Concurrency check
   assert.equal(typeof data.limits.concurrency, "number", "concurrency must be number");
   assert.equal(data.limits.concurrency, 5, "adita key concurrency matches database value 5");
+  assert.ok(data.live, "response must include live concurrency data");
+  assert.equal(typeof data.live.activeConcurrency, "number", "live.activeConcurrency must be number");
+  assert.equal(typeof data.live.queuedRequests, "number", "live.queuedRequests must be number");
+
+  // Fast path /api/v1/usage?live=1 check
+  const liveRes = await fetch(`${BASE_URL_GATEWAY}/api/v1/usage?live=1`, {
+    headers: { Authorization: `Bearer ${TEST_API_KEY}` }
+  });
+  assert.equal(liveRes.status, 200);
+  const liveData = await liveRes.json();
+  assert.ok(liveData.live, "fast path must return live object");
+  assert.equal(typeof liveData.live.activeConcurrency, "number");
+  assert.equal(typeof liveData.live.queuedRequests, "number");
 
   // Allowed models check
   const allowed = data.access?.allowedModels || data.limits?.allowedModels;

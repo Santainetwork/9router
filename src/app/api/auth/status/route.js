@@ -28,6 +28,7 @@ export async function GET() {
     const loginMethod = session?.saml ? "SAML" : session?.oidc ? "OIDC" : "Password";
 
     return NextResponse.json({
+      appName: settings.appName || "SantaiNetwork",
       requireLogin,
       authMode,
       ssoType,

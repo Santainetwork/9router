@@ -292,8 +292,12 @@ export function resetAllActiveConcurrency() {
 }
 
 export function getBucketDetail(scope, key) {
-  const b = scopes.get(scope)?.get(key);
-  if (!b) return { count: 0, activeConcurrency: 0, queued: 0, inWindow: 0 };
+  const m = scopes.get(scope);
+  let b = m?.get(key);
+  if (!b && (typeof key === "number" || typeof key === "string")) {
+    b = m?.get(String(key)) ?? m?.get(Number(key));
+  }
+  if (!b) return { count: 0, activeConcurrency: 0, queued: 0, inWindow: 0, rpm: 0, concurrency: 0, windowResetInMs: 0 };
   const t = now();
   const inWindow = t - b.windowStart < WINDOW_MS ? b.count : 0;
   const queued = b.queue.filter((w) => !w.settled).length;

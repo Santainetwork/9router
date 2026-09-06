@@ -284,6 +284,25 @@
 
   .hidden { display: none !important; }
   .footer { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+
+  @keyframes neo-pulse {
+    0% { transform: scale(0.95); opacity: 0.8; }
+    50% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(0.95); opacity: 0.8; }
+  }
+  .pulse-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--emerald);
+    border: 1.5px solid var(--border);
+    animation: neo-pulse 2s infinite ease-in-out;
+  }
+  .pulse-dot.paused {
+    background: var(--muted);
+    animation: none;
+  }
 </style>
 </head>
 <body>
@@ -332,6 +351,9 @@
   ];
   var days = 7;
   var lastData = null;
+  var liveActive = true;
+  var liveTimer = null;
+  var lastLive = null;
 
   var keyEl = document.getElementById("key");
   var errEl = document.getElementById("error");
@@ -432,12 +454,56 @@
     html += '</div>';
     html += '</div>';
 
+    // Live Concurrency Tracker Card
+    var limitConcurrency = (data.limits && data.limits.concurrency) || 0;
+    var activeSlots = (data.live && data.live.activeConcurrency) || 0;
+    var queuedSlots = (data.live && data.live.queuedRequests) || 0;
+    var loadPct = limitConcurrency > 0 ? Math.min(100, Math.round((activeSlots / limitConcurrency) * 100)) : 0;
+    var meterColor = loadPct >= 100 ? "var(--red)" : loadPct >= 75 ? "var(--yellow)" : "var(--emerald)";
+
+    html += '<div class="pills-container" style="border:2px solid var(--border);box-shadow:3px 3px 0 var(--shadow);margin-top:20px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span id="liveDot" class="pulse-dot ' + (liveActive ? '' : 'paused') + '"></span>';
+    html += '<span style="font-size:12px;font-weight:900;text-transform:uppercase;">Live Concurrency Tracker</span>';
+    html += '<span class="badge" style="background:var(--yellow);color:#000;padding:2px 6px;font-size:10px;">Real-Time</span>';
+    html += '</div>';
+    html += '<button id="liveBtn" type="button" onclick="toggleLiveTracking()" class="badge" style="background:' + (liveActive ? 'var(--emerald)' : 'var(--surface)') + ';color:#000;cursor:pointer;padding:4px 8px;font-size:10px;">' + (liveActive ? '● Live (2.5s)' : 'Paused') + '</button>';
+    html += '</div>';
+
+    html += '<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">';
+    html += '<div class="neo-stat" style="background:var(--surface);color:var(--text);">';
+    html += '<span class="stat-label">In-Flight Active</span>';
+    html += '<div class="stat-value" id="liveActiveVal" style="font-size:22px;">' + esc(activeSlots) + ' <span style="font-size:12px;color:var(--muted);font-weight:700;">/ ' + (limitConcurrency > 0 ? limitConcurrency : '∞') + '</span></div>';
+    html += '<span class="stat-sub" id="liveActiveSub">' + (limitConcurrency > 0 ? (Math.max(0, limitConcurrency - activeSlots) + ' slots free') : 'Unlimited') + '</span>';
+    html += '</div>';
+
+    html += '<div class="neo-stat" style="background:var(--surface);color:var(--text);">';
+    html += '<span class="stat-label">Buffered in Queue</span>';
+    html += '<div class="stat-value" id="liveQueuedVal" style="font-size:22px;">' + esc(queuedSlots) + ' <span style="font-size:12px;color:var(--muted);font-weight:700;">waiting</span></div>';
+    html += '<span class="stat-sub" id="liveQueuedSub">' + (queuedSlots > 0 ? 'Queued requests' : 'Queue idle') + '</span>';
+    html += '</div>';
+
+    html += '<div class="neo-stat" style="background:var(--surface);color:var(--text);">';
+    html += '<span class="stat-label">Concurrency Load</span>';
+    html += '<div class="stat-value" id="liveLoadVal" style="font-size:22px;">' + (limitConcurrency > 0 ? (loadPct + '%') : '0%') + '</div>';
+    html += '<span class="stat-sub" id="liveLoadSub">' + (activeSlots >= limitConcurrency && limitConcurrency > 0 ? '⚠️ Saturated' : 'Ready') + '</span>';
+    html += '</div>';
+    html += '</div>';
+
+    if (limitConcurrency > 0) {
+      html += '<div style="margin-top:12px;">';
+      html += '<div class="meter-bar" style="height:10px;"><div id="liveMeterFill" class="meter-fill" style="width:' + (Math.max(activeSlots > 0 ? 5 : 0, loadPct)) + '%;background:' + meterColor + '"></div></div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
     // Traffic Throttle Pills
-    html += '<div class="pills-container">';
+    html += '<div class="pills-container" style="margin-top:16px;">';
     html += '<div style="font-size:11px;font-weight:900;text-transform:uppercase;margin-bottom:8px;">Traffic Throttle Parameters</div>';
     html += '<div>';
     html += '<span class="pill-item">RPM: ' + esc(data.limits.requestsPerMinute > 0 ? data.limits.requestsPerMinute : "Unlimited") + '</span>';
-    html += '<span class="pill-item">Concurrency: ' + esc(data.limits.concurrency > 0 ? data.limits.concurrency : "Unlimited") + '</span>';
+    html += '<span class="pill-item">Concurrency: ' + esc(limitConcurrency > 0 ? limitConcurrency : "Unlimited") + '</span>';
     html += '<span class="pill-item">Queue: ' + esc(data.limits.queueTimeoutMs ? (data.limits.queueTimeoutMs + "ms") : "60s") + '</span>';
     html += '</div>';
     html += '</div>';
@@ -463,9 +529,88 @@
     resEl.innerHTML = html;
   }
 
+  function stopLivePolling() {
+    if (liveTimer) {
+      clearInterval(liveTimer);
+      liveTimer = null;
+    }
+  }
+
+  function startLivePolling() {
+    stopLivePolling();
+    if (!liveActive) return;
+    liveTimer = setInterval(function () {
+      var k = keyEl.value.trim();
+      if (!k || !lastData) return;
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "/api/v1/usage?live=1");
+      xhr.setRequestHeader("Authorization", "Bearer " + k);
+      xhr.onload = function () {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var res = JSON.parse(xhr.responseText);
+            if (res && res.live) {
+              lastLive = res.live;
+              updateLiveUI(res.live, res.limits);
+            }
+          } catch (e) {}
+        }
+      };
+      xhr.send();
+    }, 2500);
+  }
+
+  function updateLiveUI(live, limits) {
+    if (!live) return;
+    var limit = (limits && limits.concurrency) || (lastData && lastData.limits && lastData.limits.concurrency) || 0;
+    var active = live.activeConcurrency || 0;
+    var queued = live.queuedRequests || 0;
+    var pct = limit > 0 ? Math.min(100, Math.round((active / limit) * 100)) : 0;
+    var color = pct >= 100 ? "var(--red)" : pct >= 75 ? "var(--yellow)" : "var(--emerald)";
+
+    var actEl = document.getElementById("liveActiveVal");
+    var actSub = document.getElementById("liveActiveSub");
+    if (actEl) actEl.innerHTML = esc(active) + ' <span style="font-size:12px;color:var(--muted);font-weight:700;">/ ' + (limit > 0 ? limit : '∞') + '</span>';
+    if (actSub) actSub.textContent = limit > 0 ? (Math.max(0, limit - active) + ' slots free') : 'Unlimited';
+
+    var qEl = document.getElementById("liveQueuedVal");
+    var qSub = document.getElementById("liveQueuedSub");
+    if (qEl) qEl.innerHTML = esc(queued) + ' <span style="font-size:12px;color:var(--muted);font-weight:700;">waiting</span>';
+    if (qSub) qSub.textContent = queued > 0 ? 'Queued requests' : 'Queue idle';
+
+    var ldEl = document.getElementById("liveLoadVal");
+    var ldSub = document.getElementById("liveLoadSub");
+    if (ldEl) ldEl.textContent = limit > 0 ? (pct + '%') : '0%';
+    if (ldSub) ldSub.textContent = active >= limit && limit > 0 ? '⚠️ Saturated' : 'Ready';
+
+    var mfEl = document.getElementById("liveMeterFill");
+    if (mfEl) {
+      mfEl.style.width = Math.max(active > 0 ? 5 : 0, pct) + '%';
+      mfEl.style.background = color;
+    }
+  }
+
+  window.toggleLiveTracking = function () {
+    liveActive = !liveActive;
+    var btn = document.getElementById("liveBtn");
+    var dot = document.getElementById("liveDot");
+    if (btn) {
+      btn.textContent = liveActive ? "● Live (2.5s)" : "Paused";
+      btn.style.background = liveActive ? "var(--emerald)" : "var(--surface)";
+    }
+    if (dot) {
+      dot.className = "pulse-dot " + (liveActive ? "" : "paused");
+    }
+    if (liveActive) {
+      startLivePolling();
+    } else {
+      stopLivePolling();
+    }
+  };
+
   function check(period) {
     var k = keyEl.value.trim();
-    if (!k) { showError("Enter an API key first"); return; }
+    if (!k) { stopLivePolling(); showError("Enter an API key first"); return; }
     showError("");
     setLoading(true);
 
@@ -478,16 +623,20 @@
         var data = JSON.parse(xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300) {
           render(data);
+          startLivePolling();
         } else {
+          stopLivePolling();
           render(null);
           showError(data.error || ("Request failed (" + xhr.status + ")"));
         }
       } catch (e) {
+        stopLivePolling();
         render(null);
         showError("Invalid response from server");
       }
     };
     xhr.onerror = function () {
+      stopLivePolling();
       setLoading(false);
       render(null);
       showError("Network error. Is the server running?");

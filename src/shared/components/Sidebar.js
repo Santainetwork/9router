@@ -58,6 +58,7 @@ export default function Sidebar({ onClose }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
   const [enableTranslator, setEnableTranslator] = useState(false);
+  const [appName, setAppName] = useState(APP_CONFIG.name);
   const { copied, copy } = useCopyToClipboard(2000);
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
@@ -65,8 +66,19 @@ export default function Sidebar({ onClose }) {
   useEffect(() => {
     fetch("/api/settings")
       .then(res => res.json())
-      .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
+      .then(data => {
+        if (data.enableTranslator) setEnableTranslator(true);
+        if (data.appName) setAppName(data.appName);
+      })
       .catch(() => {});
+
+    const onNameChange = (e) => {
+      if (e?.detail) setAppName(e.detail);
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("app-name-changed", onNameChange);
+      return () => window.removeEventListener("app-name-changed", onNameChange);
+    }
   }, []);
 
   // Lazy check for new npm version on mount
@@ -135,12 +147,11 @@ export default function Sidebar({ onClose }) {
             <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
               <span className="material-symbols-outlined text-white text-[20px]">hub</span>
             </div>
-            <div className="flex flex-col">
-              <h1 className="text-lg font-semibold tracking-tight text-text-main">
-                {APP_CONFIG.name}
+            <div className="flex flex-col min-w-0">
+              <h1 className="text-lg font-semibold tracking-tight text-text-main truncate max-w-[170px]">
+                {appName || APP_CONFIG.name}
               </h1>
               <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
-              <span className="text-[10px] text-text-subtle">Modified by SantaiNetwork</span>
             </div>
           </Link>
           {updateInfo && (

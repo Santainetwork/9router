@@ -38,6 +38,9 @@ export default function ProfilePage() {
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
   const [loading, setLoading] = useState(true);
+  const [appName, setAppName] = useState("SantaiNetwork");
+  const [brandStatus, setBrandStatus] = useState({ type: "", message: "" });
+  const [brandLoading, setBrandLoading] = useState(false);
   const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
   const [passStatus, setPassStatus] = useState({ type: "", message: "" });
   const [passLoading, setPassLoading] = useState(false);
@@ -103,6 +106,7 @@ export default function ProfilePage() {
       .then((res) => res.json())
       .then((data) => {
         setSettings(data);
+        if (data?.appName) setAppName(data.appName);
         setOidcForm({
           authMode: data?.authMode || "password",
           oidcIssuerUrl: data?.oidcIssuerUrl || "",
@@ -235,6 +239,35 @@ export default function ProfilePage() {
       setProxyStatus({ type: "error", message: "An error occurred" });
     } finally {
       setProxyLoading(false);
+    }
+  };
+
+  const handleSaveAppName = async () => {
+    const trimmed = appName.trim() || "SantaiNetwork";
+    setBrandLoading(true);
+    setBrandStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appName: trimmed }),
+      });
+      if (res.ok) {
+        setSettings((prev) => ({ ...prev, appName: trimmed }));
+        setAppName(trimmed);
+        setBrandStatus({ type: "success", message: "Gateway name updated successfully" });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("app-name-changed", { detail: trimmed }));
+        }
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setBrandStatus({ type: "error", message: d.error || "Failed to update gateway name" });
+      }
+    } catch {
+      setBrandStatus({ type: "error", message: "Failed to update gateway name" });
+    } finally {
+      setBrandLoading(false);
+      setTimeout(() => setBrandStatus({ type: "", message: "" }), 3000);
     }
   };
 
@@ -977,6 +1010,52 @@ export default function ProfilePage() {
             <span className="text-sm text-text-muted">Display language</span>
             <span className="text-2xl">{LOCALE_FLAGS[locale] || "🌐"}</span>
           </button>
+        </Card>
+
+        {/* Branding & Gateway Name */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[20px]">badge</span>
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-semibold">Branding & Gateway Name</h3>
+              <p className="text-xs sm:text-sm text-text-muted">
+                Customize the application name displayed in the sidebar, header, and portal.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  placeholder="SantaiNetwork"
+                  value={appName}
+                  onChange={(e) => setAppName(e.target.value)}
+                  maxLength={50}
+                  className="font-semibold text-sm"
+                />
+              </div>
+              <Button
+                variant="primary"
+                onClick={handleSaveAppName}
+                loading={brandLoading}
+                disabled={!appName.trim()}
+              >
+                Save Name
+              </Button>
+            </div>
+            {brandStatus.message && (
+              <p
+                className={`text-xs font-medium ${
+                  brandStatus.type === "success" ? "text-emerald-500" : "text-red-500"
+                }`}
+              >
+                {brandStatus.message}
+              </p>
+            )}
+          </div>
         </Card>
 
         {/* Security */}

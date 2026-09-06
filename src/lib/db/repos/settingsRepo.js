@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
     audioInput: { enabled: true, roundRobin: false, models: [] },
     videoInput: { enabled: false, roundRobin: false, models: [] },
   },
+  appName: process.env.APP_NAME || process.env.NEXT_PUBLIC_APP_NAME || "SantaiNetwork",
   requireLogin: true,
   requireApiKey: true,
   tunnelDashboardAccess: true,

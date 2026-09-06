@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [samlLoginLabel, setSamlLoginLabel] = useState("Sign in with SAML SSO");
   const [mustChange, setMustChange] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [appName, setAppName] = useState("SantaiNetwork");
 
   // Countdown for rate-limit
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function LoginPage() {
             window.location.assign("/dashboard");
             return;
           }
+          if (data.appName) setAppName(data.appName);
           setHasPassword(!!data.hasPassword);
           setAuthMode(data.authMode || "password");
           setSsoType(data.ssoType || "oidc");
@@ -155,8 +157,8 @@ export default function LoginPage() {
       <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">9Router</h1>
-          <p className="text-[11px] text-text-subtle mb-1">Modified by SantaiNetwork</p>
+          <h1 className="text-3xl font-bold text-primary mb-2">{appName || "SantaiNetwork"}</h1>
+          <p className="text-[11px] text-text-subtle mb-1">AI Gateway Infrastructure</p>
           <p className="text-text-muted">
             {samlAvailable
               ? "Sign in with SAML 2.0 Single Sign-On"

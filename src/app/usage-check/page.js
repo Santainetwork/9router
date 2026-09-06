@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,11 +64,15 @@ export default function UsageCheckPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [liveConcurrency, setLiveConcurrency] = useState(null);
+  const [liveActive, setLiveActive] = useState(true);
+  const [lastLivePing, setLastLivePing] = useState(null);
 
   async function check(period = days) {
     const k = key.trim();
     if (!k) {
       setError("Please enter your API key first.");
+      setLiveConcurrency(null);
       return;
     }
     setLoading(true);
@@ -82,21 +86,61 @@ export default function UsageCheckPage() {
       if (!res.ok) {
         setError(body?.error || `Request failed with HTTP status ${res.status}`);
         setData(null);
+        setLiveConcurrency(null);
       } else {
         setData(body);
+        if (body?.live) {
+          setLiveConcurrency(body.live);
+          setLastLivePing(new Date());
+        }
       }
     } catch (e) {
       setError(e.message || "Network error occurred.");
       setData(null);
+      setLiveConcurrency(null);
     } finally {
       setLoading(false);
     }
   }
 
+  // Live polling for in-flight concurrency specifically
+  useEffect(() => {
+    if (!data || !key || !liveActive) return;
+
+    const interval = setInterval(async () => {
+      const k = key.trim();
+      if (!k) return;
+      try {
+        const res = await fetch("/api/v1/usage?live=1", {
+          headers: { Authorization: `Bearer ${k}` },
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (body?.live) {
+            setLiveConcurrency(body.live);
+            setLastLivePing(new Date());
+          }
+        }
+      } catch {
+        // silent fail during background poll
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [data, key, liveActive]);
+
   const quota = data?.limits?.tokenQuota || 0;
   const used = data?.usage?.tokensUsedAllTime || 0;
   const remaining = data?.usage?.tokensRemaining;
   const pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+
+  const limitConcurrency = data?.limits?.concurrency || 0;
+  const activeSlots = liveConcurrency?.activeConcurrency ?? (data?.live?.activeConcurrency || 0);
+  const queuedSlots = liveConcurrency?.queuedRequests ?? (data?.live?.queuedRequests || 0);
+  const concurrencyPct = limitConcurrency > 0
+    ? Math.min(100, Math.round((activeSlots / limitConcurrency) * 100))
+    : 0;
 
   return (
     <div className="min-h-screen bg-[#FFFDF9] dark:bg-[#0B0F19] text-black dark:text-white px-4 py-12 selection:bg-yellow-400 selection:text-black">
@@ -249,8 +293,121 @@ export default function UsageCheckPage() {
                 />
               </div>
 
-              {/* Traffic Throttle Pills */}
-              <div className="mt-5 rounded-xl border-2 border-black dark:border-white/80 bg-[#FAF8F5] dark:bg-neutral-800 p-4 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff]">
+              {/* Live Concurrency Tracker */}
+              <div className="mt-5 rounded-xl border-2 border-black dark:border-white bg-[#FAF8F5] dark:bg-neutral-800 p-4 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff]">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-3 w-3">
+                      {liveActive && (
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      )}
+                      <span
+                        className={cn(
+                          "relative inline-flex rounded-full h-3 w-3 border border-black",
+                          liveActive ? "bg-emerald-500" : "bg-neutral-400"
+                        )}
+                      />
+                    </span>
+                    <span className="text-xs font-black uppercase tracking-wider text-black dark:text-white">
+                      Live Concurrency Tracker
+                    </span>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded border border-black dark:border-white bg-yellow-400 text-black uppercase shadow-[1px_1px_0px_#000]">
+                      Real-Time
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {lastLivePing && (
+                      <span className="text-[10px] font-mono font-bold text-neutral-500 hidden sm:inline">
+                        {lastLivePing.toLocaleTimeString()}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setLiveActive(!liveActive)}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] font-black uppercase rounded-lg border-2 border-black dark:border-white transition-all shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff] cursor-pointer",
+                        liveActive
+                          ? "bg-emerald-400 text-black hover:bg-emerald-300"
+                          : "bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-300"
+                      )}
+                    >
+                      {liveActive ? "● Live (2.5s)" : "Paused"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border-2 border-black dark:border-white bg-white dark:bg-neutral-900 p-3 shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                    <span className="text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-400">
+                      In-Flight Active
+                    </span>
+                    <div className="text-2xl font-black font-mono mt-1 text-black dark:text-white flex items-baseline gap-1">
+                      <span className={activeSlots > 0 ? "text-emerald-500 dark:text-emerald-400" : ""}>
+                        {activeSlots}
+                      </span>
+                      <span className="text-xs font-bold text-neutral-500">
+                        / {limitConcurrency > 0 ? limitConcurrency : "∞"}
+                      </span>
+                    </div>
+                    <div className="text-[10px] font-bold text-neutral-500 mt-1">
+                      {limitConcurrency > 0
+                        ? `${Math.max(0, limitConcurrency - activeSlots)} slots available`
+                        : "Unlimited concurrency"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border-2 border-black dark:border-white bg-white dark:bg-neutral-900 p-3 shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                    <span className="text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-400">
+                      Buffered in Queue
+                    </span>
+                    <div className="text-2xl font-black font-mono mt-1 text-black dark:text-white flex items-baseline gap-1">
+                      <span className={queuedSlots > 0 ? "text-amber-500 font-black" : ""}>
+                        {queuedSlots}
+                      </span>
+                      <span className="text-xs font-bold text-neutral-500">waiting</span>
+                    </div>
+                    <div className="text-[10px] font-bold text-neutral-500 mt-1">
+                      {queuedSlots > 0 ? "Waiting for active slots" : "Queue buffer idle"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border-2 border-black dark:border-white bg-white dark:bg-neutral-900 p-3 shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                    <span className="text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-400">
+                      Concurrency Load
+                    </span>
+                    <div className="text-2xl font-black font-mono mt-1 text-black dark:text-white">
+                      {limitConcurrency > 0 ? `${concurrencyPct}%` : "0%"}
+                    </div>
+                    <div className="text-[10px] font-bold text-neutral-500 mt-1">
+                      {activeSlots >= limitConcurrency && limitConcurrency > 0
+                        ? "⚠️ Limit saturated"
+                        : "Ready for requests"}
+                    </div>
+                  </div>
+                </div>
+
+                {limitConcurrency > 0 ? (
+                  <div className="mt-3">
+                    <div className="h-3 w-full rounded-md border-2 border-black dark:border-white bg-neutral-200 dark:bg-neutral-900 p-0.5 shadow-[1px_1px_0px_#000] dark:shadow-[1px_1px_0px_#fff]">
+                      <div
+                        className={cn(
+                          "h-full rounded-sm transition-all duration-300",
+                          concurrencyPct >= 100
+                            ? "bg-red-500"
+                            : concurrencyPct >= 75
+                            ? "bg-amber-400"
+                            : "bg-emerald-400"
+                        )}
+                        style={{ width: `${Math.min(100, Math.max(activeSlots > 0 ? 5 : 0, concurrencyPct))}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Traffic Throttle Parameters */}
+              <div className="mt-4 rounded-xl border-2 border-black dark:border-white/80 bg-[#FAF8F5] dark:bg-neutral-800 p-4 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff]">
                 <p className="text-[11px] font-black uppercase tracking-wider text-black dark:text-neutral-200 mb-2">
                   Traffic Throttle Parameters
                 </p>
@@ -259,7 +416,7 @@ export default function UsageCheckPage() {
                     RPM: {data.limits?.requestsPerMinute || "Unlimited"}
                   </span>
                   <span className="rounded-md border-2 border-black dark:border-white bg-white dark:bg-neutral-900 px-2.5 py-1 text-black dark:text-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
-                    Concurrency: {data.limits?.concurrency || "Unlimited"}
+                    Concurrency: {limitConcurrency || "Unlimited"}
                   </span>
                   <span className="rounded-md border-2 border-black dark:border-white bg-white dark:bg-neutral-900 px-2.5 py-1 text-black dark:text-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
                     Queue: {data.limits?.queueTimeoutMs ? `${data.limits.queueTimeoutMs}ms` : "60s"}

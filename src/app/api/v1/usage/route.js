@@ -4,6 +4,7 @@ import {
   getApiKeyTokenUsage,
   getApiKeyUsageInRange,
 } from "@/lib/localDb";
+import { getBucketDetail } from "open-sse/services/rateLimiter.js";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,32 @@ export async function GET(req) {
     return json({ error: "API key is disabled." }, 403);
   }
 
+  const bucket = getBucketDetail("apikey", info.id);
+  const liveData = {
+    activeConcurrency: bucket?.activeConcurrency || 0,
+    queuedRequests: bucket?.queued || 0,
+    requestsInWindow: bucket?.inWindow || 0,
+    windowResetInMs: bucket?.windowResetInMs || 0,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const isLiveOnly = new URL(req.url).searchParams.get("live") === "1" ||
+                     new URL(req.url).searchParams.get("live_only") === "true";
+  if (isLiveOnly) {
+    return json({
+      key: {
+        name: info.name,
+        createdAt: info.createdAt,
+      },
+      limits: {
+        requestsPerMinute: info.rpm || 0,
+        concurrency: info.concurrency || 0,
+        queueTimeoutMs: info.queueTimeoutMs || 0,
+      },
+      live: liveData,
+    });
+  }
+
   const days = parsePeriodDays(new URL(req.url).searchParams.get("period"));
   const start = new Date();
   start.setDate(start.getDate() - days + 1);
@@ -89,6 +116,7 @@ export async function GET(req) {
       tokenQuota: quota,                        // 0 = unlimited
       allowedModels: info.allowedModels || [],  // [] when unrestricted
     },
+    live: liveData,
     access: {
       restricted,                               // false = can use all models
       allowedModels: info.allowedModels,        // [] when unrestricted

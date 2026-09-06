@@ -2,7 +2,7 @@ import pkg from "../../../package.json" with { type: "json" };
 
 // App configuration
 export const APP_CONFIG = {
-  name: "9Router Proxy",
+  name: process.env.NEXT_PUBLIC_APP_NAME || "SantaiNetwork",
   description: "AI Infrastructure Management",
   version: pkg.version,
 };
