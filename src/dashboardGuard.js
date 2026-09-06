@@ -35,7 +35,7 @@ const PUBLIC_API_PATHS = [
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
 // Keep root-level rewrites here too: middleware runs before Next.js rewrites.
-const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/v2", "/api/v2", "/codex", "/responses"];
+const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/v2", "/api/v2", "/codex", "/responses", "/nosaver", "/api/v1/nosaver"];
 
 // Always require JWT token regardless of requireLogin setting
 const ALWAYS_PROTECTED = [

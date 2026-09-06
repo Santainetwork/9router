@@ -82,6 +82,8 @@
 
 **Endpoints**:
 - `/v1/nosaver/chat/completions` (and `/api/v1/nosaver/chat/completions`)
+- `/v1/nosaver/messages` (and `/api/v1/nosaver/messages`)
+- `/v1/nosaver/messages/count_tokens` (and `/api/v1/nosaver/messages/count_tokens`)
 - `/v1/nosaver/models`
 
 ---
