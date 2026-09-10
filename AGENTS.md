@@ -2,8 +2,8 @@
 
 ## Current State
 - **Active Branch**: `master` (and `dev`)
-- **Latest Version**: `v0.5.69-custom` (Upstream merged from `origin/master`)
-- **Status**: Production Ready ✅ (40/40 tests passing)
+- **Latest Version**: `v0.5.75-custom` (Upstream merged from `origin/master`)
+- **Status**: Production Ready ✅ (all tests passing)
 
 ---
 
@@ -98,8 +98,8 @@
 
 ---
 
-### 9. Upstream Merge v0.5.69 ✅ SYNCHRONIZED
-- Merged all 19 commits from `origin/master` (Codex `gpt-6-astra`, Claude Fable quota tracker, OpenCode Go `muse-spark-1.3-contributor`, Gemini session `thoughtSignature`, Antigravity multi-account anti-abuse rate limit protection).
+### 9. Upstream Merge v0.5.75 ✅ SYNCHRONIZED
+- Merged all 29 commits from `origin/master` (v0.5.75: OpenRouter and Vertex AI Veo video generation, Antigravity weekly quota tracking, Codex GPT Image 2.5 / Flare / Sunburst image models, Qoder usage and attachments escalation, OpenCode Go catalog and models, DeepSeek Anthropic-only tool types, Claude cache_control budget fix, Xiaomi MiMo dual auth desktop integration).
 
 ---
 
@@ -156,6 +156,6 @@ curl http://localhost:20128/api/health
 
 ---
 
-*Last Updated: September 6, 2026*  
-*Version: v0.5.69-custom*  
+*Last Updated: September 10, 2026*  
+*Version: v0.5.75-custom*  
 *Maintained by: SantaiNetwork AI Infrastructure Team*
