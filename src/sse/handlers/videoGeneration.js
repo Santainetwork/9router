@@ -51,8 +51,11 @@ async function requireValidApiKey(request) {
     if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
   // Per-API-key RPM rate limit + queue (same gate as chat/messages).
-  const limited = await enforceApiKeyRateLimit(apiKey);
-  if (limited) return limited;
+  const gateResult = await enforceApiKeyRateLimit(apiKey);
+  if (gateResult?.limited) return gateResult.limited;
+  if (gateResult?.release) {
+    try { gateResult.release(); } catch {}
+  }
   return null;
 }
 

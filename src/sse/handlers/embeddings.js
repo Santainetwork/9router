@@ -67,10 +67,21 @@ export async function handleEmbeddings(request) {
   }
 
   // Per-API-key RPM rate limit + queue (same gate as chat/messages).
+  let releaseApiKey = () => {};
   {
-    const limited = await enforceApiKeyRateLimit(apiKey);
-    if (limited) return limited;
+    const gateResult = await enforceApiKeyRateLimit(apiKey);
+    if (gateResult?.limited) return gateResult.limited;
+    if (gateResult?.release) releaseApiKey = gateResult.release;
   }
+
+  try {
+    return await doHandleEmbeddings(request, body, apiKey, modelStr, settings, url);
+  } finally {
+    try { releaseApiKey(); } catch {}
+  }
+}
+
+async function doHandleEmbeddings(request, body, apiKey, modelStr, settings, url) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {

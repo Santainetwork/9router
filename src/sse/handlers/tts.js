@@ -43,10 +43,21 @@ export async function handleTts(request) {
   }
 
   // Per-API-key RPM rate limit + queue (same gate as chat/messages).
+  let releaseApiKey = () => {};
   {
-    const limited = await enforceApiKeyRateLimit(apiKey);
-    if (limited) return limited;
+    const gateResult = await enforceApiKeyRateLimit(apiKey);
+    if (gateResult?.limited) return gateResult.limited;
+    if (gateResult?.release) releaseApiKey = gateResult.release;
   }
+
+  try {
+    return await doHandleTts(request, apiKey, settings, modelStr, body);
+  } finally {
+    try { releaseApiKey(); } catch {}
+  }
+}
+
+async function doHandleTts(request, apiKey, settings, modelStr, body) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {

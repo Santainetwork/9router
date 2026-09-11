@@ -38,10 +38,21 @@ export async function handleStt(request) {
   }
 
   // Per-API-key RPM rate limit + queue (same gate as chat/messages).
+  let releaseApiKey = () => {};
   {
-    const limited = await enforceApiKeyRateLimit(apiKey);
-    if (limited) return limited;
+    const gateResult = await enforceApiKeyRateLimit(apiKey);
+    if (gateResult?.limited) return gateResult.limited;
+    if (gateResult?.release) releaseApiKey = gateResult.release;
   }
+
+  try {
+    return await doHandleStt(request, apiKey, settings, modelStr, formData);
+  } finally {
+    try { releaseApiKey(); } catch {}
+  }
+}
+
+async function doHandleStt(request, apiKey, settings, modelStr, formData) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {

@@ -60,10 +60,21 @@ export async function handleSearch(request) {
   }
 
   // Per-API-key RPM rate limit + queue (same gate as chat/messages).
+  let releaseApiKey = () => {};
   {
-    const limited = await enforceApiKeyRateLimit(apiKey);
-    if (limited) return limited;
+    const gateResult = await enforceApiKeyRateLimit(apiKey);
+    if (gateResult?.limited) return gateResult.limited;
+    if (gateResult?.release) releaseApiKey = gateResult.release;
   }
+
+  try {
+    return await doHandleSearch(request, apiKey, settings, url, providerInput, query, count);
+  } finally {
+    try { releaseApiKey(); } catch {}
+  }
+}
+
+async function doHandleSearch(request, apiKey, settings, url, providerInput, query, count) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {
