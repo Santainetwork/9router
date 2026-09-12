@@ -78,6 +78,7 @@ export function createStreamController({ onDisconnect, onComplete, onError, log,
 
       if (error.name === "AbortError") {
         logStream("⚡", "ABORTED");
+        onError?.(error);
         return;
       }
 

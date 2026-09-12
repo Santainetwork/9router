@@ -22,7 +22,7 @@ import { goAcquire, goRelease, isGoLimiterActive } from "./hybrid/goLimiterClien
 
 // scope -> Map<key, bucket>
 const scopes = new Map();
-const STALE_IN_FLIGHT_MS = 10 * 60 * 1000; // 10 minutes max in-flight protection
+const STALE_IN_FLIGHT_MS = 5 * 60 * 1000; // 5 minutes max in-flight protection
 
 function bucketFor(scope, key) {
   let m = scopes.get(scope);
@@ -36,6 +36,7 @@ function bucketFor(scope, key) {
       rpmLast: 0,
       concurrencyLast: 0,
       lastActivityAt: Date.now(),
+      inFlightTimes: [],
       queue: [] 
     };
     m.set(key, b);
@@ -43,20 +44,30 @@ function bucketFor(scope, key) {
   return b;
 }
 
-// Watchdog: auto-reclaim stale in-flight concurrency (>10 min with no completion)
+// Watchdog: auto-reclaim stale in-flight concurrency (>5 min with no completion)
 if (typeof setInterval === "function") {
   const watchdogId = setInterval(() => {
     const t = Date.now();
     for (const [scope, m] of scopes.entries()) {
       for (const [key, b] of m.entries()) {
-        if (b.activeConcurrency > 0 && t - b.lastActivityAt > STALE_IN_FLIGHT_MS) {
-          b.activeConcurrency = 0;
-          b.lastActivityAt = t;
-          pump(scope, key);
+        if (b.activeConcurrency > 0) {
+          if (Array.isArray(b.inFlightTimes) && b.inFlightTimes.length > 0) {
+            const initialLen = b.inFlightTimes.length;
+            b.inFlightTimes = b.inFlightTimes.filter(ts => t - ts <= STALE_IN_FLIGHT_MS);
+            const expired = initialLen - b.inFlightTimes.length;
+            if (expired > 0) {
+              b.activeConcurrency = Math.max(0, b.activeConcurrency - expired);
+              pump(scope, key);
+            }
+          } else if (t - b.lastActivityAt > STALE_IN_FLIGHT_MS) {
+            b.activeConcurrency = 0;
+            b.lastActivityAt = t;
+            pump(scope, key);
+          }
         }
       }
     }
-  }, 60 * 1000);
+  }, 30 * 1000);
   if (typeof watchdogId.unref === "function") watchdogId.unref();
 }
 
@@ -80,7 +91,11 @@ function tryConsume(b, rpm, concurrency, t) {
 
   if (rpmOk && concurrencyOk) {
     if (rpm > 0) b.count += 1;
-    if (concurrency > 0) b.activeConcurrency += 1;
+    if (concurrency > 0) {
+      b.activeConcurrency += 1;
+      if (!Array.isArray(b.inFlightTimes)) b.inFlightTimes = [];
+      b.inFlightTimes.push(t);
+    }
     return true;
   }
   return false;
@@ -94,6 +109,9 @@ export function release(scope, key) {
   if (!b) return;
   if (b.activeConcurrency > 0) {
     b.activeConcurrency -= 1;
+    if (Array.isArray(b.inFlightTimes) && b.inFlightTimes.length > 0) {
+      b.inFlightTimes.shift();
+    }
   }
   pump(scope, key);
 }
@@ -119,7 +137,11 @@ function pump(scope, key) {
       clearTimeout(w.timer);
       w.settled = true;
       if (b.rpmLast > 0) b.count += 1;
-      if (b.concurrencyLast > 0) b.activeConcurrency += 1;
+      if (b.concurrencyLast > 0) {
+        b.activeConcurrency += 1;
+        if (!Array.isArray(b.inFlightTimes)) b.inFlightTimes = [];
+        b.inFlightTimes.push(t);
+      }
       w.resolve(createReleaseFn(scope, key, b.concurrencyLast > 0));
     } else {
       break;
@@ -275,6 +297,7 @@ export function resetActiveConcurrency(scope, key) {
   if (!b) return 0;
   const before = b.activeConcurrency;
   b.activeConcurrency = 0;
+  b.inFlightTimes = [];
   pump(scope, key);
   return before;
 }
@@ -285,6 +308,7 @@ export function resetAllActiveConcurrency() {
     for (const [key, b] of m.entries()) {
       cleared += b.activeConcurrency || 0;
       b.activeConcurrency = 0;
+      b.inFlightTimes = [];
       pump(scope, key);
     }
   }

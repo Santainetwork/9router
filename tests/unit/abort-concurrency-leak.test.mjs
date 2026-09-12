@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { acquire, release, _stats, _reset, RateLimitTimeoutError } from "../../open-sse/services/rateLimiter.js";
+import { createStreamController } from "../../open-sse/utils/streamHandler.js";
 
 test("concurrency leak protection - request aborted while in queue does not consume slot upon release", async () => {
   _reset();
@@ -54,4 +55,19 @@ test("concurrency limit strictly prevents adding new requests while full", async
   rel1();
   rel2();
   assert.equal(_stats(scope, key).activeConcurrency, 0);
+});
+
+test("streamController invokes onError on AbortError to prevent stream slot leaks", () => {
+  let releaseCalled = false;
+  const controller = createStreamController({
+    onError: (err) => {
+      if (err.name === "AbortError") releaseCalled = true;
+    }
+  });
+
+  const abortErr = new Error("The operation was aborted");
+  abortErr.name = "AbortError";
+  controller.handleError(abortErr);
+
+  assert.equal(releaseCalled, true, "onError must be called on AbortError so slot releases");
 });
