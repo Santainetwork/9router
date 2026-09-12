@@ -274,7 +274,7 @@ export default function DashboardOverviewClient() {
                       {r.model || "unknown"}
                     </p>
                     <p className="truncate text-[11px] text-text-muted">
-                      {r.provider || "gateway"}
+                      {r.provider || "gateway"}{r.requestedModel && r.requestedModel !== r.model ? ` · via ${r.requestedModel}` : ""}
                     </p>
                   </div>
                   <div className="text-right shrink-0">

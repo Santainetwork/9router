@@ -299,15 +299,22 @@ export default function RequestDetailsTab() {
                       {new Date(detail.timestamp).toLocaleString()}
                     </td>
                     <td className="max-w-[280px] p-4 text-sm text-text-main">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {isUpstreamModel(detail.model) && (
-                          <span className="shrink-0 rounded bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300 font-mono">
-                            {detail.model.split('/')[0]}
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isUpstreamModel(detail.model) && (
+                            <span className="shrink-0 rounded bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300 font-mono">
+                              {detail.model.split('/')[0]}
+                            </span>
+                          )}
+                          <span className="truncate font-mono font-medium">
+                            {detail.model.includes('/') ? detail.model.split('/').slice(1).join('/') : detail.model}
+                          </span>
+                        </div>
+                        {detail.requestedModel && detail.requestedModel !== detail.model && (
+                          <span className="text-[11px] text-text-muted truncate mt-0.5 font-sans">
+                            via {detail.requestedModel}
                           </span>
                         )}
-                        <span className="truncate font-mono font-medium">
-                          {detail.model.includes('/') ? detail.model.split('/').slice(1).join('/') : detail.model}
-                        </span>
                       </div>
                     </td>
                     <td className="max-w-[180px] truncate p-4 text-sm text-text-main">
@@ -385,13 +392,18 @@ export default function RequestDetailsTab() {
                </div>
               <div>
                 <span className="text-text-muted">Model:</span>{" "}
-                <span className="inline-flex items-center gap-1.5 font-mono text-text-main font-medium">
+                <span className="inline-flex items-center gap-1.5 font-mono text-text-main font-medium flex-wrap">
                   {isUpstreamModel(selectedDetail.model) && (
                     <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300">
                       {selectedDetail.model.split('/')[0]}
                     </span>
                   )}
                   {selectedDetail.model}
+                  {selectedDetail.requestedModel && selectedDetail.requestedModel !== selectedDetail.model && (
+                    <span className="text-xs text-text-muted font-sans font-normal ml-1">
+                      (via {selectedDetail.requestedModel})
+                    </span>
+                  )}
                 </span>
               </div>
               <div>

@@ -24,6 +24,7 @@ if (!global._statsEmitter) {
 if (!global._pendingTimers) global._pendingTimers = {};
 if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
+if (!global._nodePrefixMapCache) global._nodePrefixMapCache = { map: {}, ts: 0 };
 if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null };
 
 const pendingRequests = global._pendingRequests;
@@ -31,6 +32,7 @@ const lastErrorProvider = global._lastErrorProvider;
 const pendingTimers = global._pendingTimers;
 const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
+const nodePrefixCache = global._nodePrefixMapCache;
 const statsEmitTimers = global._statsEmitTimers;
 
 export const statsEmitter = global._statsEmitter;
@@ -117,10 +119,31 @@ async function getConnectionMapCached() {
   return connCache.map;
 }
 
+export async function getNodePrefixMapCached() {
+  if (nodePrefixCache.map && Object.keys(nodePrefixCache.map).length > 0 && (Date.now() - nodePrefixCache.ts < CONN_CACHE_TTL_MS)) {
+    return nodePrefixCache.map;
+  }
+  try {
+    const db = await getAdapter();
+    const rows = db.all(`SELECT id, data FROM providerNodes`);
+    const map = {};
+    for (const r of rows) {
+      try {
+        const d = parseJson(r.data, {});
+        if (d?.prefix) map[r.id] = d.prefix;
+      } catch {}
+    }
+    nodePrefixCache.map = map;
+    nodePrefixCache.ts = Date.now();
+  } catch {}
+  return nodePrefixCache.map;
+}
+
 async function ensureRingInitialized() {
   if (recentRing.initialized) return;
   recentRing.initialized = true;
   try {
+    await getNodePrefixMapCached();
     const db = await getAdapter();
     const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
@@ -180,22 +203,45 @@ const PROVIDER_SHORT_PREFIXES = {
   kimi: "kimi",
   groq: "groq",
   openrouter: "openrouter",
+  "codebuddy-intl": "cbai",
+  "codebuddy-cn": "cbcn",
+  "opencode-go": "oc",
+  "mimo-free": "mmf",
 };
 
-export function formatModelWithProviderPrefix(rawModel, provider = "", meta = {}) {
-  const reqModel = meta?.requestedModel;
-  const upModel = meta?.upstreamModel;
+export function resolveProviderPrefix(provider) {
+  if (!provider) return "gateway";
+  const provLower = String(provider).toLowerCase();
 
-  if (reqModel && String(reqModel).includes("/")) return String(reqModel);
+  if (PROVIDER_SHORT_PREFIXES[provLower]) {
+    return PROVIDER_SHORT_PREFIXES[provLower];
+  }
+
+  const customPrefix = nodePrefixCache?.map?.[provider];
+  if (customPrefix) return customPrefix;
+
+  if (provLower.startsWith("openai-compatible-") || provLower.startsWith("custom-")) {
+    return "custom";
+  }
+  return provLower;
+}
+
+export function formatModelWithProviderPrefix(rawModel, provider = "", meta = {}) {
+  const upModel = meta?.upstreamModel;
+  const reqModel = meta?.requestedModel;
+
+  // 1. If rawModel already contains a provider prefix (e.g. "ag/gemini-3.8-flash-high", "myr/deepseek-v4.1-flash"), keep it.
+  if (rawModel && String(rawModel).includes("/")) return String(rawModel);
+
+  // 2. If upstreamModel contains a provider prefix (e.g. "amanai/qwen3.8-max"), prioritize it.
   if (upModel && String(upModel).includes("/")) return String(upModel);
 
-  const candidate = reqModel || upModel || rawModel || "unknown";
+  // 3. The target model sent to provider is rawModel, falling back to upstream/requested.
+  const candidate = rawModel || upModel || reqModel || "unknown";
   if (String(candidate).includes("/")) return String(candidate);
 
   if (provider) {
-    const provLower = String(provider).toLowerCase();
-    const shortPrefix = PROVIDER_SHORT_PREFIXES[provLower] || 
-      (provLower.startsWith("openai-compatible-") ? "custom" : provLower);
+    const shortPrefix = resolveProviderPrefix(provider);
     return `${shortPrefix}/${candidate}`;
   }
 
@@ -265,6 +311,7 @@ export async function getActiveRequests() {
   }
 
   await ensureRingInitialized();
+  await getNodePrefixMapCached();
   const seen = new Set();
   const recentRequests = [...recentRing.items]
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
@@ -277,6 +324,8 @@ export async function getActiveRequests() {
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         status: e.status || "ok",
+        requestedModel: ringMeta.requestedModel || undefined,
+        upstreamModel: ringMeta.upstreamModel || undefined,
       };
     })
     .filter((e) => {
@@ -296,6 +345,7 @@ export async function getActiveRequests() {
 export async function saveRequestUsage(entry) {
   try {
     const db = await getAdapter();
+    await getNodePrefixMapCached();
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
     
@@ -386,6 +436,7 @@ export async function saveRequestUsage(entry) {
 
 export async function getUsageHistory(filter = {}) {
   const db = await getAdapter();
+  await getNodePrefixMapCached();
   const conds = [];
   const params = [];
 
@@ -397,11 +448,23 @@ export async function getUsageHistory(filter = {}) {
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ${where} ORDER BY id ASC`, params);
 
-  return rows.map((r) => ({
-    timestamp: r.timestamp, provider: r.provider, model: parseJson(r.meta, {})?.requestedModel || r.model,
-    connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
-    cost: r.cost, status: r.status, tokens: parseJson(r.tokens, {}),
-  }));
+  return rows.map((r) => {
+    const meta = parseJson(r.meta, {});
+    const displayModel = formatModelWithProviderPrefix(r.model, r.provider, meta);
+    return {
+      timestamp: r.timestamp,
+      provider: r.provider,
+      model: displayModel,
+      requestedModel: meta.requestedModel || undefined,
+      upstreamModel: meta.upstreamModel || undefined,
+      connectionId: r.connectionId,
+      apiKeyMasked: maskApiKey(r.apiKey),
+      endpoint: r.endpoint,
+      cost: r.cost,
+      status: r.status,
+      tokens: parseJson(r.tokens, {}),
+    };
+  });
 }
 
 function loadDaysInRange(adapter, maxDays) {
@@ -416,6 +479,7 @@ function loadDaysInRange(adapter, maxDays) {
 
 export async function getUsageStats(period = "all") {
   const db = await getAdapter();
+  await getNodePrefixMapCached();
 
   const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
     import("./connectionsRepo.js"),
@@ -456,6 +520,7 @@ export async function getUsageStats(period = "all") {
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
         status: r.status || "ok",
+        requestedModel: meta.requestedModel || undefined,
         upstreamModel: meta.upstreamModel || undefined,
       };
     })
@@ -819,6 +884,7 @@ export async function appendRequestLog() {}
 export async function getRecentLogs(limit = 200) {
   try {
     const db = await getAdapter();
+    await getNodePrefixMapCached();
     const rows = db.all(
       `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens, meta FROM usageHistory ORDER BY id DESC LIMIT ?`,
       [limit],
@@ -835,12 +901,16 @@ export async function getRecentLogs(limit = 200) {
     return rows.map((r) => {
       const ts = formatLogDate(new Date(r.timestamp));
       const p = r.provider?.toUpperCase() || "-";
-      const m = parseJson(r.meta, {})?.requestedModel || r.model || "-";
+      const meta = parseJson(r.meta, {});
+      const actualModel = formatModelWithProviderPrefix(r.model, r.provider, meta);
+      const displayModel = meta?.requestedModel && meta.requestedModel !== actualModel
+        ? `${actualModel} [via ${meta.requestedModel}]`
+        : actualModel;
       const account = connMap[r.connectionId] || (r.connectionId ? r.connectionId.slice(0, 8) : "-");
       const tk = r.tokens ? parseJson(r.tokens, {}) : {};
       const sent = r.promptTokens ?? tk.prompt_tokens ?? "-";
       const received = r.completionTokens ?? tk.completion_tokens ?? "-";
-      return `${ts} | ${m} | ${p} | ${account} | ${sent} | ${received} | ${r.status || "-"}`;
+      return `${ts} | ${displayModel} | ${p} | ${account} | ${sent} | ${received} | ${r.status || "-"}`;
     });
   } catch (e) {
     console.error("[usageRepo] getRecentLogs failed:", e.message);

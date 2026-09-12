@@ -68,7 +68,7 @@ function RecentRequests({ requests = [] }) {
                     <td className="py-1.5">
                       <span className={`block w-1.5 h-1.5 rounded-full ${ok ? "bg-success" : "bg-error"}`} />
                     </td>
-                    <td className="py-1.5 font-mono truncate max-w-[180px]" title={r.model}>
+                    <td className="py-1.5 font-mono truncate max-w-[180px]" title={r.requestedModel && r.requestedModel !== r.model ? `${r.model} (via ${r.requestedModel})` : r.model}>
                       {r.model.includes('/') ? (
                         <span>
                           <span className="text-text-muted font-medium">{r.model.split('/')[0]}/</span>
@@ -76,6 +76,11 @@ function RecentRequests({ requests = [] }) {
                         </span>
                       ) : (
                         r.model
+                      )}
+                      {r.requestedModel && r.requestedModel !== r.model && (
+                        <span className="block text-[10px] text-text-muted font-sans truncate">
+                          via {r.requestedModel}
+                        </span>
                       )}
                     </td>
                     <td className="py-1.5 text-right whitespace-nowrap">

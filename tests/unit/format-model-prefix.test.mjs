@@ -13,6 +13,21 @@ test('formatModelWithProviderPrefix respects pre-existing slash in requestedMode
   );
 });
 
+test('formatModelWithProviderPrefix prioritizes actual model sent to provider over combo requestedModel alias', () => {
+  assert.equal(
+    formatModelWithProviderPrefix('gemini-3.8-flash-high', 'antigravity', { requestedModel: 'gemini-3.8-flash' }),
+    'ag/gemini-3.8-flash-high'
+  );
+  assert.equal(
+    formatModelWithProviderPrefix('deepseek-v4.1-flash', 'qoder', { requestedModel: 'deepseek-v4-flash' }),
+    'qoder/deepseek-v4.1-flash'
+  );
+  assert.equal(
+    formatModelWithProviderPrefix('myr/deepseek-v4.1-flash', 'openai-compatible-chat-123', { requestedModel: 'deepseek-v4-flash' }),
+    'myr/deepseek-v4.1-flash'
+  );
+});
+
 test('formatModelWithProviderPrefix auto-attaches provider short prefix when model has no slash', () => {
   assert.equal(
     formatModelWithProviderPrefix('gemini-3.7-flash-high', 'antigravity', {}),
