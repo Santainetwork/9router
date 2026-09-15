@@ -104,7 +104,8 @@ http.createServer = (...args) => {
     delete req.headers["x-9r-peer-token"];
     req.headers["x-9r-real-ip"] = ip;
     req.headers["x-9r-peer-token"] = PEER_TOKEN;
-    if (viaProxy) req.headers["x-9r-via-proxy"] = "1";
+    const isLoopbackAddr = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1" || ip === "localhost";
+    if (viaProxy && !isLoopbackAddr) req.headers["x-9r-via-proxy"] = "1";
     return handler(req, res);
   };
   const server = origCreate(...rest, wrapped);
