@@ -148,7 +148,16 @@ export async function saveRequestDetail(detail) {
   const config = await getObservabilityConfig();
   if (!config.enabled) {return;}
 
-  writeBuffer.push(detail);
+  // Truncate fields IMMEDIATELY before pushing to memory buffer to avoid retaining huge objects in heap
+  const trimmed = {
+    ...detail,
+    request: truncateField(detail.request, config.maxJsonSize),
+    providerRequest: truncateField(detail.providerRequest, config.maxJsonSize),
+    providerResponse: truncateField(detail.providerResponse, config.maxJsonSize),
+    response: truncateField(detail.response, config.maxJsonSize),
+  };
+
+  writeBuffer.push(trimmed);
 
   // Trigger immediate flush if batch threshold reached.
   // flushToDatabase() drains entire buffer in a loop, so all pushes during await are persisted.
