@@ -33,6 +33,11 @@ type ResetReq struct {
 	All   bool   `json:"all"`
 }
 
+type BucketDetailReq struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+}
+
 func main() {
 	port := flag.Int("port", 20129, "HTTP port for hybrid engine")
 	flag.Parse()
@@ -42,7 +47,11 @@ func main() {
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "engine": "go-hybrid-v1"})
+		json.NewEncoder(w).Encode(map[string]any{
+			"status":  "ok",
+			"engine":  "go-hybrid-v1",
+			"buckets": eng.BucketCount(),
+		})
 	})
 
 	mux.HandleFunc("/v1/limiter/acquire", func(w http.ResponseWriter, r *http.Request) {
@@ -119,6 +128,18 @@ func main() {
 		json.NewEncoder(w).Encode(snap)
 	})
 
+	mux.HandleFunc("/v1/limiter/bucket-detail", func(w http.ResponseWriter, r *http.Request) {
+		scope := r.URL.Query().Get("scope")
+		key := r.URL.Query().Get("key")
+		if scope == "" || key == "" {
+			http.Error(w, "scope and key query params required", http.StatusBadRequest)
+			return
+		}
+		detail := eng.GetBucketDetail(scope, key)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(detail)
+	})
+
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)
 	srv := &http.Server{
 		Addr:         addr,
@@ -140,4 +161,5 @@ func main() {
 	<-stop
 
 	log.Println("[Hybrid Go Engine] Shutting down...")
+	eng.Stop()
 }

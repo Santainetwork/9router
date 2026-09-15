@@ -14,8 +14,10 @@ var (
 )
 
 const (
-	WindowDuration = 60 * time.Second
-	StaleInFlight  = 15 * time.Minute
+	WindowDuration   = 60 * time.Second
+	StaleSlotTTL     = 5 * time.Minute  // per-slot stale detection (matches JS 5min)
+	IdleBucketTTL    = 10 * time.Minute // evict buckets with zero activity
+	WatchdogInterval = 30 * time.Second // sweep frequency
 )
 
 type Waiter struct {
@@ -32,21 +34,28 @@ type Bucket struct {
 	activeConcurrency int
 	rpmLast           int
 	concurrencyLast   int
-	lastAcquireAt     time.Time
+	lastActivityAt    time.Time
+	inFlightTimes     []time.Time // per-slot acquire timestamps
 	waiters           []*Waiter
 }
 
 type Engine struct {
 	mu      sync.RWMutex
 	buckets map[string]*Bucket // key: "scope:key"
+	stop    chan struct{}
 }
 
 func NewEngine() *Engine {
 	e := &Engine{
 		buckets: make(map[string]*Bucket),
+		stop:    make(chan struct{}),
 	}
 	go e.watchdogLoop()
 	return e
+}
+
+func (e *Engine) Stop() {
+	close(e.stop)
 }
 
 func (e *Engine) getBucket(scope, key string) *Bucket {
@@ -63,11 +72,12 @@ func (e *Engine) getBucket(scope, key string) *Bucket {
 	if b, ok = e.buckets[id]; ok {
 		return b
 	}
+	now := time.Now()
 	b = &Bucket{
-		scope:         scope,
-		key:           key,
-		windowStart:   time.Now(),
-		lastAcquireAt: time.Now(),
+		scope:          scope,
+		key:            key,
+		windowStart:    now,
+		lastActivityAt: now,
 	}
 	e.buckets[id] = b
 	return b
@@ -96,13 +106,23 @@ func (b *Bucket) pump() {
 			}
 			if b.concurrencyLast > 0 {
 				b.activeConcurrency++
+				b.inFlightTimes = append(b.inFlightTimes, now)
 			}
-			b.lastAcquireAt = now
+			b.lastActivityAt = now
 			close(w.done)
 		} else {
 			break
 		}
 	}
+}
+
+// isIdle returns true when the bucket has no waiters, no in-flight slots,
+// no RPM window activity, and has been idle longer than IdleBucketTTL.
+func (b *Bucket) isIdle(now time.Time) bool {
+	return b.activeConcurrency == 0 &&
+		len(b.waiters) == 0 &&
+		(now.Sub(b.windowStart) >= WindowDuration || b.count == 0) &&
+		now.Sub(b.lastActivityAt) >= IdleBucketTTL
 }
 
 func (e *Engine) Acquire(ctx context.Context, scope, key string, rpm, concurrency int, timeout time.Duration) error {
@@ -130,8 +150,9 @@ func (e *Engine) Acquire(ctx context.Context, scope, key string, rpm, concurrenc
 		}
 		if hasConc {
 			b.activeConcurrency++
+			b.inFlightTimes = append(b.inFlightTimes, now)
 		}
-		b.lastAcquireAt = now
+		b.lastActivityAt = now
 		b.mu.Unlock()
 		return nil
 	}
@@ -195,7 +216,11 @@ func (e *Engine) Release(scope, key string) {
 	b.mu.Lock()
 	if b.activeConcurrency > 0 {
 		b.activeConcurrency--
+		if len(b.inFlightTimes) > 0 {
+			b.inFlightTimes = b.inFlightTimes[1:] // FIFO: remove oldest slot
+		}
 	}
+	b.lastActivityAt = time.Now()
 	b.pump()
 	b.mu.Unlock()
 }
@@ -212,6 +237,7 @@ func (e *Engine) Reset(scope, key string) int {
 	b.mu.Lock()
 	cleared := b.activeConcurrency
 	b.activeConcurrency = 0
+	b.inFlightTimes = nil
 	b.pump()
 	b.mu.Unlock()
 	return cleared
@@ -225,10 +251,69 @@ func (e *Engine) ResetAll() int {
 		b.mu.Lock()
 		cleared += b.activeConcurrency
 		b.activeConcurrency = 0
+		b.inFlightTimes = nil
 		b.pump()
 		b.mu.Unlock()
 	}
 	return cleared
+}
+
+// BucketDetail returns telemetry for a single scope:key bucket (used by dashboard).
+type BucketDetail struct {
+	Count             int   `json:"count"`
+	ActiveConcurrency int   `json:"activeConcurrency"`
+	Queued            int   `json:"queued"`
+	InWindow          int   `json:"inWindow"`
+	RPM               int   `json:"rpm"`
+	Concurrency       int   `json:"concurrency"`
+	WindowResetInMs   int64 `json:"windowResetInMs"`
+}
+
+func (e *Engine) GetBucketDetail(scope, key string) BucketDetail {
+	id := scope + ":" + key
+	e.mu.RLock()
+	b, ok := e.buckets[id]
+	e.mu.RUnlock()
+	if !ok {
+		return BucketDetail{}
+	}
+
+	now := time.Now()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	inWindow := 0
+	if now.Sub(b.windowStart) < WindowDuration {
+		inWindow = b.count
+	}
+
+	queued := 0
+	for range b.waiters {
+		queued++
+	}
+
+	resetMs := int64(0)
+	diff := WindowDuration - now.Sub(b.windowStart)
+	if diff > 0 {
+		resetMs = diff.Milliseconds()
+	}
+
+	return BucketDetail{
+		Count:             b.count,
+		ActiveConcurrency: b.activeConcurrency,
+		Queued:            queued,
+		InWindow:          inWindow,
+		RPM:               b.rpmLast,
+		Concurrency:       b.concurrencyLast,
+		WindowResetInMs:   resetMs,
+	}
+}
+
+// BucketCount returns the number of tracked buckets (for metrics/tests).
+func (e *Engine) BucketCount() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return len(e.buckets)
 }
 
 type BucketSnapshot struct {
@@ -243,9 +328,10 @@ type BucketSnapshot struct {
 }
 
 type Snapshot struct {
-	TotalQueued            int              `json:"totalQueued"`
+	TotalQueued           int              `json:"totalQueued"`
 	TotalActiveConcurrent int              `json:"totalActiveConcurrent"`
-	Buckets                []BucketSnapshot `json:"buckets"`
+	TotalBuckets          int              `json:"totalBuckets"`
+	Buckets               []BucketSnapshot `json:"buckets"`
 }
 
 func (e *Engine) Snapshot() Snapshot {
@@ -253,7 +339,7 @@ func (e *Engine) Snapshot() Snapshot {
 	defer e.mu.RUnlock()
 
 	now := time.Now()
-	var snap Snapshot
+	snap := Snapshot{TotalBuckets: len(e.buckets)}
 
 	for _, b := range e.buckets {
 		b.mu.Lock()
@@ -293,20 +379,62 @@ func (e *Engine) Snapshot() Snapshot {
 	return snap
 }
 
-// Watchdog cleans up stale in-flight locks (>15 minutes without activity)
+// watchdogLoop runs two maintenance tasks every WatchdogInterval:
+//  1. Expire individual stale in-flight slots (per-slot >StaleSlotTTL)
+//  2. Evict completely idle buckets (>IdleBucketTTL with no activity)
 func (e *Engine) watchdogLoop() {
-	ticker := time.NewTicker(1 * time.Minute)
-	for range ticker.C {
-		now := time.Now()
-		e.mu.RLock()
-		for _, b := range e.buckets {
-			b.mu.Lock()
-			if b.activeConcurrency > 0 && now.Sub(b.lastAcquireAt) > StaleInFlight {
+	ticker := time.NewTicker(WatchdogInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-e.stop:
+			return
+		case <-ticker.C:
+			e.watchdogSweep()
+		}
+	}
+}
+
+func (e *Engine) watchdogSweep() {
+	now := time.Now()
+
+	// Phase 1: per-slot stale expiry (under read lock to iterate, bucket lock per entry)
+	e.mu.RLock()
+	for _, b := range e.buckets {
+		b.mu.Lock()
+		if b.activeConcurrency > 0 && len(b.inFlightTimes) > 0 {
+			alive := b.inFlightTimes[:0]
+			for _, ts := range b.inFlightTimes {
+				if now.Sub(ts) <= StaleSlotTTL {
+					alive = append(alive, ts)
+				}
+			}
+			expired := len(b.inFlightTimes) - len(alive)
+			if expired > 0 {
+				b.inFlightTimes = alive
+				b.activeConcurrency = max(0, b.activeConcurrency-expired)
+				b.pump()
+			}
+		} else if b.activeConcurrency > 0 && len(b.inFlightTimes) == 0 {
+			// Legacy fallback: no per-slot data, use lastActivityAt
+			if now.Sub(b.lastActivityAt) > StaleSlotTTL {
 				b.activeConcurrency = 0
 				b.pump()
 			}
-			b.mu.Unlock()
 		}
-		e.mu.RUnlock()
+		b.mu.Unlock()
 	}
+	e.mu.RUnlock()
+
+	// Phase 2: evict idle buckets (needs write lock)
+	e.mu.Lock()
+	for id, b := range e.buckets {
+		b.mu.Lock()
+		idle := b.isIdle(now)
+		b.mu.Unlock()
+		if idle {
+			delete(e.buckets, id)
+		}
+	}
+	e.mu.Unlock()
 }

@@ -101,3 +101,17 @@ export async function goSnapshot() {
     return null;
   }
 }
+
+export async function goBucketDetail(scope, key) {
+  try {
+    const url = `${GO_ENGINE_URL}/v1/limiter/bucket-detail?scope=${encodeURIComponent(scope)}&key=${encodeURIComponent(key)}`;
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(1000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
