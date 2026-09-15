@@ -172,8 +172,15 @@ export const TABLES = {
   },
 };
 
-export function buildCreateTableSql(name, def) {
-  const cols = Object.entries(def.columns).map(([k, v]) => `${k} ${v}`);
+export function buildCreateTableSql(name, def, driver = "sqlite") {
+  const isPostgres = driver === "postgres";
+  const cols = Object.entries(def.columns).map(([k, v]) => {
+    let colType = v;
+    if (isPostgres) {
+      colType = colType.replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, "SERIAL PRIMARY KEY");
+    }
+    return `${k} ${colType}`;
+  });
   if (def.primaryKey) cols.push(def.primaryKey);
   return `CREATE TABLE IF NOT EXISTS ${name} (${cols.join(", ")})`;
 }

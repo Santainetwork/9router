@@ -7,7 +7,7 @@ export default {
   name: "initial",
   up(db) {
     for (const [name, def] of Object.entries(TABLES)) {
-      db.exec(buildCreateTableSql(name, def));
+      db.exec(buildCreateTableSql(name, def, db.driver));
       for (const idx of def.indexes || []) db.exec(idx);
     }
   },

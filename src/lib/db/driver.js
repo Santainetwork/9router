@@ -4,6 +4,13 @@ import { ensureDirs, DATA_FILE } from "./paths.js";
 if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false };
 const state = global._dbAdapter;
 
+export function getDatabaseType() {
+  if (process.env.DATABASE_URL || process.env.DB_TYPE === "postgres") {
+    return "postgres";
+  }
+  return "sqlite";
+}
+
 async function tryBunSqlite() {
   // Bun runtime only — built-in, no install needed
   if (!process.versions.bun) return null;
@@ -57,6 +64,22 @@ async function trySqlJs() {
 }
 
 async function initAdapter() {
+  const dbType = getDatabaseType();
+  if (dbType === "postgres") {
+    const { createPostgresAdapter } = await import("./adapters/postgresAdapter.js");
+    const adapter = await createPostgresAdapter(process.env.DATABASE_URL);
+    if (!state.logged) {
+      const target = process.env.DATABASE_URL
+        ? process.env.DATABASE_URL.replace(/:[^:@]+@/, ":***@")
+        : "default";
+      console.log(`[DB] Driver: ${adapter.driver} | target: ${target}`);
+      state.logged = true;
+    }
+    const { runMigrationOnce } = await import("./migrate.js");
+    await runMigrationOnce(adapter);
+    return adapter;
+  }
+
   ensureDirs();
   // Order per runtime:
   //   Bun:  bun:sqlite → sql.js

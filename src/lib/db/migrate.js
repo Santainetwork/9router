@@ -56,7 +56,7 @@ function isFreshDb(adapter) {
 // ─── Versioned migrations runner (skip-version safe) ─────────────────────
 function runVersionedMigrations(adapter) {
   // Bootstrap _meta first so we can read schemaVersion
-  adapter.exec(buildCreateTableSql("_meta", TABLES._meta));
+  adapter.exec(buildCreateTableSql("_meta", TABLES._meta, adapter.driver));
 
   const current = parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
   const target = latestVersion();
@@ -79,19 +79,24 @@ function runVersionedMigrations(adapter) {
 function syncSchemaFromTables(adapter) {
   for (const [tableName, def] of Object.entries(TABLES)) {
     // Create table if absent
-    adapter.exec(buildCreateTableSql(tableName, def));
+    adapter.exec(buildCreateTableSql(tableName, def, adapter.driver));
 
     // Diff columns
-    const existing = adapter.all(`PRAGMA table_info(${tableName})`);
+    const existing = adapter.driver === "postgres"
+      ? adapter.all("SELECT column_name AS name FROM information_schema.columns WHERE lower(table_name) = lower(?)", [tableName])
+      : adapter.all(`PRAGMA table_info(${tableName})`);
     const existingNames = new Set(existing.map((r) => r.name));
     for (const [colName, colDef] of Object.entries(def.columns)) {
       if (!existingNames.has(colName)) {
         // SQLite ADD COLUMN restrictions: no PRIMARY KEY / UNIQUE w/o NULL ok.
         // We strip PRIMARY KEY / UNIQUE since those are only valid at create time.
-        const safeDef = colDef
+        let safeDef = colDef
           .replace(/PRIMARY KEY( AUTOINCREMENT)?/i, "")
           .replace(/UNIQUE/i, "")
           .trim();
+        if (adapter.driver === "postgres") {
+          safeDef = safeDef.replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, "SERIAL");
+        }
         try {
           adapter.exec(`ALTER TABLE ${tableName} ADD COLUMN ${colName} ${safeDef}`);
           console.log(`[DB][sync] +column ${tableName}.${colName}`);
@@ -226,13 +231,13 @@ export async function runMigrationOnce(adapter) {
 
   // Bootstrap _meta so we can read the stored backup schema version below
   // (runVersionedMigrations also ensures this, but we need it earlier here).
-  adapter.exec(buildCreateTableSql("_meta", TABLES._meta));
+  adapter.exec(buildCreateTableSql("_meta", TABLES._meta, adapter.driver));
 
   // Detect a pending schema change via the central SCHEMA_VERSION const.
   // A lightweight backup is taken BEFORE any schema mutation below.
   const storedSchemaVer = parseInt(getMetaSync(adapter, "backupSchemaVersion", "0"), 10) || 0;
   const schemaChanging = !fresh && storedSchemaVer < SCHEMA_VERSION;
-  if (schemaChanging) {
+  if (schemaChanging && adapter.driver !== "postgres") {
     try {
       const backupDir = makeBackupDir(`schema-${storedSchemaVer}-to-${SCHEMA_VERSION}`);
       backupDbLite(adapter, backupDir);

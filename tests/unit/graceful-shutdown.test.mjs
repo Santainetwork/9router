@@ -6,6 +6,7 @@ const adapters = [
   "betterSqliteAdapter.js",
   "nodeSqliteAdapter.js",
   "bunSqliteAdapter.js",
+  "postgresAdapter.js",
 ];
 
 test("SQLite adapters leave SIGTERM drain to Next server", () => {
