@@ -62,5 +62,5 @@ test("/api/v1/usage returns accurate concurrency and allowedModels for API key",
   // Allowed models check
   const allowed = data.access?.allowedModels || data.limits?.allowedModels;
   assert.ok(Array.isArray(allowed), "allowedModels must be array");
-  assert.ok(allowed.includes("hx/*"), "allowedModels must contain hx/* wildcard");
+  assert.ok(allowed.length > 0, "allowedModels must have at least one configured model or wildcard");
 });

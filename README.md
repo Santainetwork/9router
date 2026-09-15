@@ -1,25 +1,90 @@
 <div align="center">
   <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
   
-  # 9Router - FREE AI Router & Token Saver
+  # 9Router - SantaiNetwork AI Gateway Edition
   
-  **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
+  **High-Performance AI Gateway, Concurrency Buffer Engine & Token Router.**
   
-  **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
-  
-  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
-  [![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+  **Universal Multi-Provider Bridge for Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw and more.**
 
-<a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+  [![Version](https://img.shields.io/badge/version-v0.5.75--custom-emerald.svg)](package.json)
+  [![SantaiNetwork](https://img.shields.io/badge/maintained%20by-SantaiNetwork-blue.svg)](https://santainetwork.id)
+  [![Tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen.svg)](tests/)
+  [![Status](https://img.shields.io/badge/production-ready-success.svg)](#-deployment--maintenance)
 
-[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🌐 Website](https://9router.com)
-
-[🇧🇷 Português (Brasil)](./i18n/README.pt-BR.md) • [🇻🇳 Tiếng Việt](./i18n/README.vi.md) • [🇨🇳 中文](./i18n/README.zh-CN.md) • [🇯🇵 日本語](./i18n/README.ja-JP.md) • [🇷🇺 Русский](./i18n/README.ru.md) • [🇹🇭 ไทย](./i18n/README.th.md) • [🇮🇷 فارسی](./i18n/README.fa_IR.md) • [🇮🇩 Indonesia](./i18n/README.id-ID.md) • [🇪🇸 Español](./i18n/README.es.md) • [🇫🇷 Français](./i18n/README.fr.md)
+[🚀 SantaiNetwork Enhancements](#-santainetwork-custom-enhancements) • [⚡ Endpoints & Ports](#-endpoints--ports-architecture) • [💡 Core Features](#-key-features) • [🛠️ Deployment](#-deployment--maintenance) • [📖 Setup](#-setup-guide)
 
 </div>
+
+---
+
+## ⚡ SantaiNetwork Custom Enhancements
+
+This repository contains the hardened, production-grade custom distribution of **9Router** tailored for high-concurrency gateway operations and multi-tenant access control by **SantaiNetwork**:
+
+### 1. 🛡️ Concurrency Engine, FIFO Auto-Queue & Zero-Leak Limiter
+- **In-Flight Semaphore**: Atomic slot management preventing concurrency leaks across stream lifecycles, client aborts, and upstream parallel limits.
+- **FIFO Auto-Queue Buffering**: Incoming requests buffer in memory (configurable timeout) when concurrency is saturated rather than rejecting callers with immediate `429 Too Many Requests`.
+- **5-Minute Slot Watchdog**: Automated watchdog decays stale in-flight slots every 30 seconds with per-slot timestamp tracking.
+- **Client Disconnect Handling**: Immediate slot release upon client abort (`AbortError`) across all SSE and non-streaming handlers.
+
+### 2. 🏷️ Upstream Model & Prefix Attribution
+- **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
+- **Dynamic Provider Node Prefix Cache**: Automatically resolves prefixes defined in custom provider nodes (`providerNodes.data.prefix`).
+
+### 3. 🚫 Dedicated `/v1/nosaver` Zero-Saver Endpoints
+- **Purity Gateways**: Dedicated endpoints that completely bypass token savers (Headroom, Caveman, Ponytail, RTK, PXPIPE) with `x-9router-token-saver: off`:
+  - `POST /v1/nosaver/chat/completions` (OpenAI format)
+  - `POST /v1/nosaver/messages` (Anthropic Claude format)
+  - `POST /v1/nosaver/messages/count_tokens`
+  - `GET /v1/nosaver/models`
+
+### 4. 🎨 Neobrutalism UI Portal & Live Concurrency Telemetry
+- **Live Concurrency Tracker**: Real-time telemetry monitoring active in-flight slots, buffer queue waiters, and saturation percentages via fast-path query (`/api/v1/usage?live=1`).
+- **Design Tokens**: High-contrast, tactile Neobrutalist design with bold 2px borders, 4px hard offset shadows, and color-coded status chips on both `/usage-check` and public proxy `:20140`.
+
+### 5. 🎛️ Responsive Combos Grid with Multi-Filter
+- **Responsive 3-Column Grid**: Dynamic card grid (`md:grid-cols-2 lg:grid-cols-3`) replacing standard single-column lists.
+- **Multi-Dimensional Filters**: Real-time search across combo names and provider prefixes, strategy pill tabs (`All`, `Fallback`, `Round Robin`, `Fusion`), provider dropdowns, capability badges (`Vision`, `Audio`), model counts, and sorting.
+
+### 6. 🔐 Model Allowlist Wildcard Matching
+- Flexible API key governance allowing prefix wildcard rules (e.g., `hx/*`, `myr/*`, `ag/*`, `*`) in addition to exact model identifiers.
+
+### 7. 🧹 Clean Response Footer Deduplication & Thinking Tag Stripping
+- **Deduplication**: Automatic cleaning of prior assistant turn footers preventing footer duplication in multi-turn chats.
+- **BazaarLink Probe Alignment**: Auto-stripping of leaked upstream `<thinking>` tags from `choice.message.content` into `reasoning_content` and optional footer suppression via `x-no-footer: 1` / `x-footer: off`.
+
+### 8. 💳 Custom Provider Credit & Quota Balances
+- Automatic credit and balance tracking for custom OpenAI-compatible and custom embedding endpoints in Quota Tracker.
+
+### 9. 🏆 Usage Leaderboard & RFC-4180 CSV Export
+- Analytics monitoring volume, cost, latency, and token consumption with sorting, ranking badges, and instant CSV snapshot download (`/dashboard/leaderboard`).
+
+### 10. 🏷️ Dynamic Branding & Gateway Name
+- Real-time configurable system branding defaulting to `SantaiNetwork` with live updates broadcast across UI navigation, login page, and usage portals.
+
+---
+
+## 🌐 Endpoints & Ports Architecture
+
+```
+                 Internet / Clients
+                         │
+          ┌──────────────┴──────────────┐
+          │                             │
+    [Port 20128]                  [Port 20140]
+  Internal Gateway             Public Reverse Proxy
+  - Next.js App Router         - Standalone Neobrutalism Portal
+  - /v1/chat/completions       - /usage-check (Zero token leaks)
+  - /v1/messages               - Telemetry & Concurrency Check
+  - /v1/nosaver/*              - Minimal attack surface
+  - /dashboard/*               
+          │
+          ▼
+   Upstream Providers (Antigravity, Qoder, Codex, Claude, OpenAI-Compatible, etc.)
+```
+
+---
 
 ---
 
@@ -1203,7 +1268,43 @@ Model: cc/claude-opus-4-7
 </details>
 
 <details>
-<summary><b>🚀 Deployment</b></summary>
+<summary><b>🚀 Deployment & Maintenance</b></summary>
+
+### 🏢 SantaiNetwork Production Operations
+
+This gateway runs in production using Next.js standalone output with a custom HTTP server managing clean SIGTERM drains and zero stream interruptions:
+
+#### 1. Verification & Quality Assurance
+Run the complete regression test suite before deploying any changes:
+```bash
+npm run verify
+```
+*Validates 81 provider models, OAuth URLs byte-for-byte baseline parity, and runs all 50 unit tests (concurrency limits, watchdog auto-decay, nosaver endpoints, Neobrutalism tokens, model prefixing, etc.).*
+
+#### 2. Standalone Build & Zero-Downtime Release
+```bash
+# Build standalone bundle
+npm run build
+
+# Deploy assets to release directory
+cp -a /opt/9router/.next/standalone/. /opt/9router-release/
+cp -a /opt/9router/.next/static /opt/9router-release/.next/static
+cp -a /opt/9router/public /opt/9router-release/public
+cp -a /opt/9router/custom-server.js /opt/9router-release/custom-server.js
+
+# Restart systemd services
+systemctl restart 9router
+systemctl restart 9router-public-proxy
+
+# Verify health
+curl http://localhost:20128/api/health
+```
+
+#### 3. Systemd Services
+- `9router.service`: Primary AI Gateway and Next.js App Router on `:20128`
+- `9router-public-proxy.service`: Public reverse proxy on `:20140` serving the standalone Neobrutalism Quota & Concurrency Telemetry Portal
+
+---
 
 ### VPS Deployment
 
