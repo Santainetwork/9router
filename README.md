@@ -23,16 +23,26 @@
 This repository contains the hardened, production-grade custom distribution of **9Router** tailored for high-concurrency gateway operations and multi-tenant access control by **SantaiNetwork**:
 
 ### 1. 🛡️ Golang Hybrid Concurrency Engine & Zero-Leak Buffer
-- **Go Micro-Daemon (`:20129`)**: Standalone compiled Go service (`hybrid-engine/bin/router-engine`) handling atomic concurrency slots, in-flight semaphores, and FIFO queue buffering with sub-millisecond execution and minimal RAM footprint (~10 MB vs >600 MB in Node.js).
+- **Go Micro-Daemon (`:20129`) & Front-Door Proxy (`:20140`)**: Standalone compiled Go service (`hybrid-engine/bin/router-engine`) handling:
+  - Atomic concurrency slots, in-flight semaphores, and FIFO queue buffering with sub-millisecond execution and minimal RAM footprint (~10 MB vs >600 MB in Node.js).
+  - High-performance front-door reverse proxy on port `:20140` that gates concurrent incoming requests in lightweight Go goroutines before forwarding to Next.js.
+  - Direct disk serving of public portals (`/usage-check` and `/docs`) with zero Next.js runtime overhead.
 - **Automated Memory Guard & Idle Reaping**: Evicts idle buckets with zero activity for >10 minutes, preventing memory bloat from transient API keys.
 - **Granular Per-Slot Watchdog**: 5-minute per-slot expiration tracking exact timestamps (`inFlightTimes`), freeing locked slots without tearing down valid long streams.
 - **Automatic High-Availability Fallback**: If the Go daemon is stopped or unreachable, Node.js transparently falls back to the in-memory JavaScript limiter without throwing 500 errors to callers.
 
-### 2. 🏷️ Upstream Model & Prefix Attribution
+### 2. 🗄️ Dual-Database Engine: SQLite or PostgreSQL
+- **Configurable Database Backend**: Seamless choice between embedded SQLite (default) or external enterprise PostgreSQL.
+- **Zero Schema Disruption**: Switch database engine via simple environment variable:
+  - `DATABASE_URL=postgres://user:password@host:5432/9router` or `DB_TYPE=postgres`
+  - Unset `DATABASE_URL` continues using high-speed local SQLite (`/var/lib/9router/...`).
+- **Automated Dialect Translation**: Intelligent query parameter converter (`?` to `$1, $2, ...`) and DDL normalization (`SERIAL PRIMARY KEY`, `NOW()`) supporting all core tables.
+
+### 3. 🏷️ Upstream Model & Prefix Attribution
 - **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
 - **Dynamic Provider Node Prefix Cache**: Automatically resolves prefixes defined in custom provider nodes (`providerNodes.data.prefix`).
 
-### 3. 🚫 Dedicated `/v1/nosaver` Zero-Saver Endpoints
+### 4. 🚫 Dedicated `/v1/nosaver` Zero-Saver Endpoints
 - **Purity Gateways**: Dedicated endpoints that completely bypass token savers (Headroom, Caveman, Ponytail, RTK, PXPIPE) with `x-9router-token-saver: off`:
   - `POST /v1/nosaver/chat/completions` (OpenAI format)
   - `POST /v1/nosaver/messages` (Anthropic Claude format)
