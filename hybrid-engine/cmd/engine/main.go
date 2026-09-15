@@ -56,8 +56,9 @@ func defaultStaticDir() string {
 
 func main() {
 	port := flag.Int("port", 20129, "HTTP port for hybrid engine")
-	proxyPort := flag.Int("proxy-port", 0, "HTTP port for front-door reverse proxy (0 = disabled, e.g. 20140)")
-	upstream := flag.String("upstream", "http://127.0.0.1:20128", "Upstream server URL to proxy allowed requests to")
+	gatewayPort := flag.Int("gateway-port", 0, "HTTP port for master gateway (0 = disabled, e.g. 20128, allows all paths and gates /v1)")
+	proxyPort := flag.Int("proxy-port", 0, "HTTP port for public-only reverse proxy (0 = disabled, e.g. 20140, 404s on admin)")
+	upstream := flag.String("upstream", "http://127.0.0.1:20128", "Upstream Next.js server URL to proxy to")
 	staticDir := flag.String("static-dir", defaultStaticDir(), "Directory containing static html assets (usage-check.html, docs.html)")
 	proxyConcurrency := flag.Int("proxy-concurrency", 0, "Default per-key concurrency limit in proxy (0 = dynamic from limiter or disabled)")
 	proxyRPM := flag.Int("proxy-rpm", 0, "Default per-key RPM limit in proxy (0 = disabled)")
@@ -177,6 +178,37 @@ func main() {
 	}()
 	log.Printf("[Hybrid Go Engine] Listening on http://%s\n", limiterAddr)
 
+	var gatewaySrv *http.Server
+	if *gatewayPort > 0 {
+		gatewayHandler, err := proxy.NewServer(proxy.Config{
+			UpstreamURL:    *upstream,
+			StaticDir:      *staticDir,
+			Limiter:        eng,
+			KeyConcurrency: *proxyConcurrency,
+			KeyRPM:         *proxyRPM,
+			QueueTimeout:   time.Duration(*proxyTimeout) * time.Second,
+			AllowAllPaths:  true, // Master Gateway allows /dashboard, /_next, /api, and gates /v1
+		})
+		if err != nil {
+			log.Fatalf("[Master Gateway] Initialization error: %v", err)
+		}
+
+		gatewayAddr := fmt.Sprintf(":%d", *gatewayPort)
+		gatewaySrv = &http.Server{
+			Addr:              gatewayAddr,
+			Handler:           gatewayHandler,
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+		}
+
+		go func() {
+			if err := gatewaySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("[Master Gateway] Server error: %v", err)
+			}
+		}()
+		log.Printf("[Master Gateway] Listening on http://%s -> Upstream %s (All routes, Go concurrency gate on /v1)\n", gatewayAddr, *upstream)
+	}
+
 	var proxySrv *http.Server
 	if *proxyPort > 0 {
 		proxyHandler, err := proxy.NewServer(proxy.Config{
@@ -186,6 +218,7 @@ func main() {
 			KeyConcurrency: *proxyConcurrency,
 			KeyRPM:         *proxyRPM,
 			QueueTimeout:   time.Duration(*proxyTimeout) * time.Second,
+			AllowAllPaths:  false, // Public proxy mode: blocks admin routes with 404
 		})
 		if err != nil {
 			log.Fatalf("[Frontdoor Proxy] Initialization error: %v", err)
@@ -197,7 +230,6 @@ func main() {
 			Handler:           proxyHandler,
 			ReadHeaderTimeout: 10 * time.Second,
 			IdleTimeout:       120 * time.Second,
-			// WriteTimeout is intentionally omitted (0) to allow long-lived SSE streams
 		}
 
 		go func() {
@@ -216,6 +248,11 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	if gatewaySrv != nil {
+		if err := gatewaySrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("[Master Gateway] Shutdown error: %v", err)
+		}
+	}
 	if proxySrv != nil {
 		if err := proxySrv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("[Frontdoor Proxy] Shutdown error: %v", err)

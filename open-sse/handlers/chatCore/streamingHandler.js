@@ -146,6 +146,15 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
   __streamDetailCounter = (__streamDetailCounter + 1) % 0xffffffff;
   const streamDetailId = `${Date.now()}-${__streamDetailCounter.toString(36).padStart(8, '0')}-${provider || 'unknown'}`;
 
+  // Snapshot request config immediately so the giant body/translatedBody/finalBody object trees can be freed by GC
+  const requestConfigSnapshot = extractRequestConfig(body, stream);
+  const providerRequestSnapshot = finalBody || translatedBody || null;
+
+  // Sever references so V8 garbage collector can immediately free the large message trees during streaming
+  body = null;
+  translatedBody = null;
+  finalBody = null;
+
   const onStreamComplete = (contentObj, usage, ttftAt) => {
     const latency = {
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
@@ -168,8 +177,8 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
       provider, model, connectionId,
       latency,
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
-      request: extractRequestConfig(body, stream),
-      providerRequest: finalBody || translatedBody || null,
+      request: requestConfigSnapshot,
+      providerRequest: providerRequestSnapshot,
       providerResponse: safeContent,
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
       pxpipe,

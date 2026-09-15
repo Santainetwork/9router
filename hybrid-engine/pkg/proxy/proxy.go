@@ -41,6 +41,7 @@ type Config struct {
 	KeyRPM         int
 	QueueTimeout   time.Duration
 	Scope          string
+	AllowAllPaths  bool // When true (gateway mode), forwards all paths (e.g. /dashboard, /_next, /api)
 }
 
 // Server is the HTTP front-door reverse proxy server.
@@ -134,6 +135,14 @@ func NewServer(cfg Config) (*Server, error) {
 				req.Header.Set("X-Forwarded-Proto", "http")
 			}
 		}
+		if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil && clientIP != "" {
+			if req.Header.Get("X-Real-IP") == "" {
+				req.Header.Set("X-Real-IP", clientIP)
+			}
+			if prior := req.Header.Get("X-Forwarded-For"); prior == "" {
+				req.Header.Set("X-Forwarded-For", clientIP)
+			}
+		}
 	}
 
 	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -172,29 +181,36 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Serve self-contained usage-check page locally
 	if reqPath == "/usage-check" || reqPath == "/usage-check/" {
-		if !s.serveStatic(w, "usage-check.html") {
-			http.Error(w, "usage-check.html missing", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// 2. Serve self-contained docs page locally if present
-	if reqPath == "/docs" || reqPath == "/docs/" || reqPath == "/" {
-		if s.serveStatic(w, "docs.html") {
+		if s.serveStatic(w, "usage-check.html") {
 			return
 		}
-		http.Error(w, "404 Not Found", http.StatusNotFound)
-		return
 	}
 
-	// 3. Deny disallowed paths with 404
-	if !IsAllowedPath(reqPath) {
-		http.Error(w, "404 Not Found", http.StatusNotFound)
-		return
+	// 2. In public proxy mode (AllowAllPaths = false), serve docs or 404
+	if !s.cfg.AllowAllPaths {
+		if reqPath == "/docs" || reqPath == "/docs/" || reqPath == "/" {
+			if s.serveStatic(w, "docs.html") {
+				return
+			}
+			http.Error(w, "404 Not Found", http.StatusNotFound)
+			return
+		}
+
+		if !IsAllowedPath(reqPath) {
+			http.Error(w, "404 Not Found", http.StatusNotFound)
+			return
+		}
 	}
 
-	// 4. Front-door concurrency & rate limiting gating
-	if s.cfg.Limiter != nil {
+	// 3. Front-door concurrency & rate limiting gating for API endpoints
+	isAPIRequest := strings.HasPrefix(reqPath, "/v1/") ||
+		strings.HasPrefix(reqPath, "/api/v1/") ||
+		strings.HasPrefix(reqPath, "/v2/") ||
+		strings.HasPrefix(reqPath, "/api/v2/") ||
+		strings.HasPrefix(reqPath, "/nosaver/") ||
+		strings.HasPrefix(reqPath, "/v1beta/")
+
+	if isAPIRequest && s.cfg.Limiter != nil {
 		apiKey := ExtractAPIKey(r)
 		if apiKey != "" {
 			concurrency := s.cfg.KeyConcurrency
@@ -253,6 +269,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 5. Forward allowed request to upstream
+	// 4. Forward request to upstream Next.js
 	s.reverseProxy.ServeHTTP(w, r)
 }

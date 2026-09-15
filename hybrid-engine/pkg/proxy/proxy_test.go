@@ -232,7 +232,7 @@ func TestStaticUsageCheckAndDocs(t *testing.T) {
 		t.Fatalf("upstream called %d times during static serve, expected 0", calls)
 	}
 
-	// Test missing file fallback
+	// Test missing file fallback: missing docs -> 404, missing usage-check falls through to upstream (not 500)
 	emptyDir := t.TempDir()
 	fallbackProxy, _ := NewServer(Config{
 		UpstreamURL: upstream.URL,
@@ -246,11 +246,12 @@ func TestStaticUsageCheckAndDocs(t *testing.T) {
 		t.Fatalf("expected 404 for missing docs, got %d", rr404.Code)
 	}
 
+	// When usage-check.html is missing, proxy falls through to upstream instead of 500
 	req500 := httptest.NewRequest(http.MethodGet, "/usage-check", nil)
 	rr500 := httptest.NewRecorder()
 	fallbackProxy.ServeHTTP(rr500, req500)
-	if rr500.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for missing usage-check, got %d", rr500.Code)
+	if rr500.Code == http.StatusInternalServerError {
+		t.Fatalf("expected proxy fallthrough for missing usage-check, got 500")
 	}
 }
 
