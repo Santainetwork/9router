@@ -20,14 +20,19 @@
 
 ---
 
-### 2. Golang Hybrid Concurrency Engine & Zero-Leak Buffer ✅ DEPLOYED IN PRODUCTION
-**Purpose**: Bulletproof in-flight concurrency control and atomic queue buffering offloaded to a high-speed compiled Go daemon (`:20129`), eliminating Node.js memory leaks from transient rate-limiter buckets.
+### 2. Golang Master Gateway & Hybrid Concurrency Engine ✅ DEPLOYED IN PRODUCTION
+**Purpose**: High-speed front-door reverse proxy, bulletproof in-flight concurrency control, and atomic queue buffering offloaded to compiled Go (`router-engine`), eliminating Node.js memory bloat from queued connections and transient rate-limiter buckets.
 
 **Implementation**:
-- `hybrid-engine/cmd/engine/main.go` & `hybrid-engine/pkg/limiter/limiter.go`: Microsecond concurrency semaphores, per-slot `inFlightTimes` tracking, 10-minute idle bucket eviction, and atomic queue pump.
+- `hybrid-engine/cmd/engine/main.go` & `hybrid-engine/pkg/proxy/proxy.go`:
+  - **Master Gateway (`:20128`)**: Receives all external incoming traffic, performs front-door concurrency gating on `/v1/*` in lightweight Go goroutines, and transparently forwards UI/API requests to Next.js on internal port `127.0.0.1:20127`.
+  - **Public Proxy (`:20140`)**: Serves public-only endpoints (`/usage-check`, `/docs`) directly from disk with zero Next.js runtime overhead, blocking admin routes with 404.
+- `hybrid-engine/pkg/limiter/limiter.go`: Microsecond concurrency semaphores on port `:20129`, per-slot `inFlightTimes` tracking, 10-minute idle bucket eviction, and atomic queue pump.
 - `open-sse/services/hybrid/goLimiterClient.js`: Client bridge with circuit breaker and automated fallback to JS limiter if Go engine is unreachable.
 - `open-sse/services/rateLimiter.js`: Delegated `goAcquire` / `goRelease` with transparent fallback to `jsAcquire`.
-- `systemd`: `9router-hybrid-engine.service` managing the Go daemon on port `:20129`, and `9router.service.d/override.conf` running with `ENABLE_GO_HYBRID=true`.
+- `systemd`:
+  - `9router-hybrid-engine.service`: Go binary managing `:20128` (master gateway), `:20129` (limiter), and `:20140` (public proxy).
+  - `9router.service`: Next.js App Router on internal loopback `127.0.0.1:20127` with `NODE_OPTIONS="--max-old-space-size=512"`.
 - Telemetry & UI: Real-time engine indicators in Dashboard (`/dashboard`), Queue Monitor (`/dashboard/queue-monitor`), and Usage Check (`/usage-check` and `:20140`).
 
 ---
@@ -134,14 +139,40 @@
 
 ---
 
+### 12. Dual-Database Engine: SQLite or PostgreSQL & Migration CLI ✅ DEPLOYED
+**Purpose**: Provide enterprise database flexibility allowing zero-downtime switching between local SQLite and external PostgreSQL instances.
+
+**Implementation**:
+- `src/lib/db/adapters/postgresAdapter.js`: PostgreSQL adapter with query placeholder translation (`?` ➡️ `$1, $2, ...`), schema migration runner (`SERIAL PRIMARY KEY`), and full transaction support.
+- `src/lib/db/driver.js`: Automatic driver selection via `DATABASE_URL=postgres://...` or `DB_TYPE=postgres`, seamlessly falling back to SQLite when unset.
+- `scripts/migrate-sqlite-to-postgres.mjs`: Automated CLI migration tool supporting table-by-table batch copy, conflict handling, and sequence alignment with `--dry-run` inspection mode.
+
+---
+
+### 13. Memory Leak Hardening & Streaming Closure Severing ✅ DEPLOYED
+**Purpose**: Fix V8 heap accumulation during long-lived streaming requests and large context window conversations (300k+ tokens), reducing Next.js RAM from 1.2 GB to ~250 MB.
+
+**Implementation**:
+- `open-sse/handlers/chatCore/streamingHandler.js`: Snapshot essential request configuration immediately, then sever object tree references (`body = null`, `translatedBody = null`, `finalBody = null`) inside `buildOnStreamComplete` so V8 garbage collection can reclaim memory immediately without waiting 30–60s for stream completion.
+- `src/lib/db/repos/requestDetailsRepo.js`: Truncate large request and response bodies before buffering into the in-memory `writeBuffer`.
+- `systemd` Heap Clamp: Enforced `NODE_OPTIONS="--max-old-space-size=512"` in `override.conf` ensuring V8 triggers timely garbage collection cycles.
+
+---
+
 ## 🔧 Verification & Testing
 
 ```bash
-# Run unit test suite (all 40 tests passing)
+# Run unit test suite (all 60 tests passing)
 npm run verify
 
 # Run automated Neobrutalism E2E test
 node --test tests/unit/neobrutalism-usage-check-e2e.test.mjs
+
+# Run PostgreSQL adapter unit tests
+node --test tests/unit/db-postgres-adapter.test.mjs
+
+# Run Go hybrid engine tests with race detector
+cd hybrid-engine && go test ./... -race
 
 # Build standalone production bundle
 npm run build
@@ -151,13 +182,13 @@ cp -a /opt/9router/.next/standalone/. /opt/9router-release/
 cp -a /opt/9router/.next/static /opt/9router-release/.next/static
 cp -a /opt/9router/public /opt/9router-release/public
 cp -a /opt/9router/custom-server.js /opt/9router-release/custom-server.js
+systemctl restart 9router-hybrid-engine
 systemctl restart 9router
-systemctl restart 9router-public-proxy
 curl http://localhost:20128/api/health
 ```
 
 ---
 
-*Last Updated: September 10, 2026*  
+*Last Updated: September 15, 2026*  
 *Version: v0.5.75-custom*  
 *Maintained by: SantaiNetwork AI Infrastructure Team*

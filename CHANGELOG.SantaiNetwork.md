@@ -6,6 +6,28 @@ Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
 
 ---
 
+## 2026-09-15 — Golang Master Gateway Cutover, PostgreSQL Dual-Database & Memory Hardening
+
+### Golang Master Gateway on Port :20128 & Public Proxy on :20140
+- Migrated primary port `:20128` to **Golang Master Gateway** (`router-engine`), taking over front-door request reception, lightweight goroutine concurrency gating on `/v1/*`, and transparent proxying to Next.js on internal loopback `127.0.0.1:20127`.
+- Absorbed public-only reverse proxy on port `:20140` into the compiled Go binary, serving `/usage-check` and `/docs` directly from disk with zero Next.js runtime overhead and retiring the old Node.js proxy process (`9router-public-proxy.service`).
+- Added high-speed atomic RPC limiter on port `:20129` with 10-minute automated idle bucket reaping and per-slot 5-minute watchdog expiration tracking.
+- Added live engine telemetry indicators across Dashboard (`/dashboard`), Queue Monitor (`/dashboard/queue-monitor`), and Usage Check (`/usage-check` and `:20140`).
+
+### Dual-Database Engine: SQLite or PostgreSQL & Migration Tool
+- Added `postgresAdapter.js` implementing complete adapter contract (`run`, `get`, `all`, `exec`, `transaction`, `close`).
+- Implemented robust SQL parameter translation from SQLite `?` to PostgreSQL `$1, $2, ...` and DDL normalization (`SERIAL PRIMARY KEY`, `NOW()`).
+- Added seamless environment configuration via `DATABASE_URL` or `DB_TYPE=postgres`, falling back to SQLite when unset.
+- Created `scripts/migrate-sqlite-to-postgres.mjs` supporting table-by-table batch migration, conflict handling, auto-increment sequence realignment, and `--dry-run` inspection.
+
+### Memory Leak Hardening & Streaming Closure Severing
+- Severed object tree closures in `streamingHandler.js`: `requestConfigSnapshot` and `providerRequestSnapshot` are saved immediately, and `body`, `translatedBody`, `finalBody` references are explicitly `null`-ed so V8 garbage collector can immediately free large message trees (300k+ tokens) during streaming.
+- Immediate payload truncation in `requestDetailsRepo.js` before inserting into memory `writeBuffer`.
+- Enforced `NODE_OPTIONS="--max-old-space-size=512"` in systemd override, clamping V8 heap and dropping Next.js RAM consumption from 1.2 GB to ~250 MB.
+- Fixed CORS preflight by permitting HTTP `OPTIONS` requests in `src/dashboardGuard.js`.
+
+---
+
 ## 2026-09-06 — Live Concurrency Telemetry & Dynamic Branding
 
 ### Dynamic System Branding

@@ -78,26 +78,29 @@ This repository contains the hardened, production-grade custom distribution of *
 ## 🌐 Endpoints & Ports Architecture
 
 ```
-                 Internet / Clients
-                         │
-          ┌──────────────┴──────────────┐
-          │                             │
-    [Port 20128]                  [Port 20140]
-  Internal Gateway             Public Reverse Proxy
-  - Next.js App Router         - Standalone Neobrutalism Portal
-  - /v1/chat/completions       - /usage-check (Zero token leaks)
-  - /v1/messages               - Telemetry & Concurrency Check
-  - /v1/nosaver/*              - Minimal attack surface
-  - /dashboard/*               
-          │
-          ├─────────────────────────────┐
-          │ (Atomic RPC / IPC)          │
-          ▼                             ▼
-    [Port 20129]               Upstream Providers
-  Go Hybrid Limiter Engine     (Antigravity, Qoder, Codex,
-  - Microsecond Semaphores      Claude, OpenAI-Compatible)
-  - In-Flight Tracking
-  - Idle Bucket Reaping
+                       Internet / Clients
+                               │
+                ┌──────────────┴──────────────┐
+                │                             │
+          [Port 20128]                  [Port 20140]
+      Golang Master Gateway         Golang Public Reverse Proxy
+      - Master reverse proxy        - Public-only reverse proxy
+      - Front-door /v1 gating       - Direct disk /usage-check & /docs
+      - Transparent UI pass         - Blocks /dashboard, /api/keys (404)
+                │
+                ├─────────────────────────────┐
+                │ (Internal Loopback Proxy)   │ (Atomic RPC / IPC)
+                ▼                             ▼
+          [Port 20127]                  [Port 20129]
+       Next.js App Router          Golang Limiter Engine
+       - Formats & Translators     - In-Flight Semaphores
+       - Token Savers (RTK, etc.)  - Per-slot 5m expiration
+       - Upstream Provider Stream  - Automated 10m idle reaping
+                │
+                ▼
+       Upstream Providers
+  (Antigravity, Qoder, Codex,
+   Claude, OpenAI-Compatible)
 ```
 
 ---
@@ -127,7 +130,7 @@ Pada kartu **Live Concurrency Tracker**:
 ```bash
 # 1. Cek langsung kesehatan daemon Go:
 curl http://localhost:20129/health
-# Output: {"buckets":3,"engine":"go-hybrid-v1","status":"ok"}
+# Output: {"buckets":2,"engine":"go-hybrid-v1","status":"ok"}
 
 # 2. Cek snapshot slot aktif yang dipegang daemon Go:
 curl http://localhost:20129/v1/limiter/snapshot
@@ -135,6 +138,26 @@ curl http://localhost:20129/v1/limiter/snapshot
 # 3. Cek lewat endpoint usage API Key:
 curl http://localhost:20128/api/v1/usage?live=1 -H "Authorization: Bearer <API_KEY>"
 # Output memiliki field: "engine":"golang", "engineName":"Golang Hybrid (:20129)"
+```
+
+---
+
+## 📦 Migrasi Database (SQLite ➡️ PostgreSQL)
+
+9Router kini mendukung dual-database engine. Anda dapat memindahkan seluruh data riwayat, API keys, dan provider connections dari SQLite ke PostgreSQL menggunakan script migrasi otomatis:
+
+```bash
+# 1. Uji coba migrasi tanpa menulis data (Dry-Run):
+DATABASE_URL="postgres://user:password@localhost:5432/9router" node scripts/migrate-sqlite-to-postgres.mjs --dry-run
+
+# 2. Eksekusi migrasi penuh:
+DATABASE_URL="postgres://user:password@localhost:5432/9router" node scripts/migrate-sqlite-to-postgres.mjs
+
+# 3. Aktifkan PostgreSQL di 9Router:
+# Tambahkan ke /etc/systemd/system/9router.service.d/override.conf:
+# Environment=DATABASE_URL="postgres://user:password@localhost:5432/9router"
+# Lalu restart service:
+systemctl daemon-reload && systemctl restart 9router
 ```
 
 ---
@@ -1347,27 +1370,27 @@ cp -a /opt/9router/custom-server.js /opt/9router-release/custom-server.js
 
 # Restart systemd services
 systemctl restart 9router
-systemctl restart 9router-public-proxy
+systemctl restart 9router-hybrid-engine
 
 # Verify health
 curl http://localhost:20128/api/health
 ```
 
 #### 3. Systemd Services
-- `9router.service`: Primary AI Gateway and Next.js App Router on `:20128` (dijalankan dengan `ENABLE_GO_HYBRID=true`)
-- `9router-hybrid-engine.service`: Daemon Concurrency & Rate Limiter Golang pada port `:20129`
-- `9router-public-proxy.service`: Public reverse proxy pada port `:20140` melayani standalone Neobrutalism Quota & Concurrency Telemetry Portal
+- `9router-hybrid-engine.service`: Master Gateway Golang pada port `:20128` (front-door gating & UI proxy), Limiter RPC pada port `:20129`, dan Public Proxy pada port `:20140`.
+- `9router.service`: Backend Next.js App Router berjalan di jaringan internal loopback `127.0.0.1:20127` dengan `NODE_OPTIONS="--max-old-space-size=512"`.
+- *(Catatan: Layanan lama `9router-public-proxy.service` (Node.js) telah diserap penuh ke dalam `9router-hybrid-engine` binary Golang untuk menghemat memori).*
 
 #### 4. Kontrol Layanan (Systemd Commands)
 ```bash
-# Restart engine Go limiter
+# Restart master gateway & limiter Go (:20128, :20129, :20140)
 systemctl restart 9router-hybrid-engine
 
-# Restart gateway utama
+# Restart backend Next.js (:20127)
 systemctl restart 9router
 
-# Cek status semua layanan 9router
-systemctl status 9router 9router-hybrid-engine 9router-public-proxy --no-pager
+# Cek status layanan aktif
+systemctl status 9router 9router-hybrid-engine --no-pager
 ```
 
 ---
