@@ -162,7 +162,22 @@ export default function DashboardOverviewClient() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+          {queue?.engine && (
+            <Link
+              href="/dashboard/queue-monitor"
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border shadow-xs transition-colors",
+                queue.engine.type === "golang"
+                  ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20"
+                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
+              )}
+              title={queue.engine.type === "golang" ? "Limiter: Go Hybrid Daemon Active on :20129" : "Limiter: JavaScript Fallback Active"}
+            >
+              <span className={cn("size-2 rounded-full", queue.engine.type === "golang" ? "bg-cyan-500 animate-pulse" : "bg-amber-500")} />
+              {queue.engine.type === "golang" ? "Engine: Go Hybrid (:20129)" : "Engine: JS Fallback"}
+            </Link>
+          )}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-xs">
             <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
             Port 20128 Active

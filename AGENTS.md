@@ -20,13 +20,15 @@
 
 ---
 
-### 2. Concurrency Engine, FIFO Auto-Queue & Zero-Leak Limiter ✅ DEPLOYED
-**Purpose**: Bulletproof in-flight concurrency control preventing slot leaks across stream lifecycles, client aborts, and upstream parallel limits.
+### 2. Golang Hybrid Concurrency Engine & Zero-Leak Buffer ✅ DEPLOYED IN PRODUCTION
+**Purpose**: Bulletproof in-flight concurrency control and atomic queue buffering offloaded to a high-speed compiled Go daemon (`:20129`), eliminating Node.js memory leaks from transient rate-limiter buckets.
 
 **Implementation**:
-- `open-sse/services/rateLimiter.js`: In-flight semaphore with atomic slot management, 10-minute watchdog auto-decay, and auto-queue buffering (default 60s timeout) when concurrency is saturated instead of immediate 429 rejects.
-- `src/sse/handlers/chat.js`: Complete closure binding of `safeReleaseApiKey` and `releaseProvider` across stream completions, aborts, and model-level fallbacks.
-- `open-sse/utils/error.js`: Propagation of `rawError` to bypass false-positive `modelLock` when encountering transient upstream parallel limits.
+- `hybrid-engine/cmd/engine/main.go` & `hybrid-engine/pkg/limiter/limiter.go`: Microsecond concurrency semaphores, per-slot `inFlightTimes` tracking, 10-minute idle bucket eviction, and atomic queue pump.
+- `open-sse/services/hybrid/goLimiterClient.js`: Client bridge with circuit breaker and automated fallback to JS limiter if Go engine is unreachable.
+- `open-sse/services/rateLimiter.js`: Delegated `goAcquire` / `goRelease` with transparent fallback to `jsAcquire`.
+- `systemd`: `9router-hybrid-engine.service` managing the Go daemon on port `:20129`, and `9router.service.d/override.conf` running with `ENABLE_GO_HYBRID=true`.
+- Telemetry & UI: Real-time engine indicators in Dashboard (`/dashboard`), Queue Monitor (`/dashboard/queue-monitor`), and Usage Check (`/usage-check` and `:20140`).
 
 ---
 

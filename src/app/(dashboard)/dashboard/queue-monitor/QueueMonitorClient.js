@@ -172,6 +172,52 @@ export default function QueueMonitorClient() {
       </div>
 
       {/* 4 Bento KPI Overview Cards */}
+      {/* Engine Architecture Indicator Banner */}
+      <div className={cn(
+        "rounded-2xl border p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3",
+        data?.engine?.type === "golang"
+          ? "bg-cyan-500/[0.04] border-cyan-500/25"
+          : "bg-amber-500/[0.04] border-amber-500/25"
+      )}>
+        <div className="flex items-center gap-3">
+          <div className={cn(
+            "p-2.5 rounded-xl flex items-center justify-center",
+            data?.engine?.type === "golang" ? "bg-cyan-500/10 text-cyan-500" : "bg-amber-500/10 text-amber-500"
+          )}>
+            <span className="material-symbols-outlined text-[22px]">memory</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text-main">
+                {data?.engine?.type === "golang" ? "Golang Hybrid Concurrency Engine" : "JavaScript In-Memory Limiter"}
+              </span>
+              <Badge variant={data?.engine?.type === "golang" ? "default" : "warning"} className={cn(
+                data?.engine?.type === "golang" ? "bg-cyan-500 text-white font-mono text-[10px]" : "text-[10px]"
+              )}>
+                {data?.engine?.type === "golang" ? "Active (:20129)" : "Fallback Mode"}
+              </Badge>
+            </div>
+            <p className="text-xs text-text-muted mt-0.5">
+              {data?.engine?.type === "golang"
+                ? "High-speed Go daemon handling atomic slot management, in-flight semaphores, and automated 10m idle bucket eviction."
+                : "Node.js fallback limiter active (Go hybrid engine offline or disabled)."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-xs font-mono text-text-muted shrink-0 self-end sm:self-center">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider block text-text-muted">Tracked Buckets</span>
+            <span className="font-semibold text-text-main text-sm">{data?.engine?.totalBuckets ?? 0}</span>
+          </div>
+          <div className="h-6 w-px bg-border/70" />
+          <div>
+            <span className="text-[10px] uppercase tracking-wider block text-text-muted">Memory Guard</span>
+            <span className="text-emerald-500 font-medium">Idle Reaping 10m</span>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-xs">
           <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">In-Flight Concurrency</p>

@@ -467,6 +467,10 @@
     html += '<span id="liveDot" class="pulse-dot ' + (liveActive ? '' : 'paused') + '"></span>';
     html += '<span style="font-size:12px;font-weight:900;text-transform:uppercase;">Live Concurrency Tracker</span>';
     html += '<span class="badge" style="background:var(--yellow);color:#000;padding:2px 6px;font-size:10px;">Real-Time</span>';
+    if (data.live && data.live.engine) {
+      var isGo = data.live.engine === "golang";
+      html += '<span class="badge" style="background:' + (isGo ? 'var(--cyan)' : 'var(--yellow)') + ';color:#000;padding:2px 6px;font-size:10px;">' + (isGo ? 'Go Engine (:20129)' : 'JS Limiter') + '</span>';
+    }
     html += '</div>';
     html += '<button id="liveBtn" type="button" onclick="toggleLiveTracking()" class="badge" style="background:' + (liveActive ? 'var(--emerald)' : 'var(--surface)') + ';color:#000;cursor:pointer;padding:4px 8px;font-size:10px;">' + (liveActive ? '● Live (2.5s)' : 'Paused') + '</button>';
     html += '</div>';

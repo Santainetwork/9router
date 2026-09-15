@@ -5,6 +5,7 @@ import {
   getApiKeyUsageInRange,
 } from "@/lib/localDb";
 import { getBucketDetail } from "open-sse/services/rateLimiter.js";
+import { isGoLimiterActive, goBucketDetail } from "open-sse/services/hybrid/goLimiterClient.js";
 
 export const dynamic = "force-dynamic";
 
@@ -62,12 +63,22 @@ export async function GET(req) {
     return json({ error: "API key is disabled." }, 403);
   }
 
-  const bucket = getBucketDetail("apikey", info.id);
+  const isGoActive = await isGoLimiterActive().catch(() => false);
+  let bucket = null;
+  if (isGoActive) {
+    bucket = await goBucketDetail("apikey", info.id).catch(() => null);
+  }
+  if (!bucket) {
+    bucket = getBucketDetail("apikey", info.id);
+  }
+
   const liveData = {
     activeConcurrency: bucket?.activeConcurrency || 0,
     queuedRequests: bucket?.queued || 0,
     requestsInWindow: bucket?.inWindow || 0,
     windowResetInMs: bucket?.windowResetInMs || 0,
+    engine: isGoActive ? "golang" : "javascript",
+    engineName: isGoActive ? "Golang Hybrid (:20129)" : "JavaScript In-Memory",
     updatedAt: new Date().toISOString(),
   };
 

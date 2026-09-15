@@ -22,11 +22,11 @@
 
 This repository contains the hardened, production-grade custom distribution of **9Router** tailored for high-concurrency gateway operations and multi-tenant access control by **SantaiNetwork**:
 
-### 1. 🛡️ Concurrency Engine, FIFO Auto-Queue & Zero-Leak Limiter
-- **In-Flight Semaphore**: Atomic slot management preventing concurrency leaks across stream lifecycles, client aborts, and upstream parallel limits.
-- **FIFO Auto-Queue Buffering**: Incoming requests buffer in memory (configurable timeout) when concurrency is saturated rather than rejecting callers with immediate `429 Too Many Requests`.
-- **5-Minute Slot Watchdog**: Automated watchdog decays stale in-flight slots every 30 seconds with per-slot timestamp tracking.
-- **Client Disconnect Handling**: Immediate slot release upon client abort (`AbortError`) across all SSE and non-streaming handlers.
+### 1. 🛡️ Golang Hybrid Concurrency Engine & Zero-Leak Buffer
+- **Go Micro-Daemon (`:20129`)**: Standalone compiled Go service (`hybrid-engine/bin/router-engine`) handling atomic concurrency slots, in-flight semaphores, and FIFO queue buffering with sub-millisecond execution and minimal RAM footprint (~10 MB vs >600 MB in Node.js).
+- **Automated Memory Guard & Idle Reaping**: Evicts idle buckets with zero activity for >10 minutes, preventing memory bloat from transient API keys.
+- **Granular Per-Slot Watchdog**: 5-minute per-slot expiration tracking exact timestamps (`inFlightTimes`), freeing locked slots without tearing down valid long streams.
+- **Automatic High-Availability Fallback**: If the Go daemon is stopped or unreachable, Node.js transparently falls back to the in-memory JavaScript limiter without throwing 500 errors to callers.
 
 ### 2. 🏷️ Upstream Model & Prefix Attribution
 - **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
@@ -80,8 +80,51 @@ This repository contains the hardened, production-grade custom distribution of *
   - /v1/nosaver/*              - Minimal attack surface
   - /dashboard/*               
           │
-          ▼
-   Upstream Providers (Antigravity, Qoder, Codex, Claude, OpenAI-Compatible, etc.)
+          ├─────────────────────────────┐
+          │ (Atomic RPC / IPC)          │
+          ▼                             ▼
+    [Port 20129]               Upstream Providers
+  Go Hybrid Limiter Engine     (Antigravity, Qoder, Codex,
+  - Microsecond Semaphores      Claude, OpenAI-Compatible)
+  - In-Flight Tracking
+  - Idle Bucket Reaping
+```
+
+---
+
+## 🔍 Cara Cek Engine yang Sedang Aktif (Go vs JS Fallback)
+
+Anda dapat memverifikasi engine mana yang sedang menangani request melalui 4 tempat:
+
+### 1. Header Banner Dashboard (`/dashboard`)
+Di pojok kanan atas Dashboard utama, terdapat badge status engine live:
+- **`Engine: Go Hybrid (:20129)`** (Berwarna Cyan dengan lampu berkedip): Menandakan engine Go aktif menangani seluruh concurrency & rate limiting.
+- **`Engine: JS Fallback`** (Berwarna Kuning/Amber): Menandakan engine Go offline atau dinonaktifkan, sistem fallback otomatis ke limiter JavaScript.
+- Klik badge tersebut untuk langsung menuju ke halaman **Concurrency & Queue Engine**.
+
+### 2. Halaman Queue Monitor (`/dashboard/queue-monitor`)
+Di bagian atas terdapat banner arsitektur sistem:
+- Menampilkan nama engine (`Golang Hybrid Concurrency Engine` vs `JavaScript In-Memory Limiter`).
+- Status port (`:20129`), jumlah **Tracked Buckets**, dan status **Memory Guard (Idle Reaping 10m)**.
+- Tabel antrean dan tombol **Reset All Locks** yang terhubung langsung ke daemon Go.
+
+### 3. Halaman Usage Check Publik (`/usage-check` dan Port `:20140`)
+Pada kartu **Live Concurrency Tracker**:
+- Terdapat chip status: **`Go Engine (:20129)`** (Cyan) atau **`JS Limiter`** (Amber).
+- Menampilkan metrik real-time: slot aktif in-flight, request dalam antrean buffer, dan persentase utilisasi kapasitas.
+
+### 4. Melalui CLI / Terminal (API Health Check)
+```bash
+# 1. Cek langsung kesehatan daemon Go:
+curl http://localhost:20129/health
+# Output: {"buckets":3,"engine":"go-hybrid-v1","status":"ok"}
+
+# 2. Cek snapshot slot aktif yang dipegang daemon Go:
+curl http://localhost:20129/v1/limiter/snapshot
+
+# 3. Cek lewat endpoint usage API Key:
+curl http://localhost:20128/api/v1/usage?live=1 -H "Authorization: Bearer <API_KEY>"
+# Output memiliki field: "engine":"golang", "engineName":"Golang Hybrid (:20129)"
 ```
 
 ---
@@ -1301,8 +1344,21 @@ curl http://localhost:20128/api/health
 ```
 
 #### 3. Systemd Services
-- `9router.service`: Primary AI Gateway and Next.js App Router on `:20128`
-- `9router-public-proxy.service`: Public reverse proxy on `:20140` serving the standalone Neobrutalism Quota & Concurrency Telemetry Portal
+- `9router.service`: Primary AI Gateway and Next.js App Router on `:20128` (dijalankan dengan `ENABLE_GO_HYBRID=true`)
+- `9router-hybrid-engine.service`: Daemon Concurrency & Rate Limiter Golang pada port `:20129`
+- `9router-public-proxy.service`: Public reverse proxy pada port `:20140` melayani standalone Neobrutalism Quota & Concurrency Telemetry Portal
+
+#### 4. Kontrol Layanan (Systemd Commands)
+```bash
+# Restart engine Go limiter
+systemctl restart 9router-hybrid-engine
+
+# Restart gateway utama
+systemctl restart 9router
+
+# Cek status semua layanan 9router
+systemctl status 9router 9router-hybrid-engine 9router-public-proxy --no-pager
+```
 
 ---
 

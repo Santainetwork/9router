@@ -324,6 +324,14 @@ export default function UsageCheckPage() {
                     <span className="text-[10px] font-black px-2 py-0.5 rounded border border-black dark:border-white bg-yellow-400 text-black uppercase shadow-[1px_1px_0px_#000]">
                       Real-Time
                     </span>
+                    {data?.live?.engine && (
+                      <span className={cn(
+                        "text-[10px] font-black px-2 py-0.5 rounded border border-black dark:border-white uppercase shadow-[1px_1px_0px_#000]",
+                        data.live.engine === "golang" ? "bg-cyan-400 text-black" : "bg-amber-300 text-black"
+                      )}>
+                        {data.live.engine === "golang" ? "Go Engine (:20129)" : "JS Limiter"}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
