@@ -131,12 +131,12 @@ export default function QueueMonitorClient() {
   }, [data?.providers?.items, data?.providers?.list, search]);
 
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto py-2">
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto py-2 px-4 sm:px-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/70 pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-text-main flex items-center gap-2.5">
-            <span className="material-symbols-outlined text-primary text-[26px]">pending_actions</span>
+            <span className="material-symbols-outlined text-primary text-[26px]" aria-hidden="true">pending_actions</span>
             Concurrency & Queue Engine
           </h1>
           <p className="text-sm text-text-muted mt-1">
@@ -150,6 +150,7 @@ export default function QueueMonitorClient() {
             size="sm"
             onClick={() => handleReset()}
             disabled={resetting}
+            aria-label="Force-clear all active in-flight slot locks if requests are stuck"
             title="Force-clear all active in-flight slot locks if requests are stuck"
             className="flex items-center gap-1.5"
           >
@@ -161,6 +162,7 @@ export default function QueueMonitorClient() {
             variant="outline"
             size="sm"
             onClick={() => setPaused((p) => !p)}
+            aria-label={paused ? "Resume live polling" : "Pause live polling"}
             className="flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[16px]">
@@ -184,7 +186,7 @@ export default function QueueMonitorClient() {
             "p-2.5 rounded-xl flex items-center justify-center",
             data?.engine?.type === "golang" ? "bg-cyan-500/10 text-cyan-500" : "bg-amber-500/10 text-amber-500"
           )}>
-            <span className="material-symbols-outlined text-[22px]">memory</span>
+            <span className="material-symbols-outlined text-[22px]" aria-hidden="true">memory</span>
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -312,11 +314,12 @@ export default function QueueMonitorClient() {
           </div>
 
           <div className="relative w-full sm:w-64">
-            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
+            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]" aria-hidden="true">
               search
             </span>
             <input
               type="text"
+              aria-label="Search keys, providers, or ids"
               placeholder="Search key, provider, id..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}

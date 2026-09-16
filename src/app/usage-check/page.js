@@ -153,7 +153,7 @@ export default function UsageCheckPage() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-[#FFFDF9] dark:bg-[#0B0F19] text-black dark:text-white px-4 py-12 selection:bg-yellow-400 selection:text-black">
+    <div className="min-h-screen bg-[#FFFDF9] dark:bg-[#0B0F19] text-black dark:text-white px-4 py-8 sm:py-12 selection:bg-yellow-400 selection:text-black">
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         {/* Header Section */}
         <div className="flex flex-col gap-2">
@@ -161,7 +161,7 @@ export default function UsageCheckPage() {
             <span className="rounded-md border-2 border-black dark:border-white bg-yellow-400 text-black px-2.5 py-0.5 text-xs font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
               {appName || "SantaiNetwork"}
             </span>
-            <span className="rounded-md border-2 border-black dark:border-white bg-cyan-400 text-black px-2 py-0.5 text-[11px] font-black uppercase tracking-wide shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+            <span aria-label="Self-service portal" className="rounded-md border-2 border-black dark:border-white bg-cyan-400 text-black px-2 py-0.5 text-[11px] font-black uppercase tracking-wide shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
               Self-Service Portal
             </span>
           </div>
@@ -267,6 +267,11 @@ export default function UsageCheckPage() {
                 {quota > 0 ? (
                   <div className="h-4 w-full rounded-lg border-2 border-black dark:border-white bg-[#FAF8F5] dark:bg-neutral-800 p-0.5 shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
                     <div
+                      role="progressbar"
+                      aria-valuenow={pct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`Token quota ${pct} percent used`}
                       className={cn(
                         "h-full rounded-md border-r-2 border-black transition-all",
                         pct >= 100
@@ -342,6 +347,8 @@ export default function UsageCheckPage() {
                     )}
                     <button
                       type="button"
+                      aria-pressed={liveActive}
+                      aria-label={liveActive ? "Pause live polling" : "Resume live polling"}
                       onClick={() => setLiveActive(!liveActive)}
                       className={cn(
                         "px-2.5 py-1 text-[11px] font-black uppercase rounded-lg border-2 border-black dark:border-white transition-all shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff] cursor-pointer",
@@ -409,6 +416,11 @@ export default function UsageCheckPage() {
                   <div className="mt-3">
                     <div className="h-3 w-full rounded-md border-2 border-black dark:border-white bg-neutral-200 dark:bg-neutral-900 p-0.5 shadow-[1px_1px_0px_#000] dark:shadow-[1px_1px_0px_#fff]">
                       <div
+                        role="progressbar"
+                        aria-valuenow={concurrencyPct}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`Concurrency load ${concurrencyPct} percent`}
                         className={cn(
                           "h-full rounded-sm transition-all duration-300",
                           concurrencyPct >= 100

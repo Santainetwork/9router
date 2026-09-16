@@ -70,6 +70,12 @@ const QUICK_ACTIONS = [
   { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" },
 ];
 
+const GATEWAY_NODES = [
+  { port: ":20128", label: "Master gateway", detail: "UI + API front door", tone: "text-emerald-500" },
+  { port: ":20129", label: "Go limiter", detail: "Atomic concurrency + queue", tone: "text-cyan-500" },
+  { port: ":20140", label: "Public proxy", detail: "Usage check + docs", tone: "text-amber-500" },
+];
+
 export default function DashboardOverviewClient() {
   const [providers, setProviders] = useState([]);
   const [keys, setKeys] = useState([]);
@@ -136,6 +142,8 @@ export default function DashboardOverviewClient() {
   const recent = stats?.recentRequests || [];
   const totalInFlight = queue?.totalActiveConcurrent ?? 0;
   const totalQueued = queue?.totalQueued ?? 0;
+  const goActive = queue?.engine?.type === "golang";
+  const needsSetup = providerSummary.total === 0 || keySummary.total === 0;
 
   if (loading) {
     return (
@@ -191,6 +199,50 @@ export default function DashboardOverviewClient() {
         </div>
       ) : null}
 
+      <section className="rounded-2xl border border-border bg-surface p-5 shadow-xs" aria-labelledby="gateway-topology-title">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary" aria-hidden="true">account_tree</span>
+              <h2 id="gateway-topology-title" className="text-sm font-bold text-text-main">Gateway topology</h2>
+            </div>
+            <p className="mt-1 text-xs text-text-muted">One front door. Go handles queue pressure before Node.js.</p>
+          </div>
+          <Link href="/dashboard/queue-monitor" className="text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
+            Open queue monitor <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {GATEWAY_NODES.map((node) => (
+            <div key={node.port} className="flex items-start gap-3 rounded-xl border border-border/80 bg-surface-2/30 p-3">
+              <span className={cn("mt-1 size-2 shrink-0 rounded-full", goActive || node.port === ":20128" ? "bg-emerald-500" : "bg-amber-500")} aria-hidden="true" />
+              <div className="min-w-0">
+                <p className={cn("font-mono text-xs font-bold", node.tone)}>{node.port} · {node.label}</p>
+                <p className="mt-0.5 text-[11px] text-text-muted">{node.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] text-text-muted" role="status">
+          {goActive ? "Go hybrid engine healthy" : "JavaScript limiter fallback active"} · {queue?.engine?.totalBuckets ?? 0} tracked buckets
+        </p>
+      </section>
+
+      {needsSetup ? (
+        <section className="rounded-2xl border border-primary/25 bg-primary/[0.04] p-5" aria-labelledby="getting-started-title">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 id="getting-started-title" className="text-sm font-bold text-text-main">Finish setup</h2>
+              <p className="mt-1 text-xs text-text-muted">{keySummary.total === 0 ? "Create an API key" : "Connect a provider"} to send your first request.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {providerSummary.total === 0 && <Link href="/dashboard/providers" className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Add provider</Link>}
+              {keySummary.total === 0 && <Link href="/dashboard/endpoint" className="rounded-lg border border-primary/30 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Create API key</Link>}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* Primary Bento KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -234,7 +286,7 @@ export default function DashboardOverviewClient() {
             Quick Actions & Management
           </p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {QUICK_ACTIONS.map((a) => (
             <Link
               key={a.href}
