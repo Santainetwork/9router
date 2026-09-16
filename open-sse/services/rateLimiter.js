@@ -19,6 +19,9 @@ export class RateLimitTimeoutError extends Error {
 }
 
 import { goAcquire, goRelease, isGoLimiterActive } from "./hybrid/goLimiterClient.js";
+import { getEngineConfig } from "../../src/shared/utils/engineConfig.js";
+
+const HYBRID_ENABLED = getEngineConfig().enabled;
 
 // scope -> Map<key, bucket>
 const scopes = new Map();
@@ -195,7 +198,7 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
   }
 
   // Check hybrid Go engine
-  if (process.env.ENABLE_GO_HYBRID === "true") {
+  if (HYBRID_ENABLED) {
     return goAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued }).then((rel) => {
       if (rel) return rel;
       // Fallback to JS implementation below

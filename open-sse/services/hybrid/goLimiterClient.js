@@ -2,14 +2,15 @@
 // Offloads in-flight concurrency tracking and queue management to high-speed compiled Go daemon.
 // Fails over automatically to in-memory JS limiter if daemon is unreachable.
 
-const GO_ENGINE_URL = process.env.GO_ENGINE_URL || "http://127.0.0.1:20129";
-const HYBRID_ENABLED = process.env.ENABLE_GO_HYBRID === "true" || process.env.NODE_ENV === "development";
+import { getEngineConfig } from "../../../src/shared/utils/engineConfig.js";
+
+const { limiterUrl: GO_ENGINE_URL, enabled: HYBRID_ENABLED } = getEngineConfig();
 
 let isEngineAvailable = null;
 let lastCheckTime = 0;
 
-async function checkEngineHealth() {
-  if (Date.now() - lastCheckTime < 5000 && isEngineAvailable !== null) {
+async function checkEngineHealth({ force = false } = {}) {
+  if (!force && Date.now() - lastCheckTime < 5000 && isEngineAvailable !== null) {
     return isEngineAvailable;
   }
   lastCheckTime = Date.now();
@@ -24,9 +25,9 @@ async function checkEngineHealth() {
   return isEngineAvailable;
 }
 
-export async function isGoLimiterActive() {
+export async function isGoLimiterActive({ force = false } = {}) {
   if (!HYBRID_ENABLED) return false;
-  return await checkEngineHealth();
+  return await checkEngineHealth({ force });
 }
 
 export async function goAcquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, onQueued } = {}) {

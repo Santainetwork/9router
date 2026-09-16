@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Toggle, Input } from "@/shared/components";
+import { Card, Button, Toggle, Input, SystemHealthPanel } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
@@ -1011,6 +1011,9 @@ export default function ProfilePage() {
             <span className="text-2xl">{LOCALE_FLAGS[locale] || "🌐"}</span>
           </button>
         </Card>
+
+        {/* System Health */}
+        <SystemHealthPanel />
 
         {/* Branding & Gateway Name */}
         <Card>
