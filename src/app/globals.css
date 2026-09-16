@@ -135,6 +135,9 @@ select {
 }
 
 @theme inline {
+  /* Extra-small breakpoint (Tailwind default starts at sm=640px). */
+  --breakpoint-xs: 420px;
+
   /* Brand scale */
   --color-brand-50: var(--color-brand-50);
   --color-brand-100: var(--color-brand-100);

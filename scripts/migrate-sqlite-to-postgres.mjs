@@ -87,19 +87,23 @@ export async function migrateSqliteToPostgres(options = {}) {
             const cols = Object.keys(row);
             const vals = Object.values(row);
             const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(", ");
-            const quotedCols = cols.map((c) => `"${c}"`).join(", ");
+            // Identifiers stay unquoted: the app creates tables/columns with
+            // unquoted camelCase names (migrate.js syncSchemaFromTables), so
+            // PostgreSQL folds them to lowercase. Quoting here would target a
+            // different, non-existent table (e.g. "providerConnections").
+            const quotedCols = cols.join(", ");
 
             // Conflict update clause
             const updateCols = cols
               .filter((c) => !pks.map((p) => p.toLowerCase()).includes(c.toLowerCase()))
-              .map((c) => `"${c}" = EXCLUDED."${c}"`)
+              .map((c) => `${c} = EXCLUDED.${c}`)
               .join(", ");
 
             const conflictClause = updateCols.length > 0
-              ? `ON CONFLICT (${pks.map((p) => `"${p}"`).join(", ")}) DO UPDATE SET ${updateCols}`
-              : `ON CONFLICT (${pks.map((p) => `"${p}"`).join(", ")}) DO NOTHING`;
+              ? `ON CONFLICT (${pks.join(", ")}) DO UPDATE SET ${updateCols}`
+              : `ON CONFLICT (${pks.join(", ")}) DO NOTHING`;
 
-            const query = `INSERT INTO "${tableName}" (${quotedCols}) VALUES (${placeholders}) ${conflictClause}`;
+            const query = `INSERT INTO ${tableName} (${quotedCols}) VALUES (${placeholders}) ${conflictClause}`;
             await client.query(query, vals);
             results.tables[tableName].migratedRows++;
           }
@@ -107,7 +111,7 @@ export async function migrateSqliteToPostgres(options = {}) {
 
         // Adjust sequence for auto-increment tables if id column exists
         if (colsHaveAutoIncrement(tableName)) {
-          const maxSeqRes = await client.query(`SELECT COALESCE(MAX(id), 0) as max_id FROM "${tableName}"`);
+          const maxSeqRes = await client.query(`SELECT COALESCE(MAX(id), 0) as max_id FROM ${tableName}`);
           const maxId = maxSeqRes.rows[0]?.max_id || 0;
           if (maxId > 0) {
             const seqNameRes = await client.query(
