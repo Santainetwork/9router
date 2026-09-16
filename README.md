@@ -214,6 +214,38 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 
 ## ⚡ Quick Start
 
+### Recommended: one-command production installer
+
+The installer configures the Go Master Gateway, internal Next.js backend, limiter, public portal, systemd units, backups, rollback, and health checks automatically.
+
+```bash
+# From a cloned repository
+sudo ROUTER_PASSWORD="choose-a-strong-password" bash scripts/install.sh --yes
+
+# Preview changes without modifying the host
+sudo bash scripts/install.sh --dry-run
+
+# Upgrade safely (creates a rollback backup)
+sudo bash scripts/install.sh --upgrade
+```
+
+After installation:
+
+- Dashboard: `http://localhost:20128/dashboard`
+- OpenAI-compatible API: `http://localhost:20128/v1`
+- Public usage portal: `http://localhost:20140/usage-check`
+- Go limiter health: `http://localhost:20129/health`
+- Internal Next.js backend: `127.0.0.1:20127` (not publicly exposed)
+
+Uninstall keeps data by default:
+
+```bash
+sudo bash scripts/install.sh --uninstall
+# Add --purge only when intentionally deleting release and data directories.
+```
+
+### Manual / npm installation
+
 **1. Install globally:**
 
 ```bash
