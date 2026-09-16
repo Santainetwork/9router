@@ -230,14 +230,14 @@ export function formatModelWithProviderPrefix(rawModel, provider = "", meta = {}
   const upModel = meta?.upstreamModel;
   const reqModel = meta?.requestedModel;
 
-  // 1. If rawModel already contains a provider prefix (e.g. "ag/gemini-3.8-flash-high", "myr/deepseek-v4.1-flash"), keep it.
-  if (rawModel && String(rawModel).includes("/")) return String(rawModel);
-
-  // 2. If upstreamModel contains a provider prefix (e.g. "amanai/qwen3.8-max"), prioritize it.
+  // 1. If upstreamModel already contains a provider prefix (e.g. "ag/gemini-3.8-flash-high", "myr/deepseek-v4.1-flash"), use as primary.
   if (upModel && String(upModel).includes("/")) return String(upModel);
 
-  // 3. The target model sent to provider is rawModel, falling back to upstream/requested.
-  const candidate = rawModel || upModel || reqModel || "unknown";
+  // 2. If rawModel already contains a provider prefix, keep it.
+  if (rawModel && String(rawModel).includes("/")) return String(rawModel);
+
+  // 3. The target model sent to provider is upstreamModel || rawModel, falling back to requestedModel.
+  const candidate = upModel || rawModel || reqModel || "unknown";
   if (String(candidate).includes("/")) return String(candidate);
 
   if (provider) {

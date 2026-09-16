@@ -177,11 +177,13 @@ cd hybrid-engine && go test ./... -race
 # Build standalone production bundle
 npm run build
 
-# Deploy to release directory and restart
-cp -a /opt/9router/.next/standalone/. /opt/9router-release/
-cp -a /opt/9router/.next/static /opt/9router-release/.next/static
-cp -a /opt/9router/public /opt/9router-release/public
-cp -a /opt/9router/custom-server.js /opt/9router-release/custom-server.js
+# Deploy to configurable release directory and restart
+INSTALL_DIR="${INSTALL_DIR:-$(pwd)}"
+RELEASE_DIR="${RELEASE_DIR:-/opt/9router-release}"
+cp -a "$INSTALL_DIR/.next/standalone/." "$RELEASE_DIR/"
+cp -a "$INSTALL_DIR/.next/static" "$RELEASE_DIR/.next/static"
+cp -a "$INSTALL_DIR/public" "$RELEASE_DIR/public"
+cp -a "$INSTALL_DIR/custom-server.js" "$RELEASE_DIR/custom-server.js"
 systemctl restart 9router-hybrid-engine
 systemctl restart 9router
 curl http://localhost:20128/api/health

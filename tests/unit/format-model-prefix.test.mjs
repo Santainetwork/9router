@@ -15,6 +15,13 @@ test('formatModelWithProviderPrefix respects pre-existing slash in requestedMode
 
 test('formatModelWithProviderPrefix prioritizes actual model sent to provider over combo requestedModel alias', () => {
   assert.equal(
+    formatModelWithProviderPrefix('client/combo-alias', 'antigravity', {
+      requestedModel: 'client/combo-alias',
+      upstreamModel: 'ag/gemini-3.8-flash-high',
+    }),
+    'ag/gemini-3.8-flash-high'
+  );
+  assert.equal(
     formatModelWithProviderPrefix('gemini-3.8-flash-high', 'antigravity', { requestedModel: 'gemini-3.8-flash' }),
     'ag/gemini-3.8-flash-high'
   );

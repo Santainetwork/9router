@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 const BASE_URL_GATEWAY = "http://localhost:20128";
 const BASE_URL_PUBLIC = "http://localhost:20140";
-const TEST_API_KEY = "sk-1e48d47cf89b675d-n5h2n3-4a0fba81"; // adita
+const TEST_API_KEY = process.env.NINEROUTER_E2E_API_KEY || "";
 
 test("Public proxy (:20140) serves Neobrutalist usage-check HTML with concrete design tokens", async () => {
   const res = await fetch(`${BASE_URL_PUBLIC}/usage-check`);
@@ -29,7 +29,11 @@ test("Next.js App Router (:20128) renders /usage-check route successfully", asyn
   assert.ok(html.includes("Usage") || html.includes("usage-check"), "must serve usage-check page");
 });
 
-test("/api/v1/usage returns accurate concurrency and allowedModels for API key", async () => {
+test("/api/v1/usage returns accurate concurrency and allowedModels for API key", async (t) => {
+  if (!TEST_API_KEY) {
+    t.skip("set NINEROUTER_E2E_API_KEY to run live API-key checks");
+    return;
+  }
   const res = await fetch(`${BASE_URL_GATEWAY}/api/v1/usage?period=7d`, {
     headers: { Authorization: `Bearer ${TEST_API_KEY}` }
   });
@@ -38,7 +42,7 @@ test("/api/v1/usage returns accurate concurrency and allowedModels for API key",
 
   // Concurrency check
   assert.equal(typeof data.limits.concurrency, "number", "concurrency must be number");
-  assert.ok(data.limits.concurrency > 0, "adita key concurrency matches database positive value");
+  assert.ok(data.limits.concurrency > 0, "test API key concurrency must be a positive value");
   assert.ok(data.live, "response must include live concurrency data");
   assert.equal(typeof data.live.activeConcurrency, "number", "live.activeConcurrency must be number");
   assert.equal(typeof data.live.queuedRequests, "number", "live.queuedRequests must be number");

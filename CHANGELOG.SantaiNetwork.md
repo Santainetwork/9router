@@ -124,10 +124,7 @@ Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
 ---
 
 ## Operational notes
-- Dev refresh: `sudo bash /opt/9router/refresh-9router-rl.sh` (rebuild + restart
-  `9router-rl.service` on `:20130`). Does not touch prod.
-- Prod (`:20128`) is deployed by swapping the bundle under
-  `/usr/lib/node_modules/9router/app` (backup → stage `app.new` → pre-ready boot
-  test against the main DB → atomic rename → restart). Rollback bundle kept as
-  `app.old`; DB pre-migration backup under `.9router/db/backups/`.
-- Databases: dev `/var/lib/9router-rl/.9router`, prod `/var/lib/9router/.9router`.
+- Use `scripts/install.sh --dry-run` before installation or upgrades.
+- Use `scripts/install.sh --upgrade` for an atomic release swap with automatic backup and rollback.
+- Runtime paths are configurable through `INSTALL_DIR`, `RELEASE_DIR`, `DATA_DIR`, and the generated environment file; no host-specific directory is required.
+- Production topology: Go master gateway on `:20128`, Next.js backend on loopback `:20127`, limiter RPC on `:20129`, public portal on `:20140`.

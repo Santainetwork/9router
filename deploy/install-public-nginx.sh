@@ -12,6 +12,8 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)/nginx-9router-public.conf"
+USAGE_CHECK_HTML="$(cd "$(dirname "$0")" && pwd)/usage-check.html"
+USAGE_CHECK_HTML_SED="$(printf '%s' "$USAGE_CHECK_HTML" | sed 's/[&|\\]/\\&/g')"
 DST_AVAIL=/etc/nginx/sites-available/9router-public.conf
 DST_ENABLED=/etc/nginx/sites-enabled/9router-public.conf
 
@@ -31,7 +33,7 @@ fi
 
 echo "== 3. Install config =="
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
-cp -f "$SRC" "$DST_AVAIL"
+sed "s|__USAGE_CHECK_HTML__|$USAGE_CHECK_HTML_SED|g" "$SRC" > "$DST_AVAIL"
 ln -sf "$DST_AVAIL" "$DST_ENABLED"
 
 echo "== 4. Test + reload =="
