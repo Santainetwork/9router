@@ -80,7 +80,7 @@ async function getProvidersByUsage(whereTimeClause, limit) {
     LEFT JOIN providerNodes pn ON pn.id = uh.provider
     WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
       AND uh.provider IS NOT NULL
-    GROUP BY COALESCE(pn.name, uh.provider)
+    GROUP BY COALESCE(pn.name, uh.provider), pn.name, uh.provider
     ORDER BY total_requests DESC
     LIMIT ?
   `;
@@ -106,8 +106,8 @@ async function getProvidersByCost(whereTimeClause, limit) {
     LEFT JOIN providerNodes pn ON pn.id = uh.provider
     WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
       AND uh.provider IS NOT NULL
-    GROUP BY COALESCE(pn.name, uh.provider)
-    HAVING total_cost > 0
+    GROUP BY COALESCE(pn.name, uh.provider), pn.name, uh.provider
+    HAVING SUM(COALESCE(uh.cost, 0)) > 0
     ORDER BY total_cost DESC
     LIMIT ?
   `;
@@ -137,8 +137,8 @@ async function getKeysByRequests(whereTimeClause, limit) {
     LEFT JOIN providerConnections pc ON pc.id = uh.connectionId
     LEFT JOIN providerNodes pn ON pn.id = uh.provider
     WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
-    GROUP BY COALESCE(uh.connectionId, uh.provider)
-    HAVING total_requests > 0
+    GROUP BY COALESCE(uh.connectionId, uh.provider), pc.name, uh.connectionId, pn.name, uh.provider, pc.provider
+    HAVING COUNT(*) > 0
     ORDER BY total_requests DESC
     LIMIT ?
   `;
@@ -174,8 +174,8 @@ async function getKeysByCost(whereTimeClause, limit) {
     LEFT JOIN providerConnections pc ON pc.id = uh.connectionId
     LEFT JOIN providerNodes pn ON pn.id = uh.provider
     WHERE ${whereTimeClause.replace(/timestamp/g, 'uh.timestamp')}
-    GROUP BY COALESCE(uh.connectionId, uh.provider)
-    HAVING total_cost > 0
+    GROUP BY COALESCE(uh.connectionId, uh.provider), pc.name, uh.connectionId, pn.name, uh.provider, pc.provider
+    HAVING SUM(COALESCE(uh.cost, 0)) > 0
     ORDER BY total_cost DESC
     LIMIT ?
   `;
