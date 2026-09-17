@@ -1220,7 +1220,7 @@ export default function ProviderDetailPage() {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-text-main">
-            Queue Timeout (ms)
+            Queue Timeout (Seconds)
           </label>
           <input
             type="number"
@@ -1231,7 +1231,7 @@ export default function ProviderDetailPage() {
             className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <span className="text-[11px] text-text-muted">
-            Milliseconds requests can wait in queue before receiving 429 rate limit error.
+            Seconds requests can wait in queue before receiving 429 rate limit error (0 = reject immediately).
           </span>
         </div>
 

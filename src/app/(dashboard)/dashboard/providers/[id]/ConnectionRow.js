@@ -238,14 +238,14 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-text-muted">Queue timeout ms (0 = reject)</label>
+                <label className="text-[11px] text-text-muted">Queue timeout s (0 = reject)</label>
                 <input
                   type="number"
                   min="0"
-                  defaultValue={connection.queueTimeoutMs ?? 0}
+                  defaultValue={(connection.queueTimeoutMs ?? 0) >= 1000 ? Math.round(connection.queueTimeoutMs / 1000) : (connection.queueTimeoutMs ?? 0)}
                   onBlur={(e) => {
-                    const queueTimeoutMs = Math.max(0, parseInt(e.target.value, 10) || 0);
-                    if (queueTimeoutMs !== (connection.queueTimeoutMs ?? 0)) onUpdateLimits(connection.rpm ?? 0, connection.concurrency ?? 0, queueTimeoutMs);
+                    const queueTimeout = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    if (queueTimeout !== (connection.queueTimeoutMs ?? 0)) onUpdateLimits(connection.rpm ?? 0, connection.concurrency ?? 0, queueTimeout);
                   }}
                   className="w-28 rounded border border-border bg-input px-2 py-1 text-sm"
                 />
