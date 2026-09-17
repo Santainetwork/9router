@@ -197,6 +197,23 @@ test("postgres adapter - executes queries and transactions with mock client cont
   adapter.close();
 });
 
+test("postgres adapter - restores camelCase schema columns from PostgreSQL rows", async () => {
+  const mockClient = {
+    query(sql) {
+      if (/SELECT \* FROM providerConnections/i.test(sql)) {
+        return { rowCount: 1, rows: [{ id: "pc-1", isactive: 1, authtype: "oauth", createdat: "now" }] };
+      }
+      return { rowCount: 0, rows: [] };
+    },
+    end() {},
+  };
+  const adapter = await createPostgresAdapter(null, { mockClient });
+  assert.deepEqual(adapter.get("SELECT * FROM providerConnections"), {
+    id: "pc-1", isActive: 1, authType: "oauth", createdAt: "now",
+  });
+  adapter.close();
+});
+
 test("driver - getDatabaseType reflects DATABASE_URL and DB_TYPE settings", () => {
   const origUrl = process.env.DATABASE_URL;
   const origType = process.env.DB_TYPE;

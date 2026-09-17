@@ -240,8 +240,8 @@ function suite() {
           const keys = adapter.all("SELECT * FROM apiKeys ORDER BY id");
           assert.equal(keys.length, 2);
           assert.equal(keys[0].name, "Key One");
-          assert.equal(Number(keys[0].tokenquota), 1000000);
-          assert.equal(keys[1].machineid, null);
+          assert.equal(Number(keys[0].tokenQuota), 1000000);
+          assert.equal(keys[1].machineId, null);
 
           const one = adapter.get("SELECT * FROM apiKeys WHERE id = ?", ["ak-1"]);
           assert.equal(one.key, "sk-" + "a".repeat(40));

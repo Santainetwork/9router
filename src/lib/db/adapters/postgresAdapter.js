@@ -1,5 +1,6 @@
 import { Worker, MessageChannel, receiveMessageOnPort } from "node:worker_threads";
 import pg from "pg";
+import { TABLES } from "../schema.js";
 
 const { Pool } = pg;
 
@@ -17,6 +18,17 @@ export const TABLE_PKS = {
   requestdetails: ["id"],
   provider_footer_logs: ["id"],
 };
+
+const PG_COLUMN_NAMES = Object.values(TABLES).flatMap((def) => Object.keys(def.columns));
+const PG_COLUMN_BY_LOWERCASE = new Map(PG_COLUMN_NAMES.map((name) => [name.toLowerCase(), name]));
+
+function normalizePostgresRow(row) {
+  if (!row || typeof row !== "object") return row;
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [
+    PG_COLUMN_BY_LOWERCASE.get(key.toLowerCase()) || key,
+    value,
+  ]));
+}
 
 export function convertPlaceholders(sql) {
   if (typeof sql !== "string" || !sql.includes("?")) return sql;
@@ -358,24 +370,24 @@ export async function createPostgresAdapter(connectionStringOrConfig, options = 
     const normSql = translateSql(sql);
     if (mockClient) {
       const res = mockClient.query(normSql, params);
-      if (res && Array.isArray(res.rows)) return res.rows[0] ?? undefined;
-      if (Array.isArray(res)) return res[0] ?? undefined;
+      if (res && Array.isArray(res.rows)) return normalizePostgresRow(res.rows[0]) ?? undefined;
+      if (Array.isArray(res)) return normalizePostgresRow(res[0]) ?? undefined;
       return res ?? undefined;
     }
     const res = syncDispatch({ type: "query", sql: normSql, params });
-    return res.rows?.[0] ?? undefined;
+    return normalizePostgresRow(res.rows?.[0]) ?? undefined;
   }
 
   function all(sql, params = []) {
     const normSql = translateSql(sql);
     if (mockClient) {
       const res = mockClient.query(normSql, params);
-      if (res && Array.isArray(res.rows)) return res.rows;
-      if (Array.isArray(res)) return res;
+      if (res && Array.isArray(res.rows)) return res.rows.map(normalizePostgresRow);
+      if (Array.isArray(res)) return res.map(normalizePostgresRow);
       return [];
     }
     const res = syncDispatch({ type: "query", sql: normSql, params });
-    return res.rows ?? [];
+    return (res.rows ?? []).map(normalizePostgresRow);
   }
 
   function exec(sql) {
