@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestReadyHandlerReportsUpstreamReadiness(t *testing.T) {
@@ -36,6 +37,19 @@ func TestReadyHandlerReportsUpstreamReadiness(t *testing.T) {
 				t.Fatalf("ready status = %d, want %d", rec.Code, tt.wantStatus)
 			}
 		})
+	}
+}
+
+func TestPublicServerTimeouts(t *testing.T) {
+	srv := newPublicServer(":0", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	if srv.ReadHeaderTimeout != 10*time.Second {
+		t.Fatalf("ReadHeaderTimeout = %s, want 10s", srv.ReadHeaderTimeout)
+	}
+	if srv.ReadTimeout != 5*time.Minute {
+		t.Fatalf("ReadTimeout = %s, want 5m", srv.ReadTimeout)
+	}
+	if srv.IdleTimeout != 120*time.Second {
+		t.Fatalf("IdleTimeout = %s, want 120s", srv.IdleTimeout)
 	}
 }
 

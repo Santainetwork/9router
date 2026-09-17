@@ -41,6 +41,16 @@ type BucketDetailReq struct {
 	Key   string `json:"key"`
 }
 
+func newPublicServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
 func readyHandler(upstream string) http.HandlerFunc {
 	client := &http.Client{Timeout: 2 * time.Second}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -222,12 +232,7 @@ func main() {
 		}
 
 		gatewayAddr := fmt.Sprintf(":%d", *gatewayPort)
-		gatewaySrv = &http.Server{
-			Addr:              gatewayAddr,
-			Handler:           gatewayHandler,
-			ReadHeaderTimeout: 10 * time.Second,
-			IdleTimeout:       120 * time.Second,
-		}
+		gatewaySrv = newPublicServer(gatewayAddr, gatewayHandler)
 
 		go func() {
 			if err := gatewaySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -253,12 +258,7 @@ func main() {
 		}
 
 		proxyAddr := fmt.Sprintf(":%d", *proxyPort)
-		proxySrv = &http.Server{
-			Addr:              proxyAddr,
-			Handler:           proxyHandler,
-			ReadHeaderTimeout: 10 * time.Second,
-			IdleTimeout:       120 * time.Second,
-		}
+		proxySrv = newPublicServer(proxyAddr, proxyHandler)
 
 		go func() {
 			if err := proxySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
