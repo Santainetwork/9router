@@ -536,7 +536,7 @@ export default function QueueMonitorClient() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Scope</TableHead>
-                    <TableHead>Target ID</TableHead>
+                    <TableHead>Target</TableHead>
                     <TableHead className="text-right">Active In-Flight</TableHead>
                     <TableHead className="text-right">Waiting in Queue</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -546,7 +546,10 @@ export default function QueueMonitorClient() {
                   {activeBuckets.map((b) => (
                     <TableRow key={`${b.scope}-${b.key}`}>
                       <TableCell className="font-semibold text-xs capitalize">{b.scope}</TableCell>
-                      <TableCell className="font-mono text-xs text-text-muted">{b.key}</TableCell>
+                      <TableCell className="font-semibold text-xs">
+                        <div>{b.label || b.key}</div>
+                        <div className="font-mono text-[10px] text-text-muted">{b.scope}:{b.key}</div>
+                      </TableCell>
                       <TableCell className="text-right font-mono font-bold text-blue-500 text-xs">
                         {b.activeConcurrency}
                       </TableCell>
