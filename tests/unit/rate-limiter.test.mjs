@@ -1,7 +1,8 @@
 // Self-check for open-sse/services/rateLimiter.js
 // Run: node tests/unit/rate-limiter.test.mjs
 import assert from "node:assert";
-import { acquire, RateLimitTimeoutError, _reset, _stats, getBucketDetail } from "../../open-sse/services/rateLimiter.js";
+import { createHash } from "node:crypto";
+import { acquire, RateLimitTimeoutError, _reset, _stats, getBucketDetail, queueSnapshot } from "../../open-sse/services/rateLimiter.js";
 
 async function main() {
   // 1. rpm=0 → always pass, no bucket.
@@ -101,6 +102,24 @@ async function main() {
   rel2();
   b42 = getBucketDetail("apikey", 42);
   assert.equal(b42.activeConcurrency, 0, "activeConcurrency returns to 0 after all released");
+
+  // 11. queueSnapshot redacts keys while exact-key detail lookup remains intact.
+  _reset();
+  const telemetryKey = "sk-live-secret-value";
+  const releaseTelemetry = await acquire("apikey", telemetryKey, { concurrency: 1 });
+  const snapshot = queueSnapshot();
+  assert.equal(snapshot.buckets.length, 1, "active bucket included in telemetry snapshot");
+  assert.equal(
+    snapshot.buckets[0].key,
+    `sha256:${createHash("sha256").update(telemetryKey).digest("hex")}`,
+    "snapshot key is deterministic SHA-256, not raw key"
+  );
+  assert.equal(
+    getBucketDetail("apikey", telemetryKey).activeConcurrency,
+    1,
+    "exact-key detail lookup remains intact"
+  );
+  releaseTelemetry();
 
   console.log("rate-limiter: all assertions passed");
 }

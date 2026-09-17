@@ -2,6 +2,8 @@ package limiter
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"time"
@@ -334,6 +336,11 @@ type Snapshot struct {
 	Buckets               []BucketSnapshot `json:"buckets"`
 }
 
+func snapshotKey(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
 func (e *Engine) Snapshot() Snapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -366,7 +373,7 @@ func (e *Engine) Snapshot() Snapshot {
 
 		snap.Buckets = append(snap.Buckets, BucketSnapshot{
 			Scope:             b.scope,
-			Key:               b.key,
+			Key:               snapshotKey(b.key),
 			RPM:               b.rpmLast,
 			Concurrency:       b.concurrencyLast,
 			ActiveConcurrency: active,

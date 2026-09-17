@@ -8,6 +8,8 @@
 // When either limit is reached, callers wait in a FIFO queue until a slot frees
 // (window rolls over or active request releases) or per-caller timeout elapses.
 
+import { createHash } from "node:crypto";
+
 const WINDOW_MS = 60_000;
 
 export class RateLimitTimeoutError extends Error {
@@ -339,6 +341,10 @@ export function getBucketDetail(scope, key) {
   };
 }
 
+function snapshotKey(key) {
+  return `sha256:${createHash("sha256").update(String(key)).digest("hex")}`;
+}
+
 // Admin introspection: snapshot of every bucket that currently has waiters or in-flight requests.
 export function queueSnapshot() {
   const t = now();
@@ -360,7 +366,7 @@ export function queueSnapshot() {
 
       buckets.push({
         scope,                        // "apikey" | "provider"
-        key,                          // api key id / connection id
+        key: snapshotKey(key),        // redacted api key id / connection id
         rpm: b.rpmLast || 0,          // configured limit
         concurrency: b.concurrencyLast || 0, // configured concurrency limit
         activeConcurrency: active,    // currently in-flight

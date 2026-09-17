@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -179,6 +180,35 @@ func TestSnapshotSkipsIdleBucketsAndReportsTotals(t *testing.T) {
 	}
 	if len(snap.Buckets) != 1 {
 		t.Fatalf("expected exactly 1 active bucket in snapshot, got %d", len(snap.Buckets))
+	}
+}
+
+// TestSnapshotRedactsBucketKeys verifies the telemetry snapshot never exposes
+// raw bucket keys (API key ids / connection ids) while exact-key detail lookups
+// (GetBucketDetail) still resolve the same bucket by its real key.
+func TestSnapshotRedactsBucketKeys(t *testing.T) {
+	e := NewEngine()
+	defer e.Stop()
+
+	const key = "sk-secret-" + string(rune('a'+1000/26)) + "xyz"
+	e.Acquire(context.Background(), "apikey", key, 0, 1, 0)
+
+	snap := e.Snapshot()
+	if len(snap.Buckets) != 1 {
+		t.Fatalf("expected 1 active bucket in snapshot, got %d", len(snap.Buckets))
+	}
+	got := snap.Buckets[0].Key
+	if got == key {
+		t.Fatalf("snapshot must not expose raw bucket key, got %q", got)
+	}
+	if !strings.HasPrefix(got, "sha256:") || len(got) != 7+64 {
+		t.Fatalf("snapshot key must be a sha256 hex digest prefixed digest, got %q", got)
+	}
+
+	// Exact-key detail lookup must remain intact after redaction.
+	detail := e.GetBucketDetail("apikey", key)
+	if detail.ActiveConcurrency != 1 {
+		t.Fatalf("exact-key lookup must still resolve the redacted bucket, got ActiveConcurrency=%d", detail.ActiveConcurrency)
 	}
 }
 
