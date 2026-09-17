@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/santainetwork/9router-hybrid/pkg/limiter"
@@ -49,6 +48,10 @@ type Server struct {
 	cfg          Config
 	upstreamURL  *url.URL
 	reverseProxy *httputil.ReverseProxy
+}
+
+func (s *Server) proxyGatingEnabled() bool {
+	return !s.cfg.AllowAllPaths || s.cfg.KeyConcurrency > 0 || s.cfg.KeyRPM > 0
 }
 
 // IsAllowedPath returns true if the given path matches the allowed public prefixes.
@@ -210,7 +213,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		strings.HasPrefix(reqPath, "/nosaver/") ||
 		strings.HasPrefix(reqPath, "/v1beta/")
 
-	if isAPIRequest && s.cfg.Limiter != nil {
+	if isAPIRequest && s.cfg.Limiter != nil && s.proxyGatingEnabled() {
 		apiKey := ExtractAPIKey(r)
 		if apiKey != "" {
 			concurrency := s.cfg.KeyConcurrency
@@ -246,25 +249,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				var once sync.Once
-				release := func() {
-					once.Do(func() {
-						s.cfg.Limiter.Release(s.cfg.Scope, apiKey)
-					})
-				}
-				defer release()
-
-				// Immediately release slot if client aborts/disconnects while in-flight
-				stopWatchdog := make(chan struct{})
-				defer close(stopWatchdog)
-
-				go func() {
-					select {
-					case <-r.Context().Done():
-						release()
-					case <-stopWatchdog:
-					}
-				}()
+				defer s.cfg.Limiter.Release(s.cfg.Scope, apiKey)
 			}
 		}
 	}

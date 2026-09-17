@@ -17,6 +17,12 @@ import (
 	"github.com/santainetwork/9router-hybrid/pkg/limiter"
 )
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
 func TestExtractAPIKey(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -335,6 +341,49 @@ func TestStreamingSSEFlushedImmediately(t *testing.T) {
 	}
 }
 
+func TestGatewayDynamicLimitsDoNotAcquire(t *testing.T) {
+	eng := limiter.NewEngine()
+	defer eng.Stop()
+
+	const testKey = "dynamic-gateway-key"
+	if err := eng.Acquire(context.Background(), "apikey", testKey, 0, 1, 0); err != nil {
+		t.Fatalf("failed to pre-acquire test slot: %v", err)
+	}
+	defer eng.Release("apikey", testKey)
+
+	var upstreamCalls int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&upstreamCalls, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	proxySrv, err := NewServer(Config{
+		UpstreamURL:   upstream.URL,
+		Limiter:       eng,
+		AllowAllPaths: true,
+		QueueTimeout:  10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+testKey)
+	rr := httptest.NewRecorder()
+	proxySrv.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected dynamic gateway request to forward, got %d", rr.Code)
+	}
+	if calls := atomic.LoadInt32(&upstreamCalls); calls != 1 {
+		t.Fatalf("expected one upstream call, got %d", calls)
+	}
+	if active := eng.GetBucketDetail("apikey", testKey).ActiveConcurrency; active != 1 {
+		t.Fatalf("dynamic gateway path acquired or released the existing slot, active = %d", active)
+	}
+}
+
 func TestClientAbortTriggersRelease(t *testing.T) {
 	eng := limiter.NewEngine()
 	defer eng.Stop()
@@ -425,6 +474,52 @@ func TestClientAbortTriggersRelease(t *testing.T) {
 	defer resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 for second request, got %d", resp2.StatusCode)
+	}
+}
+
+func TestClientAbortReleasesAfterReverseProxyReturns(t *testing.T) {
+	eng := limiter.NewEngine()
+	defer eng.Stop()
+
+	proxySrv, err := NewServer(Config{
+		Limiter:        eng,
+		KeyConcurrency: 1,
+		QueueTimeout:   time.Second,
+	})
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	roundTripStarted := make(chan struct{})
+	allowReturn := make(chan struct{})
+	proxySrv.reverseProxy.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		close(roundTripStarted)
+		<-allowReturn
+		return nil, context.Canceled
+	})
+
+	const testKey = "abort-lifecycle-key"
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+testKey)
+	rr := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		proxySrv.ServeHTTP(rr, req)
+		close(done)
+	}()
+
+	<-roundTripStarted
+	cancel()
+	time.Sleep(20 * time.Millisecond)
+	if active := eng.GetBucketDetail("apikey", testKey).ActiveConcurrency; active != 1 {
+		t.Fatalf("released before ReverseProxy.ServeHTTP returned, active = %d", active)
+	}
+
+	close(allowReturn)
+	<-done
+	if active := eng.GetBucketDetail("apikey", testKey).ActiveConcurrency; active != 0 {
+		t.Fatalf("expected one release after ReverseProxy.ServeHTTP returned, active = %d", active)
 	}
 }
 
