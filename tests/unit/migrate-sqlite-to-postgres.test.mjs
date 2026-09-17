@@ -3,7 +3,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { migrateSqliteToPostgres } from "../../scripts/migrate-sqlite-to-postgres.mjs";
+import { ensurePostgresSchema, migrateSqliteToPostgres } from "../../scripts/migrate-sqlite-to-postgres.mjs";
+
+test("migrate-sqlite-to-postgres - bootstraps an empty PostgreSQL schema", async () => {
+  const queries = [];
+  await ensurePostgresSchema({ query: async (sql) => { queries.push(sql); } });
+
+  assert.match(queries[0], /CREATE TABLE IF NOT EXISTS _meta/);
+  assert.ok(queries.some((sql) => /CREATE TABLE IF NOT EXISTS apiKeys/.test(sql)));
+  assert.ok(queries.some((sql) => /CREATE INDEX IF NOT EXISTS idx_ak_key/.test(sql)));
+});
 
 test("migrate-sqlite-to-postgres - dry run reports all tables and row counts without postgres connection", async () => {
   const tempDbPath = path.join("/tmp", `test-migrate-source-${Date.now()}.sqlite`);

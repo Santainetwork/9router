@@ -20,11 +20,18 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import pg from "pg";
-import { TABLES } from "../src/lib/db/schema.js";
+import { TABLES, buildCreateTableSql } from "../src/lib/db/schema.js";
 import { DATA_FILE } from "../src/lib/db/paths.js";
 import { TABLE_PKS } from "../src/lib/db/adapters/postgresAdapter.js";
 
 const { Pool } = pg;
+
+export async function ensurePostgresSchema(client) {
+  for (const [tableName, def] of Object.entries(TABLES)) {
+    await client.query(buildCreateTableSql(tableName, def, "postgres"));
+    for (const index of def.indexes || []) await client.query(index);
+  }
+}
 
 export async function migrateSqliteToPostgres(options = {}) {
   const sqlitePath = options.sqlitePath || process.env.SQLITE_FILE || DATA_FILE;
@@ -53,6 +60,20 @@ export async function migrateSqliteToPostgres(options = {}) {
   };
 
   try {
+    if (!dryRun) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await ensurePostgresSchema(client);
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
     // 1. Fetch available tables in SQLite
     const sqliteTables = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
