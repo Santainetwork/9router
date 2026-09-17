@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { normalizeLeaderboardNumbers } from '@/shared/utils/leaderboardNumbers.js';
 import { getAdapter } from '@/lib/db/driver.js';
 
 export const dynamic = 'force-dynamic';
@@ -85,12 +86,15 @@ async function getProvidersByUsage(whereTimeClause, limit) {
     LIMIT ?
   `;
   const rows = db.all(sql, [limit]);
-  return rows.map(r => ({
+  return rows.map(row => {
+    const r = normalizeLeaderboardNumbers(row);
+    return ({
     ...r,
     provider: r.provider_name || r.provider,
     raw_provider: r.provider,
     cost_per_request: r.total_requests > 0 ? ((r.total_cost || 0) / r.total_requests) : 0,
-  }));
+  });
+  });
 }
 
 async function getProvidersByCost(whereTimeClause, limit) {
@@ -112,12 +116,15 @@ async function getProvidersByCost(whereTimeClause, limit) {
     LIMIT ?
   `;
   const rows = db.all(sql, [limit]);
-  return rows.map(r => ({
+  return rows.map(row => {
+    const r = normalizeLeaderboardNumbers(row);
+    return ({
     ...r,
     provider: r.provider_name || r.provider,
     raw_provider: r.provider,
     cost_per_request: r.total_requests > 0 ? ((r.total_cost || 0) / r.total_requests) : 0,
-  }));
+  });
+  });
 }
 
 async function getKeysByRequests(whereTimeClause, limit) {
@@ -143,7 +150,9 @@ async function getKeysByRequests(whereTimeClause, limit) {
     LIMIT ?
   `;
   const rows = db.all(sql, [limit]);
-  return rows.map(r => ({
+  return rows.map(row => {
+    const r = normalizeLeaderboardNumbers(row);
+    return ({
     id: r.connectionId || r.provider,
     key_name: r.key_name || 'Unnamed',
     key_masked: maskKey(r.connectionId || r.provider || ''),
@@ -156,7 +165,8 @@ async function getKeysByRequests(whereTimeClause, limit) {
     avg_latency_ms: 0,
     total_cost: r.total_cost || 0,
     cost_per_request: r.total_requests > 0 ? (r.total_cost / r.total_requests) : 0
-  }));
+  });
+  });
 }
 
 async function getKeysByCost(whereTimeClause, limit) {
@@ -180,7 +190,9 @@ async function getKeysByCost(whereTimeClause, limit) {
     LIMIT ?
   `;
   const rows = db.all(sql, [limit]);
-  return rows.map(r => ({
+  return rows.map(row => {
+    const r = normalizeLeaderboardNumbers(row);
+    return ({
     id: r.connectionId || r.provider,
     key_name: r.key_name || 'Unnamed',
     key_masked: maskKey(r.connectionId || r.provider || ''),
@@ -191,5 +203,6 @@ async function getKeysByCost(whereTimeClause, limit) {
     avg_latency_ms: 0,
     cost_per_request: r.total_requests > 0 ? (r.total_cost / r.total_requests) : 0,
     requests_per_dollar: r.total_cost > 0 ? r.total_requests / r.total_cost : 0
-  }));
+  });
+  });
 }
