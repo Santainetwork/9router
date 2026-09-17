@@ -86,6 +86,7 @@ test("system health collector reports engine, backend, limiter and database", ()
   assert.match(src, /detail\) out\.process = getProcessInfo\(\)/);
   // Postgres password must be masked in the reported target.
   assert.match(src, /getDatabaseType\(\)[\s\S]*replace\(/);
+  assert.match(src, /publicProxy:\s*\{[\s\S]*configured:\s*cfg\.publicProxyEnabled/);
 });
 
 test("system health panel is mounted on the admin dashboard profile page", () => {

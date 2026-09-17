@@ -88,7 +88,7 @@ export async function getEngineHealth() {
     },
     publicProxy: {
       port: cfg.publicProxyPort,
-      configured: cfg.publicProxy,
+      configured: cfg.publicProxyEnabled,
       enabled: cfg.publicProxyEnabled,
     },
     config: {
