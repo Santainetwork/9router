@@ -768,6 +768,7 @@ Description=9Router Golang Master Gateway (gateway :${GATEWAY_PORT}, limiter :${
 Documentation=file://${INSTALL_DIR}/README.md
 After=network-online.target ${SERVICE_MAIN}.service
 Wants=network-online.target
+Requires=${SERVICE_MAIN}.service
 PartOf=${SERVICE_MAIN}.service
 
 [Service]
@@ -874,6 +875,17 @@ systemctl stop "$SERVICE_ENGINE" 2>/dev/null || true
 systemctl stop "$SERVICE_MAIN" 2>/dev/null || true
 systemctl enable "$SERVICE_MAIN" "$SERVICE_ENGINE" >/dev/null 2>&1 || true
 systemctl restart "$SERVICE_MAIN"
+step "Waiting for backend readiness"
+BACKEND_OK=0
+for i in $(seq 1 45); do
+  if curl -fsS --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+    BACKEND_OK=1; info "backend ready after ${i}s"; break
+  fi
+  sleep 1
+done
+if [ "$BACKEND_OK" != 1 ]; then
+  fail "Backend did not become ready at http://127.0.0.1:${BACKEND_PORT}/api/health"
+fi
 systemctl restart "$SERVICE_ENGINE"
 ok "Services restarted"
 
@@ -908,6 +920,7 @@ check_http "Master gateway health"  "http://localhost:${GATEWAY_PORT}/api/health
 check_http "Login page"             "http://localhost:${GATEWAY_PORT}/login" 200 || GATEWAY_FAIL=1
 check_http "Usage-check portal"     "http://localhost:${PUBLIC_PORT}/usage-check" 200 || GATEWAY_FAIL=1
 check_http "Limiter RPC health"     "http://127.0.0.1:${LIMITER_PORT}/health" 200 || GATEWAY_FAIL=1
+check_http "Hybrid engine readiness" "http://127.0.0.1:${LIMITER_PORT}/ready" 200 || GATEWAY_FAIL=1
 
 if [ "$GATEWAY_FAIL" != 0 ]; then
   warn "One or more gateway checks failed. Inspect: journalctl -u ${SERVICE_ENGINE} -n 50"

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +39,32 @@ type ResetReq struct {
 type BucketDetailReq struct {
 	Scope string `json:"scope"`
 	Key   string `json:"key"`
+}
+
+func readyHandler(upstream string) http.HandlerFunc {
+	client := &http.Client{Timeout: 2 * time.Second}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		probeURL := strings.TrimRight(upstream, "/") + "/api/health"
+		resp, err := client.Get(probeURL)
+		if err != nil {
+			http.Error(w, "upstream not ready", http.StatusServiceUnavailable)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			http.Error(w, "upstream not ready", http.StatusServiceUnavailable)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ready":true}`))
+	}
 }
 
 func defaultStaticDir() string {
@@ -76,6 +103,7 @@ func main() {
 			"buckets": eng.BucketCount(),
 		})
 	})
+	mux.Handle("/ready", readyHandler(*upstream))
 
 	mux.HandleFunc("/v1/limiter/acquire", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
