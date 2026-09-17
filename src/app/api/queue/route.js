@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 import {
   queueSnapshot,
   getBucketDetail,
@@ -14,6 +15,10 @@ function maskKey(k) {
   if (!k) return "";
   if (k.length <= 8) return k;
   return `${k.slice(0, 4)}...${k.slice(-4)}`;
+}
+
+function snapshotKey(key) {
+  return `sha256:${createHash("sha256").update(String(key)).digest("hex")}`;
 }
 
 // GET /api/queue - Complete view of all RPM limits, Concurrency limits, and live Queue status.
@@ -35,7 +40,7 @@ export async function GET() {
   }
 
   const allKeys = (keys || []).map((k) => {
-    const detail = goBucketMap.get(`apikey:${k.id}`) || getBucketDetail("apikey", k.id);
+    const detail = goBucketMap.get(`apikey:${snapshotKey(k.id)}`) || getBucketDetail("apikey", k.id);
     const rpm = Number(k.rpm) || 0;
     const concurrency = Number(k.concurrency) || 0;
     const queueTimeoutMs = Number(k.queueTimeoutMs) || 0;
@@ -66,7 +71,7 @@ export async function GET() {
   });
 
   const allProviders = (conns || []).map((c) => {
-    const detail = goBucketMap.get(`provider:${c.id}`) || getBucketDetail("provider", c.id);
+    const detail = goBucketMap.get(`provider:${snapshotKey(c.id)}`) || getBucketDetail("provider", c.id);
     const rpm = Number(c.rpm) || 0;
     const concurrency = Number(c.concurrency) || 0;
     const queueTimeoutMs = Number(c.queueTimeoutMs) || 0;
@@ -96,17 +101,18 @@ export async function GET() {
     };
   });
 
-  const keyMap = new Map(allKeys.map((k) => [k.id, k.name]));
-  const connMap = new Map(allProviders.map((c) => [c.id, c.name]));
+  const keyMap = new Map(allKeys.map((k) => [snapshotKey(k.id), k]));
+  const connMap = new Map(allProviders.map((c) => [snapshotKey(c.id), c]));
 
   const rawBuckets = snap?.buckets || [];
-  const activeBuckets = rawBuckets.map((b) => ({
-    ...b,
-    label:
-      b.scope === "apikey"
-        ? keyMap.get(b.key) || b.key
-        : connMap.get(b.key) || b.key,
-  }));
+  const activeBuckets = rawBuckets.map((b) => {
+    const target = b.scope === "apikey" ? keyMap.get(b.key) : connMap.get(b.key);
+    return {
+      ...b,
+      label: target?.name || b.key,
+      resetKey: target?.id,
+    };
+  });
 
   const apiKeyBuckets = activeBuckets.filter((b) => b.scope === "apikey");
   const providerBuckets = activeBuckets.filter((b) => b.scope === "provider");

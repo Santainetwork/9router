@@ -559,7 +559,7 @@ export default function QueueMonitorClient() {
                       <TableCell className="text-right">
                         <button
                           type="button"
-                          onClick={() => handleReset(b.scope, b.key)}
+                          onClick={() => handleReset(b.scope, b.resetKey || b.key)}
                           className="text-xs text-red-500 hover:underline font-medium"
                         >
                           Clear
