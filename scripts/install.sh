@@ -241,8 +241,8 @@ BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/9router}"
 BACKUP_DIR=""
 ROLLBACK_ARMED=0
 
-rollback() {
-  local rc=$?
+rollback() { # rollback <exit-code>  (callers pass the original error code)
+  local rc="${1:-$?}"
   if [ "$ROLLBACK_ARMED" != 1 ]; then exit "$rc"; fi
   ROLLBACK_ARMED=0
   printf '\n%s!! install failed (exit %s) — rolling back%s\n' "$C_RED$C_BOLD" "$rc" "$C_RESET" >&2
@@ -273,6 +273,11 @@ rollback() {
     cp -a "$BACKUP_DIR/env/9router.env" "$ENV_FILE" 2>/dev/null && printf '   restored %s\n' "$ENV_FILE" >&2
     chmod 600 "$ENV_FILE" 2>/dev/null || true
   fi
+  if [ -f "$BACKUP_DIR/engine/router-engine" ]; then
+    mkdir -p "$INSTALL_DIR/hybrid-engine/bin"
+    cp -a "$BACKUP_DIR/engine/router-engine" "$INSTALL_DIR/hybrid-engine/bin/router-engine" 2>/dev/null \
+      && printf '   restored engine binary\n' >&2
+  fi
   local src="$BACKUP_DIR/release-live"
   [ -d "$src" ] || src=""
   if [ -n "$src" ]; then
@@ -302,7 +307,7 @@ on_error() {
   local rc=$?
   [ "$rc" = 0 ] && return 0
   printf '\n%s✗ aborted at line %s (exit %s)%s\n' "$C_RED$C_BOLD" "${BASH_LINENO[0]:-?}" "$rc" "$C_RESET" >&2
-  rollback
+  rollback "$rc"
   exit "$rc"
 }
 
@@ -588,6 +593,7 @@ if [ "$INSTALL_MODE" = "upgrade" ] || [ "$INSTALL_MODE" = "reinstall" ]; then
   BACKUP_DIR="${BACKUP_ROOT}/$(date +%Y%m%d-%H%M%S)-${INSTALL_MODE}"
   mkdir -p "$BACKUP_DIR"
   backup_paths env "$ENV_FILE"
+  backup_paths engine "$INSTALL_DIR/hybrid-engine/bin/router-engine"
   snapshot_systemd_units
   if [ -d "$RELEASE_DIR" ]; then
     info "snapshotting $RELEASE_DIR (this keeps a rollback copy)"
@@ -669,7 +675,9 @@ cp -a "$REPO_DIR/hybrid-engine/pkg" "$INSTALL_DIR/hybrid-engine/" 2>/dev/null ||
 cp -a "$REPO_DIR/hybrid-engine/cmd" "$INSTALL_DIR/hybrid-engine/" 2>/dev/null || true
 cp -a "$REPO_DIR/hybrid-engine/go.mod" "$INSTALL_DIR/hybrid-engine/" 2>/dev/null || true
 if [ -x "$REPO_DIR/hybrid-engine/bin/router-engine" ]; then
-  cp -a "$REPO_DIR/hybrid-engine/bin/router-engine" "$INSTALL_DIR/hybrid-engine/bin/router-engine"
+  if [ "$REPO_DIR" != "$INSTALL_DIR" ]; then
+    cp -a "$REPO_DIR/hybrid-engine/bin/router-engine" "$INSTALL_DIR/hybrid-engine/bin/router-engine"
+  fi
 elif [ -x "$RELEASE_DIR/hybrid-engine/bin/router-engine" ]; then
   cp -a "$RELEASE_DIR/hybrid-engine/bin/router-engine" "$INSTALL_DIR/hybrid-engine/bin/router-engine"
 else
