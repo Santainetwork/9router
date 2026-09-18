@@ -22,6 +22,9 @@
 #   # Upgrade running containers
 #   bash scripts/install-docker.sh --upgrade
 #
+#   # View logs
+#   bash scripts/install-docker.sh --logs
+#
 #   # Stop or restart
 #   bash scripts/install-docker.sh --stop
 #   bash scripts/install-docker.sh --restart
@@ -61,6 +64,7 @@ DRY_RUN=0
 UPGRADE=0
 DO_STOP=0
 DO_RESTART=0
+DO_LOGS=0
 DO_UNINSTALL=0
 DO_PURGE=0
 
@@ -88,6 +92,7 @@ while [ $# -gt 0 ]; do
     --upgrade)              UPGRADE=1 ;;
     --stop|--down)          DO_STOP=1 ;;
     --restart)              DO_RESTART=1 ;;
+    --logs)                 DO_LOGS=1 ;;
     --uninstall)            DO_UNINSTALL=1 ;;
     --purge)                DO_PURGE=1 ;;
     --dir)                  shift; INSTALL_DIR="${1:-$DEFAULT_INSTALL_DIR}" ;;
@@ -201,6 +206,15 @@ if [ "$DO_RESTART" -eq 1 ]; then
       (cd "$INSTALL_DIR" && $COMPOSE_CMD restart)
       ok "9Router containers restarted."
     fi
+  else
+    fail "No docker-compose.yml found in $INSTALL_DIR"
+  fi
+  exit 0
+fi
+
+if [ "$DO_LOGS" -eq 1 ]; then
+  if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    (cd "$INSTALL_DIR" && $COMPOSE_CMD logs -f)
   else
     fail "No docker-compose.yml found in $INSTALL_DIR"
   fi

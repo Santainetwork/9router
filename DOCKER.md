@@ -1,132 +1,160 @@
-# Docker
+# 🐳 9Router Docker Deployment & Installer
 
-Run 9Router in a container. Published image: [`decolua/9router`](https://hub.docker.com/r/decolua/9router) — multi-platform `linux/amd64` + `linux/arm64`.
+Deploy 9Router SantaiNetwork Edition in an isolated, multi-platform Docker container stack. Recommended for operating systems without systemd (Alpine, macOS, Windows WSL, Synology NAS, Proxmox LXC, or containerized VPS).
 
 ---
 
-# 👤 For Users
+## ⚡ 1-Line Turnkey Installer (Recommended)
 
-## Quick start
-
-```bash
-docker run -d \
-  -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
-  -e DATA_DIR=/app/data \
-  --name 9router \
-  decolua/9router:latest
-```
-
-App listens on port `20128`. Open: http://localhost:20128
-
-## Manage container
+Run the automated installer inside the repository or on your server:
 
 ```bash
-docker logs -f 9router        # view logs
-docker stop 9router           # stop
-docker start 9router          # start again
-docker rm -f 9router          # remove
+# Interactive installation (guides through ports, passwords, database)
+./install-docker.sh
+
+# Or automated non-interactive install (auto-generates secure secrets and starts stack)
+./install-docker.sh --yes
 ```
 
-## Data persistence
+### Custom Options
 
 ```bash
--v "$HOME/.9router:/app/data" \
--e DATA_DIR=/app/data
+# Specify custom gateway port and public proxy port
+./install-docker.sh --port 20128 --public-port 20140
+
+# Custom deployment directory
+./install-docker.sh --dir /opt/9router-docker --yes
+
+# With specific admin password
+./install-docker.sh --password "YourStrongPassword" --yes
+
+# With external PostgreSQL database
+./install-docker.sh --database-url "postgres://user:pass@db.example.com:5432/9router" --yes
 ```
 
-Without `DATA_DIR`, the app falls back to `~/.9router/` (macOS/Linux) or `%APPDATA%\9router\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
+---
 
-Data layout under `$DATA_DIR/`:
+## 🏗️ Architecture Inside Docker
+
+The container runs both the high-performance **Golang Hybrid Engine** and the **Next.js Standalone Backend** inside a unified container network:
 
 ```text
-$DATA_DIR/
-├── db/
-│   ├── data.sqlite       # main SQLite database
-│   └── backups/          # auto backups
-└── ...                   # certs, logs, runtime configs
-```
-
-Host path: `$HOME/.9router/db/data.sqlite`
-Container path: `/app/data/db/data.sqlite`
-
-## Optional env vars
-
-```bash
-docker run -d \
-  -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
-  -e DATA_DIR=/app/data \
-  -e PORT=20128 \
-  -e HOSTNAME=0.0.0.0 \
-  -e DEBUG=true \
-  --name 9router \
-  decolua/9router:latest
-```
-
-## Optional Headroom sidecar
-
-The 9Router image does not bundle Python or Headroom. To use Headroom in Docker, run it as a separate service and point 9Router at that proxy:
-
-```yaml
-services:
-  9router:
-    image: decolua/9router:latest
-    ports:
-      - "20128:20128"
-    volumes:
-      - "$HOME/.9router:/app/data"
-    environment:
-      DATA_DIR: /app/data
-      HEADROOM_URL: http://headroom:8787
-    depends_on:
-      - headroom
-
-  headroom:
-    image: ghcr.io/chopratejas/headroom:latest
-    ports:
-      - "8787:8787"
-```
-
-In the dashboard, open `Endpoint` → `Token Saver` → `Headroom`, confirm the URL is `http://headroom:8787`, recheck status, then enable Headroom.
-
-If Headroom runs on the Docker host instead of as a sidecar, use `http://host.docker.internal:8787` on macOS/Windows. On Linux, add `--add-host=host.docker.internal:host-gateway` or the equivalent compose `extra_hosts` entry.
-
-## Update to latest
-
-```bash
-docker pull decolua/9router:latest
-docker rm -f 9router
-# re-run the quick start command
+Incoming Traffic
+   │
+   ├── Port :20128 (Master Gateway) ──> [router-engine in Go]
+   │                                        │ (Concurrency gating on /v1)
+   │                                        ▼
+   │                                    [Next.js on 127.0.0.1:20127]
+   │                                        │
+   │                                        ▼
+   │                                    [SQLite data.sqlite or PostgreSQL]
+   │
+   ├── Port :20140 (Public Proxy)   ──> [router-engine in Go]
+   │                                        │ (Direct disk static serve)
+   │                                        ▼
+   │                                    /usage-check & /docs (Zero Next.js overhead)
+   │
+   └── Port :20129 (Limiter RPC)    ──> In-memory concurrency semaphores
 ```
 
 ---
 
-# 🛠 For Developers
+## 🚀 Manual Docker Compose Deployment
 
-## Build image locally (test)
+If you prefer running standard Docker Compose commands without the installer script:
 
-```bash
-cd app && docker build -t 9router .
-
-docker run --rm -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
-  -e DATA_DIR=/app/data \
-  9router
-```
-
-## Publish (automatic via CI)
-
-Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
-- `ghcr.io/decolua/9router:v{version}` + `:latest`
-- `decolua/9router:v{version}` + `:latest`
+### 1. Configure Environment
 
 ```bash
-# Use scripts/release.js (recommended)
-node scripts/release.js "Release title" "Notes"
-
-# Or manually
-git tag v0.4.x && git push origin v0.4.x
+cp .env.docker.example .env
+chmod 600 .env
 ```
 
-Workflow: `app/.github/workflows/docker-publish.yml`
+Edit `.env` to configure your initial password and secrets:
+
+```env
+APP_NAME=SantaiNetwork
+GATEWAY_PORT=20128
+PUBLIC_PORT=20140
+INITIAL_PASSWORD=admin_secure_password
+JWT_SECRET=your_random_secret_here
+```
+
+### 2. Launch Services
+
+```bash
+# Build and run with default SQLite database
+docker compose up -d --build
+
+# Or run with containerized PostgreSQL service
+docker compose --profile postgres up -d --build
+
+# Or run with Headroom prompt compression sidecar
+docker compose --profile headroom up -d --build
+```
+
+---
+
+## 🛠️ Management Commands
+
+Using the installer script:
+
+```bash
+# View live logs
+./install-docker.sh --logs      # or: docker compose logs -f
+
+# Restart services
+./install-docker.sh --restart   # or: docker compose restart
+
+# Stop services
+./install-docker.sh --stop      # or: docker compose down
+
+# Upgrade to latest code
+./install-docker.sh --upgrade
+
+# Uninstall containers (preserves data volume)
+./install-docker.sh --uninstall
+
+# Uninstall containers and purge data volume
+./install-docker.sh --uninstall --purge
+```
+
+---
+
+## 📁 Persistent Data Structure
+
+Data is stored in the Docker volume `9router-data` mounted at `/app/data`:
+
+```text
+/app/data/
+├── db/
+│   ├── data.sqlite        # Main SQLite database (when not using PostgreSQL)
+│   └── backups/           # Automated database backups
+├── auth/
+│   └── cli-secret         # Machine credentials
+└── machine-id             # Stable container instance identity
+```
+
+To backup your SQLite database from Docker:
+
+```bash
+docker run --rm -v 9router-data:/data -v $(pwd):/backup alpine \
+  cp /data/db/data.sqlite /backup/data.sqlite.bak
+```
+
+---
+
+## ⚙️ Environment Variables Reference
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `APP_NAME` | `SantaiNetwork` | Dynamic branding displayed across UI and endpoints |
+| `GATEWAY_PORT` | `20128` | Host port for Master Gateway & Dashboard |
+| `PUBLIC_PORT` | `20140` | Host port for Public Usage Check and Docs |
+| `INITIAL_PASSWORD` | auto-generated | Default admin password on first launch |
+| `JWT_SECRET` | auto-generated | JWT token signing key |
+| `MACHINE_ID_SALT` | auto-generated | Salt for deterministic CLI tokens |
+| `API_KEY_SECRET` | auto-generated | Encryption salt for API keys |
+| `DATABASE_URL` | empty (SQLite) | PostgreSQL URL (`postgres://user:pass@host:5432/db`) |
+| `ENABLE_GO_HYBRID` | `true` | Enables Golang Master Gateway and concurrency semaphores |
+| `NODE_OPTIONS` | `--max-old-space-size=512` | Memory clamp preventing V8 heap runaway |
