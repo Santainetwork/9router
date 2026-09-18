@@ -1,59 +1,79 @@
 # syntax=docker/dockerfile:1.7
+ARG GO_IMAGE=golang:1.24-alpine
 ARG NODE_IMAGE=node:22-alpine
-FROM ${NODE_IMAGE} AS base
+
+# --- Stage 1: Build Golang Hybrid Concurrency Engine ---
+FROM ${GO_IMAGE} AS engine-builder
+WORKDIR /src/hybrid-engine
+COPY hybrid-engine/ ./
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/router-engine ./cmd/engine
+
+# --- Stage 2: Build Next.js Web Dashboard ---
+FROM ${NODE_IMAGE} AS node-builder
 WORKDIR /app
-# CN mirror for apk (used by builder and runner stages)
-RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories
 
-FROM base AS builder
+RUN apk --no-cache add python3 make g++ linux-headers
 
-RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
-
-COPY package.json ./
-RUN npm install --registry=https://registry.npmmirror.com
+COPY package.json package-lock.json* ./
+ARG NPM_REGISTRY=https://registry.npmjs.org
+RUN npm install --registry=${NPM_REGISTRY}
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
+# --- Stage 3: Production Runner ---
 FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 LABEL org.opencontainers.image.title="9router"
+LABEL org.opencontainers.image.description="9Router with Golang Hybrid Concurrency Engine"
 
 ENV NODE_ENV=production
-ENV PORT=20128
-ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATA_DIR=/app/data
+ENV APP_NAME=SantaiNetwork
+ENV BACKEND_PORT=20127
+ENV GATEWAY_PORT=20128
+ENV LIMITER_PORT=20129
+ENV PUBLIC_PORT=20140
+ENV ENABLE_GO_HYBRID=true
+ENV GO_ENGINE_URL=http://127.0.0.1:20129
+ENV NODE_OPTIONS=--max-old-space-size=512
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/custom-server.js ./custom-server.js
-COPY --from=builder /app/open-sse ./open-sse
-# Next file tracing can omit sibling files; MITM runs server.js as a separate process.
-COPY --from=builder /app/src/mitm ./src/mitm
-# Standalone node_modules may omit deps only required by the MITM child process.
-COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
-# Ensure `next` is available at runtime in case tracing did not include it.
-COPY --from=builder /app/node_modules/next ./node_modules/next
-# sql.js loads dist/sql-wasm.wasm by path at runtime; tracing only follows JS imports,
-# so the last-resort DB driver would abort with ENOENT on the missing binary.
-COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
-# node-machine-id is createRequire-loaded at runtime; tracing omits it.
-COPY --from=builder /app/node_modules/node-machine-id ./node_modules/node-machine-id
+# Copy compiled Golang engine
+COPY --from=engine-builder /bin/router-engine /app/router-engine
 
-RUN mkdir -p /app/data && chown -R node:node /app && \
-  mkdir -p /app/data-home && chown node:node /app/data-home && \
-  ln -sf /app/data-home /root/.9router 2>/dev/null || true
+# Copy Next.js standalone artifacts
+COPY --from=node-builder /app/public ./public
+COPY --from=node-builder /app/.next/static ./.next/static
+COPY --from=node-builder /app/.next/standalone ./
+COPY --from=node-builder /app/custom-server.js ./custom-server.js
+COPY --from=node-builder /app/open-sse ./open-sse
+COPY --from=node-builder /app/deploy ./deploy
+COPY --from=node-builder /app/src/mitm ./src/mitm
 
-# Fix permissions at runtime (handles mounted volumes)
-RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
-  printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
-  chmod +x /entrypoint.sh
+# Standalone dependency fallbacks
+COPY --from=node-builder /app/node_modules/node-forge ./node_modules/node-forge
+COPY --from=node-builder /app/node_modules/next ./node_modules/next
+COPY --from=node-builder /app/node_modules/sql.js ./node_modules/sql.js
+COPY --from=node-builder /app/node_modules/node-machine-id ./node_modules/node-machine-id
 
-EXPOSE 20128
+# Runtime requirements and directory setup
+RUN apk --no-cache add su-exec ca-certificates tzdata && \
+    mkdir -p /app/data /app/data-home && \
+    chown -R node:node /app && \
+    ln -sf /app/data-home /root/.9router 2>/dev/null || true
+
+COPY deploy/docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /app/router-engine
+
+# 20128: Master Gateway (API, Dashboard)
+# 20140: Public Proxy (Usage-Check, Docs)
+# 20129: Limiter RPC (Health, Semaphores)
+EXPOSE 20128 20140 20129
+
+VOLUME ["/app/data"]
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["node", "custom-server.js"]
+CMD ["run"]

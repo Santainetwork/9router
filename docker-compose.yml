@@ -1,30 +1,62 @@
 services:
   9router:
-    image: decolua/9router:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: santainetwork/9router:latest
     container_name: 9router
-    restart: always
+    restart: unless-stopped
     ports:
-      - "20128:20128"
+      - "${GATEWAY_PORT:-20128}:20128"
+      - "${PUBLIC_PORT:-20140}:20140"
     volumes:
       - 9router-data:/app/data
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      DATA_DIR: /app/data
-      PORT: "20128"
-      HOSTNAME: "0.0.0.0"
-      NODE_ENV: production
-      HEADROOM_URL: http://headroom:8787
-    depends_on:
-      - headroom
+      - APP_NAME=${APP_NAME:-SantaiNetwork}
+      - DATA_DIR=/app/data
+      - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=512
+      - ENABLE_GO_HYBRID=true
+      - GATEWAY_PORT=20128
+      - PUBLIC_PORT=20140
+      - LIMITER_PORT=20129
+      - BACKEND_PORT=20127
+      - JWT_SECRET=${JWT_SECRET:-}
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD:-}
+      - MACHINE_ID_SALT=${MACHINE_ID_SALT:-}
+      - API_KEY_SECRET=${API_KEY_SECRET:-}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - HEADROOM_URL=${HEADROOM_URL:-}
 
+  # Optional PostgreSQL database (enable via: docker compose --profile postgres up -d)
+  postgres:
+    image: postgres:16-alpine
+    container_name: 9router-postgres
+    restart: unless-stopped
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: 9router
+      POSTGRES_USER: 9router
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-santainetwork_secret}
+    volumes:
+      - 9router-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  # Optional Headroom prompt compression sidecar (enable via: docker compose --profile headroom up -d)
   headroom:
     image: ghcr.io/chopratejas/headroom:latest
-    container_name: headroom
-    restart: always
+    container_name: 9router-headroom
+    restart: unless-stopped
+    profiles: ["headroom"]
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
 
 volumes:
   9router-data:
     name: 9router-data
+  9router-postgres-data:
+    name: 9router-postgres-data
