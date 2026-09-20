@@ -30,6 +30,14 @@ test("install-docker.sh enforces strict mode and avoids eval", () => {
   assert.ok(!/\beval\b/.test(SCRIPT_SRC), "must not eval untrusted input");
 });
 
+test("install-docker.sh does not pass a blank command to Docker Compose without profiles", () => {
+  assert.doesNotMatch(
+    SCRIPT_SRC,
+    /COMPOSE_PROFILE_ARGS\[@\]:-/,
+    "empty array expansion must not create a blank Compose argument",
+  );
+});
+
 test("install-docker.sh --help displays usage and critical options", () => {
   const r = spawnSync("bash", [DOCKER_INSTALL_SH, "--help"], {
     encoding: "utf8",

@@ -371,7 +371,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   info "[dry-run] Would run: cd $INSTALL_DIR && $COMPOSE_CMD ${COMPOSE_PROFILE_ARGS[*]:-} up -d --build"
 else
   info "Running $COMPOSE_CMD build and startup..."
-  (cd "$INSTALL_DIR" && $COMPOSE_CMD "${COMPOSE_PROFILE_ARGS[@]:-}" up -d --build)
+  (cd "$INSTALL_DIR" && $COMPOSE_CMD "${COMPOSE_PROFILE_ARGS[@]}" up -d --build)
   ok "Docker container started."
 fi
 
