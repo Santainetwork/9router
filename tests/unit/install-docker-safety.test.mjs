@@ -25,6 +25,12 @@ test("install-docker.sh is valid bash syntax", () => {
   execFileSync("sh", ["-n", ENTRYPOINT_SH], { stdio: "pipe" });
 });
 
+test("root installer delegates from the repository root", () => {
+  const rootWrapper = readFileSync(ROOT_WRAPPER_SH, "utf8");
+  assert.match(rootWrapper, /scripts\/install-docker\.sh/);
+  assert.match(rootWrapper, /exec\s+bash/);
+});
+
 test("install-docker.sh enforces strict mode and avoids eval", () => {
   assert.match(SCRIPT_SRC, /^set -euo pipefail$/m, "must run under set -euo pipefail");
   assert.ok(!/\beval\b/.test(SCRIPT_SRC), "must not eval untrusted input");
@@ -76,6 +82,7 @@ test("Dockerfile defines multi-stage Go hybrid engine and Next.js standalone", (
   assert.match(dockerfileContent, /router-engine/, "must copy router-engine");
   assert.match(dockerfileContent, /EXPOSE 20128 20140 20129/, "must expose gateway, proxy, and limiter ports");
   assert.match(dockerfileContent, /ENTRYPOINT \["\/entrypoint.sh"\]/);
+  assert.match(dockerfileContent, /sed -i .*\\r.*\/entrypoint\.sh/, "must normalize entrypoint line endings");
 });
 
 test("docker-compose.yml configures gateway and public proxy ports and persistent volume", () => {

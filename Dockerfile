@@ -66,7 +66,7 @@ RUN apk --no-cache add su-exec ca-certificates tzdata && \
     ln -sf /app/data-home /root/.9router 2>/dev/null || true
 
 COPY deploy/docker-entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh /app/router-engine
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh /app/router-engine
 
 # 20128: Master Gateway (API, Dashboard)
 # 20140: Public Proxy (Usage-Check, Docs)
