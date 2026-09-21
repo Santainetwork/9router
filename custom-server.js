@@ -28,6 +28,7 @@ const workerConfig = validateWorkerConfig();
 if (workerConfig.role === "api") {
   process.env.NINEROUTER_WORKER_ROLE = "api";
   process.env.DISABLE_BACKGROUND_TOKEN_REFRESH = "true";
+  global.__appBootstrapped = true;
 }
 
 const origCreate = http.createServer.bind(http);

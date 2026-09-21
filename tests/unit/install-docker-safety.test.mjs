@@ -196,6 +196,7 @@ test("custom-server marks API workers and skips background token refresh", () =>
     process.stdout.write(JSON.stringify({
       role: process.env.NINEROUTER_WORKER_ROLE,
       refreshDisabled: process.env.DISABLE_BACKGROUND_TOKEN_REFRESH,
+      controlPlaneBootstrapped: global.__appBootstrapped,
     }));
   `, CUSTOM_SERVER_JS], {
     encoding: "utf8",
@@ -203,7 +204,11 @@ test("custom-server marks API workers and skips background token refresh", () =>
     stdio: ["ignore", "pipe", "pipe"],
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout), { role: "api", refreshDisabled: "true" });
+  assert.deepEqual(JSON.parse(result.stdout), {
+    role: "api",
+    refreshDisabled: "true",
+    controlPlaneBootstrapped: true,
+  });
 });
 
 test("custom-server accepts only decimal positive-integer API_WORKERS values", () => {
