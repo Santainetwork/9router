@@ -204,7 +204,10 @@ export function wrapOpenAIStreamWithFooter(readable, template, baseCtx = {}) {
       emitFooter(controller);
     },
     cancel(reason) {
-      try { readable.cancel(reason); } catch {}
+      // pipeThrough holds a reader on `readable`; cancel() rejects asynchronously
+      // (ERR_INVALID_STATE "ReadableStream is locked"), so the catch must wrap
+      // the promise, not the call, or client aborts raise unhandledRejection.
+      Promise.resolve(readable.cancel(reason)).catch(() => {});
     },
   });
 
@@ -255,7 +258,7 @@ export function rewriteStreamModel(readable, requestedModel) {
       if (buffer) controller.enqueue(encoder.encode(rewriteLine(buffer)));
     },
     cancel(reason) {
-      try { readable.cancel(reason); } catch {}
+      Promise.resolve(readable.cancel(reason)).catch(() => {});
     },
   });
 
