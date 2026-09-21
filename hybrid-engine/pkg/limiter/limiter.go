@@ -387,6 +387,22 @@ func (e *Engine) GetBucketDetail(scope, key string) BucketDetail {
 	}
 }
 
+// UnknownReleases returns the number of Release calls that did not match an
+// owned lease. Used by tests to assert lease ownership.
+func (e *Engine) UnknownReleases(scope, key string) uint64 {
+	id := scope + ":" + key
+	e.mu.RLock()
+	b, ok := e.buckets[id]
+	e.mu.RUnlock()
+	if !ok {
+		return 0
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.unknownReleases
+}
+
 // BucketCount returns the number of tracked buckets (for metrics/tests).
 func (e *Engine) BucketCount() int {
 	e.mu.RLock()

@@ -523,6 +523,98 @@ func TestClientAbortReleasesAfterReverseProxyReturns(t *testing.T) {
 	}
 }
 
+func TestProxyReleasesOwnedLeaseOnly(t *testing.T) {
+	eng := limiter.NewEngine()
+	defer eng.Stop()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	proxySrv, err := NewServer(Config{
+		UpstreamURL:    upstream.URL,
+		Limiter:        eng,
+		KeyConcurrency: 1,
+		Scope:          "apikey",
+	})
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	const testKey = "owned-release-key"
+
+	// RPM-only request: no concurrency grant, so no lease is owned and no
+	// release must occur (otherwise it would be counted as an unknown release).
+	rpmOnly := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rpmOnly.Header.Set("Authorization", "Bearer "+testKey)
+	rpmOnlyRR := httptest.NewRecorder()
+	proxySrv.cfg.KeyConcurrency = 0
+	proxySrv.cfg.KeyRPM = 5
+	proxySrv.ServeHTTP(rpmOnlyRR, rpmOnly)
+	if rpmOnlyRR.Code != http.StatusOK {
+		t.Fatalf("rpm-only request should forward, got %d", rpmOnlyRR.Code)
+	}
+	if unknown := eng.UnknownReleases("apikey", testKey); unknown != 0 {
+		t.Fatalf("rpm-only request caused an unknown release, count=%d", unknown)
+	}
+
+	// Concurrency request: owns a lease and must release it exactly.
+	proxySrv.cfg.KeyConcurrency = 1
+	proxySrv.cfg.KeyRPM = 0
+	concReq := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	concReq.Header.Set("Authorization", "Bearer "+testKey)
+	concRR := httptest.NewRecorder()
+	proxySrv.ServeHTTP(concRR, concReq)
+	if concRR.Code != http.StatusOK {
+		t.Fatalf("concurrency request should forward, got %d", concRR.Code)
+	}
+	if active := eng.GetBucketDetail("apikey", testKey).ActiveConcurrency; active != 0 {
+		t.Fatalf("concurrency lease leaked after request, active=%d", active)
+	}
+	if unknown := eng.UnknownReleases("apikey", testKey); unknown != 0 {
+		t.Fatalf("owned release must not count as unknown, count=%d", unknown)
+	}
+}
+
+func TestProxyRateLimitedRequestReleasesNoLease(t *testing.T) {
+	eng := limiter.NewEngine()
+	defer eng.Stop()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	proxySrv, err := NewServer(Config{
+		UpstreamURL:    upstream.URL,
+		Limiter:        eng,
+		KeyConcurrency: 1,
+		QueueTimeout:   10 * time.Millisecond,
+		Scope:          "apikey",
+	})
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	const testKey = "rejected-no-release-key"
+	if err := eng.Acquire(context.Background(), "apikey", testKey, 0, 1, 0); err != nil {
+		t.Fatalf("failed to pre-acquire slot: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+testKey)
+	rr := httptest.NewRecorder()
+	proxySrv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", rr.Code)
+	}
+	if unknown := eng.UnknownReleases("apikey", testKey); unknown != 0 {
+		t.Fatalf("rejected request must not release a lease, unknown count=%d", unknown)
+	}
+}
+
 func TestRateLimitExceededReturns429(t *testing.T) {
 	eng := limiter.NewEngine()
 	defer eng.Stop()

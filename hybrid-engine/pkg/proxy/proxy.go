@@ -231,7 +231,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					timeout = 60 * time.Second
 				}
 
-				err := s.cfg.Limiter.Acquire(r.Context(), s.cfg.Scope, apiKey, rpm, concurrency, timeout)
+				leaseID, err := s.cfg.Limiter.AcquireLease(r.Context(), s.cfg.Scope, apiKey, rpm, concurrency, timeout)
 				if err != nil {
 					if errors.Is(err, context.Canceled) {
 						return
@@ -249,7 +249,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				defer s.cfg.Limiter.Release(s.cfg.Scope, apiKey)
+				// RPM-only grants own no concurrency slot (leaseID == ""), so
+				// they must not call Release. Concurrency grants release their
+				// exact lease to avoid stealing a slot re-acquired after
+				// watchdog expiry.
+				if leaseID != "" {
+					defer s.cfg.Limiter.Release(s.cfg.Scope, apiKey, leaseID)
+				}
 			}
 		}
 	}
