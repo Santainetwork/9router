@@ -4,11 +4,22 @@ import { ensureDirs, DATA_FILE } from "./paths.js";
 if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false };
 const state = global._dbAdapter;
 
-export function getDatabaseType() {
-  if (process.env.DATABASE_URL || process.env.DB_TYPE === "postgres") {
+export function getDatabaseType(env = process.env) {
+  // DB_TYPE is case-insensitive (custom-server validates it lowercased). Any
+  // non-empty DATABASE_URL stays postgres for backward compatibility.
+  if (env.DATABASE_URL || String(env.DB_TYPE || "").toLowerCase() === "postgres") {
     return "postgres";
   }
   return "sqlite";
+}
+
+// API workers must never own schema: migrations run only on the control process.
+// WORKER_ROLE is set by the entrypoint; custom-server mirrors the api role into
+// NINEROUTER_WORKER_ROLE. Assumes control starts first (entrypoint order) so
+// tables already exist by the time an API worker serves traffic.
+export function isApiWorker(env = process.env) {
+  const role = env.WORKER_ROLE || env.NINEROUTER_WORKER_ROLE || "control";
+  return String(role).toLowerCase() === "api";
 }
 
 async function tryBunSqlite() {
@@ -63,10 +74,12 @@ async function trySqlJs() {
   }
 }
 
-async function initAdapter() {
+export async function initAdapter(deps = {}) {
   const dbType = getDatabaseType();
+  const loadMigration = deps.loadMigration || (() => import("./migrate.js"));
   if (dbType === "postgres") {
-    const { createPostgresAdapter } = await import("./adapters/postgresAdapter.js");
+    const createPostgresAdapter = deps.createPostgresAdapter
+      || (await import("./adapters/postgresAdapter.js")).createPostgresAdapter;
     const adapter = await createPostgresAdapter(process.env.DATABASE_URL);
     if (!state.logged) {
       const target = process.env.DATABASE_URL
@@ -75,8 +88,10 @@ async function initAdapter() {
       console.log(`[DB] Driver: ${adapter.driver} | target: ${target}`);
       state.logged = true;
     }
-    const { runMigrationOnce } = await import("./migrate.js");
-    await runMigrationOnce(adapter);
+    if (!isApiWorker()) {
+      const { runMigrationOnce } = await loadMigration();
+      await runMigrationOnce(adapter);
+    }
     return adapter;
   }
 
@@ -95,8 +110,10 @@ async function initAdapter() {
     state.logged = true;
   }
 
-  const { runMigrationOnce } = await import("./migrate.js");
-  await runMigrationOnce(adapter);
+  if (!isApiWorker()) {
+    const { runMigrationOnce } = await loadMigration();
+    await runMigrationOnce(adapter);
+  }
   return adapter;
 }
 
