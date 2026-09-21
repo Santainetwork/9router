@@ -201,7 +201,7 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
 
   // Check hybrid Go engine
   if (HYBRID_ENABLED) {
-    return goAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued }).then((rel) => {
+    return goAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, signal }).then((rel) => {
       if (rel) return rel;
       // Fallback to JS implementation below
       return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
@@ -211,6 +211,11 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
       }
       if (err.status === 429) {
         throw new RateLimitTimeoutError(err.retryAfter || 1, err.message);
+      }
+      if (err.noFallback) {
+        // Protocol mismatch (e.g. concurrency grant without leaseId): falling
+        // back to JS would leak an unowned Go slot. Surface the error instead.
+        throw err;
       }
       // Network/IPC error: fallback to JS
       return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
