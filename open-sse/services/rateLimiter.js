@@ -206,8 +206,11 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
       // Fallback to JS implementation below
       return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
     }).catch((err) => {
-      if (err instanceof RateLimitTimeoutError || err.status === 429) {
+      if (err instanceof RateLimitTimeoutError) {
         throw err;
+      }
+      if (err.status === 429) {
+        throw new RateLimitTimeoutError(err.retryAfter || 1, err.message);
       }
       // Network/IPC error: fallback to JS
       return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
