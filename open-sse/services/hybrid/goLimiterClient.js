@@ -2,9 +2,31 @@
 // Offloads in-flight concurrency tracking and queue management to high-speed compiled Go daemon.
 // Fails over automatically to in-memory JS limiter if daemon is unreachable.
 
-import { getEngineConfig } from "../../../src/shared/utils/engineConfig.js";
+import { getEngineConfig, isApiWorkerRole } from "../../../src/shared/utils/engineConfig.js";
 
-const { limiterUrl: GO_ENGINE_URL, enabled: HYBRID_ENABLED } = getEngineConfig();
+// Read config lazily so tests and long-lived processes observe env changes and
+// so nothing is frozen at import time.
+function limiterUrl() {
+  return getEngineConfig().limiterUrl;
+}
+
+function hybridEnabled() {
+  return getEngineConfig().enabled;
+}
+
+// API workers share one Go limiter across replicas. A per-process JS fallback
+// would let each replica independently exceed the global concurrency/RPM
+// budget, so API workers must hard-fail instead of degrading.
+export function goLimiterUnavailableError(reason) {
+  const err = new Error(
+    `Go hybrid limiter unavailable (${reason}) and JS fallback is disabled for API workers ` +
+    `(WORKER_ROLE=api). Start 9router-hybrid-engine and set ENABLE_GO_HYBRID=true.`,
+  );
+  err.name = "GoLimiterUnavailableError";
+  err.status = 503;
+  err.noFallback = true;
+  return err;
+}
 
 let isEngineAvailable = null;
 let lastCheckTime = 0;
@@ -15,7 +37,7 @@ async function checkEngineHealth({ force = false } = {}) {
   }
   lastCheckTime = Date.now();
   try {
-    const res = await fetch(`${GO_ENGINE_URL}/health`, {
+    const res = await fetch(`${limiterUrl()}/health`, {
       signal: AbortSignal.timeout(800),
     });
     isEngineAvailable = res.ok;
@@ -26,13 +48,17 @@ async function checkEngineHealth({ force = false } = {}) {
 }
 
 export async function isGoLimiterActive({ force = false } = {}) {
-  if (!HYBRID_ENABLED) return false;
+  if (!hybridEnabled()) return false;
   return await checkEngineHealth({ force });
 }
 
 export async function goAcquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, onQueued, signal } = {}) {
   const active = await isGoLimiterActive();
-  if (!active) return null; // Fallback to JS limiter
+  if (!active) {
+    // Control node: fall back to the in-process JS limiter.
+    if (!isApiWorkerRole()) return null;
+    throw goLimiterUnavailableError("engine disabled or unhealthy");
+  }
 
   if (timeoutMs > 0 && typeof onQueued === "function") {
     // Notify queue listener if timeout allowed
@@ -44,7 +70,7 @@ export async function goAcquire(scope, key, { rpm = 0, concurrency = 0, timeoutM
   const timeoutSignal = AbortSignal.timeout(timeoutMs > 0 ? timeoutMs + 2000 : 3000);
   const fetchSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
-  const res = await fetch(`${GO_ENGINE_URL}/v1/limiter/acquire`, {
+  const res = await fetch(`${limiterUrl()}/v1/limiter/acquire`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope, key, rpm, concurrency, timeoutMs }),
@@ -92,7 +118,7 @@ export async function goRelease(scope, key, leaseId) {
   // drop does not permanently strand an owned concurrency slot.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      await fetch(`${GO_ENGINE_URL}/v1/limiter/release`, {
+      await fetch(`${limiterUrl()}/v1/limiter/release`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -107,7 +133,7 @@ export async function goRelease(scope, key, leaseId) {
 
 export async function goReset(scope, key) {
   try {
-    const res = await fetch(`${GO_ENGINE_URL}/v1/limiter/reset`, {
+    const res = await fetch(`${limiterUrl()}/v1/limiter/reset`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scope, key, all: !scope && !key }),
@@ -122,7 +148,7 @@ export async function goReset(scope, key) {
 
 export async function goSnapshot() {
   try {
-    const res = await fetch(`${GO_ENGINE_URL}/v1/limiter/snapshot`, {
+    const res = await fetch(`${limiterUrl()}/v1/limiter/snapshot`, {
       cache: "no-store",
       signal: AbortSignal.timeout(1000),
     });
@@ -135,7 +161,7 @@ export async function goSnapshot() {
 
 export async function goBucketDetail(scope, key) {
   try {
-    const url = `${GO_ENGINE_URL}/v1/limiter/bucket-detail?scope=${encodeURIComponent(scope)}&key=${encodeURIComponent(key)}`;
+    const url = `${limiterUrl()}/v1/limiter/bucket-detail?scope=${encodeURIComponent(scope)}&key=${encodeURIComponent(key)}`;
     const res = await fetch(url, {
       cache: "no-store",
       signal: AbortSignal.timeout(1000),

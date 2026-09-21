@@ -10,6 +10,14 @@ function envFlag(value) {
   return String(value ?? "").toLowerCase() === "true";
 }
 
+// True when this process is a horizontally-scaled API worker. Such workers
+// must not fall back to a per-process JS limiter: concurrency accounting would
+// diverge across replicas. Mirrors src/lib/db/driver.js#isApiWorker.
+export function isApiWorkerRole(env = process.env) {
+  const role = env.WORKER_ROLE || env.NINEROUTER_WORKER_ROLE || "control";
+  return String(role).toLowerCase() === "api";
+}
+
 export function getEngineConfig(env = process.env) {
   const limiterPort = envInt(env.GO_ENGINE_PORT, 20129);
   const gatewayPort = envInt(env.GO_GATEWAY_PORT, 20128);

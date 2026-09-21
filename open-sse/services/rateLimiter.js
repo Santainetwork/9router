@@ -20,10 +20,13 @@ export class RateLimitTimeoutError extends Error {
   }
 }
 
-import { goAcquire, goRelease, isGoLimiterActive } from "./hybrid/goLimiterClient.js";
-import { getEngineConfig } from "../../src/shared/utils/engineConfig.js";
+import { goAcquire, goRelease, isGoLimiterActive, goLimiterUnavailableError } from "./hybrid/goLimiterClient.js";
+import { getEngineConfig, isApiWorkerRole } from "../../src/shared/utils/engineConfig.js";
 
-const HYBRID_ENABLED = getEngineConfig().enabled;
+// Read config lazily so env changes and tests are observed at call time.
+function hybridEnabled() {
+  return getEngineConfig().enabled;
+}
 
 // scope -> Map<key, bucket>
 const scopes = new Map();
@@ -218,11 +221,20 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
     return Promise.resolve(() => {});
   }
 
+  const apiWorker = isApiWorkerRole();
+
+  // API workers have no safe JS fallback: per-replica concurrency accounting
+  // would defeat the shared global limit. Fail loud (503) instead of degrading.
+  if (apiWorker && !hybridEnabled()) {
+    return Promise.reject(goLimiterUnavailableError("hybrid engine disabled"));
+  }
+
   // Check hybrid Go engine
-  if (HYBRID_ENABLED) {
+  if (hybridEnabled()) {
     return goAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, signal }).then((rel) => {
       if (rel) return rel;
-      // Fallback to JS implementation below
+      // Control node: fall back to the JS implementation below.
+      if (apiWorker) throw goLimiterUnavailableError("engine returned no grant");
       return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
     }).catch((err) => {
       if (err instanceof RateLimitTimeoutError) {
@@ -236,7 +248,11 @@ export function acquire(scope, key, { rpm = 0, concurrency = 0, timeoutMs = 0, o
         // back to JS would leak an unowned Go slot. Surface the error instead.
         throw err;
       }
-      // Network/IPC error: fallback to JS
+      // Network/IPC error: API workers must not silently serve unthrottled.
+      if (apiWorker) {
+        throw goLimiterUnavailableError(`network failure: ${err.message}`);
+      }
+      // Control node: fallback to JS
       return jsAcquire(scope, key, { rpm, concurrency, timeoutMs: effectiveTimeoutMs, onQueued, hasRpm, hasConcurrency, signal });
     });
   }
