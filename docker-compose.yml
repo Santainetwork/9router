@@ -29,6 +29,8 @@ services:
       - MACHINE_ID_SALT=${MACHINE_ID_SALT:-}
       - API_KEY_SECRET=${API_KEY_SECRET:-}
       - DATABASE_URL=${DATABASE_URL:-}
+      - WORKER_ROLE=${WORKER_ROLE:-control}
+      - API_WORKERS=${API_WORKERS:-1}
       - HEADROOM_URL=${HEADROOM_URL:-}
 
   # Optional PostgreSQL database (enable via: docker compose --profile postgres up -d)

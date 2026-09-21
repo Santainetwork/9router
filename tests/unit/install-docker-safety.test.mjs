@@ -270,3 +270,144 @@ test("entrypoint exits when an API worker dies", () => {
   assert.match(log, /start role=api port=20131/);
   assert.match(log, /term role=control port=20128/);
 });
+
+// ---------------------------------------------------------------------------
+// Task 6: deployment wiring for WORKER_ROLE / API_WORKERS
+// ---------------------------------------------------------------------------
+
+const DOCKER_MD = path.join(REPO_ROOT, "DOCKER.md");
+const COMPOSE_SRC = readFileSync(COMPOSE_YML, "utf8");
+const DOCKER_MD_SRC = readFileSync(DOCKER_MD, "utf8");
+
+function extractServiceBlock(content, name) {
+  const re = new RegExp(`^ {2}${name}:\\s*$`, "m");
+  const start = content.search(re);
+  if (start < 0) return "";
+  const rest = content.slice(start);
+  const next = rest.slice(1).search(/\n {2}[A-Za-z0-9_-]+:\s*(\n|$)/);
+  return next < 0 ? rest : rest.slice(0, next + 1);
+}
+
+function publishedPorts(serviceBlock) {
+  const portsMatch = serviceBlock.match(/\n {4}ports:\n([\s\S]*?)(?=\n {4}[A-Za-z0-9_-]+:|\s*$)/);
+  if (!portsMatch) return [];
+  return [...portsMatch[1].matchAll(/-\s*["']?([^"'\n]+)["']?/g)].map((m) => m[1].trim());
+}
+
+function installWithStubs(installDir, extraEnv = {}) {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-stubs-"));
+  const docker = path.join(tempDir, "docker");
+  writeFileSync(docker, `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Docker version 24.0.0, build test"; exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then echo "Docker Compose version v2.0.0"; exit 0; fi
+if [ "$1" = "info" ]; then exit 0; fi
+exit 0
+`);
+  chmodSync(docker, 0o755);
+  const curl = path.join(tempDir, "curl");
+  writeFileSync(curl, `#!/bin/sh
+for a in "$@"; do case "$a" in -w) ;; *\\%\\{http_code\\}*) echo 200; exit 0 ;; esac; done
+echo 200
+`);
+  chmodSync(curl, 0o755);
+  const result = spawnSync("bash", [DOCKER_INSTALL_SH, "--yes", "--dir", installDir], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${tempDir}:${process.env.PATH}`,
+      NO_COLOR: "1",
+      INSTALL_DIR: installDir,
+      ...extraEnv,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 30_000,
+  });
+  rmSync(tempDir, { recursive: true, force: true });
+  return result;
+}
+
+test("docker-compose.yml propagates WORKER_ROLE and API_WORKERS with single-process defaults", () => {
+  const appBlock = extractServiceBlock(COMPOSE_SRC, "9router");
+  assert.match(appBlock, /WORKER_ROLE=\$\{WORKER_ROLE:-control\}/);
+  assert.match(appBlock, /API_WORKERS=\$\{API_WORKERS:-1\}/);
+  assert.match(appBlock, /DATABASE_URL=\$\{DATABASE_URL:-\}/, "SQLite stays the default database");
+});
+
+test("docker-compose.yml publishes only gateway and public proxy ports", () => {
+  const appBlock = extractServiceBlock(COMPOSE_SRC, "9router");
+  const ports = publishedPorts(appBlock);
+  assert.equal(ports.length, 2, `expected exactly two published ports, got ${JSON.stringify(ports)}`);
+  assert.deepEqual(ports.sort(), ["${GATEWAY_PORT:-20128}:20128", "${PUBLIC_PORT:-20140}:20140"].sort());
+  for (const internal of ["20127", "20129", "20131", "20132"]) {
+    assert.ok(
+      !ports.some((p) => p.includes(internal)),
+      `internal port ${internal} must not be published`,
+    );
+  }
+  assert.ok(!/\/ready/.test(appBlock), "internal /ready must not be exposed in compose");
+});
+
+test("docker-compose.yml stays valid Compose when Docker is available", () => {
+  const probe = spawnSync("docker", ["compose", "version"], { encoding: "utf8" });
+  if (probe.status !== 0) {
+    console.error("[install-docker-safety] docker unavailable; compose validation skipped");
+    return;
+  }
+  const r = spawnSync("docker", ["compose", "config", "--quiet"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+});
+
+test("installer emits WORKER_ROLE/API_WORKERS defaults into generated .env", () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-env-"));
+  try {
+    const result = installWithStubs(tempDir);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const env = readFileSync(path.join(tempDir, ".env"), "utf8");
+    assert.match(env, /^WORKER_ROLE=control$/m);
+    assert.match(env, /^API_WORKERS=1$/m);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("installer preserves existing WORKER_ROLE/API_WORKERS during upgrade", () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-preserve-"));
+  try {
+    writeFileSync(
+      path.join(tempDir, ".env"),
+      "JWT_SECRET=keepme\nWORKER_ROLE=api\nAPI_WORKERS=3\nDATABASE_URL=postgres://u:p@db:5432/app\n",
+    );
+    const result = installWithStubs(tempDir);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const env = readFileSync(path.join(tempDir, ".env"), "utf8");
+    assert.match(env, /^WORKER_ROLE=api$/m, "user WORKER_ROLE must survive upgrade");
+    assert.match(env, /^API_WORKERS=3$/m, "user API_WORKERS must survive upgrade");
+    assert.match(env, /^JWT_SECRET=keepme$/m, "existing secrets must survive upgrade");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("DOCKER.md documents PostgreSQL multiworker semantics, isolation, and rollback", () => {
+  const doc = DOCKER_MD_SRC;
+  assert.match(doc, /WORKER_ROLE/);
+  assert.match(doc, /API_WORKERS/);
+  assert.match(doc, /API_WORKERS=3/, "must show the two-API-worker example");
+  assert.match(doc, /1 control process .*2 API worker|1 control \+ .*API_WORKERS.*- 1/, "must state total-process semantics");
+  assert.match(doc, /PostgreSQL/i);
+  assert.match(doc, /systemd/i, "must document the systemd environment override");
+  assert.match(doc, /rollback|API_WORKERS=1/i);
+});
+
+test("DOCKER.md documents SQLite single-process default and internal port isolation", () => {
+  const doc = DOCKER_MD_SRC;
+  assert.match(doc, /SQLite/i);
+  assert.match(doc, /20128/);
+  assert.match(doc, /20140/);
+  assert.doesNotMatch(doc, /publish(?:ed|es)?[^\n]*20127/i, "must not advertise internal backend port");
+  assert.doesNotMatch(doc, /publish(?:ed|es)?[^\n]*20129/i, "must not advertise internal limiter port");
+});

@@ -57,6 +57,8 @@ PUBLIC_PORT="${PUBLIC_PORT:-20140}"
 APP_NAME="${APP_NAME:-SantaiNetwork}"
 INITIAL_PASSWORD="${INITIAL_PASSWORD:-}"
 DATABASE_URL="${DATABASE_URL:-}"
+WORKER_ROLE="${WORKER_ROLE:-}"
+API_WORKERS="${API_WORKERS:-}"
 USE_POSTGRES=0
 
 ASSUME_YES=0
@@ -324,12 +326,17 @@ EXISTING_SALT="$(read_env_val "MACHINE_ID_SALT" "$ENV_FILE")"
 EXISTING_AKS="$(read_env_val "API_KEY_SECRET" "$ENV_FILE")"
 EXISTING_PWD="$(read_env_val "INITIAL_PASSWORD" "$ENV_FILE")"
 EXISTING_DB="$(read_env_val "DATABASE_URL" "$ENV_FILE")"
+EXISTING_WORKER_ROLE="$(read_env_val "WORKER_ROLE" "$ENV_FILE")"
+EXISTING_API_WORKERS="$(read_env_val "API_WORKERS" "$ENV_FILE")"
 
 JWT_SECRET="${EXISTING_JWT:-$(generate_token)}"
 MACHINE_ID_SALT="${EXISTING_SALT:-$(generate_token | head -c 16)}"
 API_KEY_SECRET="${EXISTING_AKS:-$(generate_token)}"
 [ -z "$INITIAL_PASSWORD" ] && INITIAL_PASSWORD="${EXISTING_PWD:-$(generate_token | head -c 14)}"
 [ -z "$DATABASE_URL" ] && DATABASE_URL="${EXISTING_DB:-}"
+# Preserve an existing operator value on upgrade; otherwise fall back to single-process defaults.
+WORKER_ROLE="${WORKER_ROLE:-${EXISTING_WORKER_ROLE:-control}}"
+API_WORKERS="${API_WORKERS:-${EXISTING_API_WORKERS:-1}}"
 
 step "Generating environment configuration (.env)"
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -351,6 +358,11 @@ INITIAL_PASSWORD=${INITIAL_PASSWORD}
 DATA_DIR=/app/data
 ENABLE_GO_HYBRID=true
 NODE_OPTIONS=--max-old-space-size=512
+
+# Worker topology: API_WORKERS=1 keeps a single Node process (required for SQLite).
+# API_WORKERS>1 needs PostgreSQL and forks one control process plus (API_WORKERS-1) API workers.
+WORKER_ROLE=${WORKER_ROLE}
+API_WORKERS=${API_WORKERS}
 
 EOF
   if [ -n "$DATABASE_URL" ]; then

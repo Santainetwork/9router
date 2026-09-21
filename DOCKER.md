@@ -95,6 +95,56 @@ docker compose --profile headroom up -d --build
 
 ---
 
+## 🧩 Multi-Worker Mode (PostgreSQL only)
+
+### What `API_WORKERS` means
+
+`API_WORKERS` counts **total Node processes**, not API-only processes:
+
+- `API_WORKERS=1` (default): exactly **one** Node process, running `WORKER_ROLE=control`. This is the only supported mode for SQLite.
+- `API_WORKERS=N` with `N > 1` (**PostgreSQL required**): Total Node processes = 1 control + `API_WORKERS` - 1 API workers. The control process (`WORKER_ROLE=control`) keeps dashboard, auth, tunnel, MITM, MCP, quota auto-ping, and background token refresh. The API workers (`WORKER_ROLE=api`) serve request handling only. The Go gateway round-robins `/v1/`, `/v2/`, `/api/v1/`, `/api/v2/` across healthy workers; admin/dashboard routes stay on the control process.
+
+Example: `API_WORKERS=3` means **1 control + 2 API workers**.
+
+### PostgreSQL multi-worker example (one control + two API workers)
+
+Edit `.env`:
+
+```env
+DATABASE_URL=postgres://user:pass@db.example.com:5432/9router
+WORKER_ROLE=control
+API_WORKERS=3
+```
+
+Then start the stack (with the bundled PostgreSQL profile if needed):
+
+```bash
+docker compose --profile postgres up -d --build
+```
+
+This launches a single container that runs `1` control process bound to the internal backend port, `2` API workers on internal loopback ports `20131` and `20132`, and the Go gateway front door. SQLite is intentionally rejected here: `API_WORKERS>1` or `WORKER_ROLE=api` without `DATABASE_URL=postgres://...` (or `DB_TYPE=postgres`) fails closed at startup.
+
+API worker ports are **internal only**. Only the Master Gateway (`20128`) and the public proxy (`20140`) are exposed; the backend port and worker ports never leave the container.
+
+### Rollback
+
+Set `API_WORKERS=1` (and optionally `WORKER_ROLE=control`) in `.env`, then `docker compose up -d` again. The stack returns to a single Node process. This is the recommended rollback for SQLite and for any database not on PostgreSQL.
+
+### systemd deployments
+
+This repository ships no systemd unit; the installer-generated service (if used) should not be edited here. Configure multi-worker mode via the Environment override instead, for example:
+
+```ini
+[Service]
+Environment=WORKER_ROLE=control
+Environment=API_WORKERS=3
+Environment=DATABASE_URL=postgres://user:pass@host:5432/9router
+```
+
+Keep the default single-process topology (`API_WORKERS=1`) on SQLite.
+
+---
+
 ## 🛠️ Management Commands
 
 Using the installer script:
@@ -156,5 +206,7 @@ docker run --rm -v 9router-data:/data -v $(pwd):/backup alpine \
 | `MACHINE_ID_SALT` | auto-generated | Salt for deterministic CLI tokens |
 | `API_KEY_SECRET` | auto-generated | Encryption salt for API keys |
 | `DATABASE_URL` | empty (SQLite) | PostgreSQL URL (`postgres://user:pass@host:5432/db`) |
+| `WORKER_ROLE` | `control` | `control` runs dashboard/auth/tunnel/MITM/MCP and background jobs; `api` runs request handling only |
+| `API_WORKERS` | `1` | Total Node processes: `1` control + (`API_WORKERS` - 1) API workers. Must be `1` for SQLite |
 | `ENABLE_GO_HYBRID` | `true` | Enables Golang Master Gateway and concurrency semaphores |
 | `NODE_OPTIONS` | `--max-old-space-size=512` | Memory clamp preventing V8 heap runaway |
