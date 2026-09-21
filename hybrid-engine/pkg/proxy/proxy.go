@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -120,6 +121,72 @@ func isAPIWorkerRequest(r *http.Request) bool {
 		strings.HasPrefix(path, "/v1beta/")
 }
 
+// parseWorkerURL validates an internal API worker URL. Worker URLs must be
+// loopback HTTP(S) origins: no path, query, fragment, or userinfo, and an
+// explicit nonzero port. A missing scheme defaults to http.
+func parseWorkerURL(raw string) (*url.URL, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("empty API worker URL")
+	}
+
+	// Detect an explicit scheme without url.Parse so malformed inputs like
+	// "ftp://host" are rejected instead of being prefixed into "http://ftp://host".
+	if i := strings.Index(raw, "://"); i >= 0 {
+		switch scheme := raw[:i]; scheme {
+		case "http", "https":
+		default:
+			return nil, fmt.Errorf("unsupported API worker scheme %q", scheme)
+		}
+	} else {
+		raw = "http://" + raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid API worker URL %q: %w", raw, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported API worker scheme %q", u.Scheme)
+	}
+	if u.Opaque != "" || u.Host == "" {
+		return nil, fmt.Errorf("invalid API worker URL %q: missing host", raw)
+	}
+	if u.User != nil {
+		return nil, fmt.Errorf("API worker URL %q must not contain userinfo", raw)
+	}
+	port := u.Port()
+	if port == "" {
+		return nil, fmt.Errorf("API worker URL %q must specify an explicit port", raw)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n <= 0 || n > 65535 {
+		return nil, fmt.Errorf("invalid API worker port %q", port)
+	}
+	if u.Path != "" && u.Path != "/" {
+		return nil, fmt.Errorf("API worker URL %q must not contain a path", raw)
+	}
+	if u.RawQuery != "" {
+		return nil, fmt.Errorf("API worker URL %q must not contain a query", raw)
+	}
+	if u.Fragment != "" {
+		return nil, fmt.Errorf("API worker URL %q must not contain a fragment", raw)
+	}
+
+	host := u.Hostname()
+	if host != "localhost" {
+		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+			return nil, fmt.Errorf("API worker URL %q must use a loopback host", raw)
+		}
+	}
+
+	// Normalize away any retained path/query/fragment.
+	u.Path = ""
+	u.RawPath = ""
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u, nil
+}
+
 // NewServer initializes a new front-door reverse proxy server.
 func NewServer(cfg Config) (*Server, error) {
 	if cfg.UpstreamURL == "" {
@@ -143,16 +210,12 @@ func NewServer(cfg Config) (*Server, error) {
 
 	workers := make([]*apiWorker, 0, len(cfg.APIWorkerURLs))
 	for _, rawWorkerURL := range cfg.APIWorkerURLs {
-		rawWorkerURL = strings.TrimSpace(rawWorkerURL)
-		if rawWorkerURL == "" {
+		if strings.TrimSpace(rawWorkerURL) == "" {
 			continue
 		}
-		if !strings.HasPrefix(rawWorkerURL, "http://") && !strings.HasPrefix(rawWorkerURL, "https://") {
-			rawWorkerURL = "http://" + rawWorkerURL
-		}
-		workerURL, err := url.Parse(rawWorkerURL)
-		if err != nil || workerURL.Host == "" {
-			return nil, fmt.Errorf("invalid API worker URL %q", rawWorkerURL)
+		workerURL, err := parseWorkerURL(rawWorkerURL)
+		if err != nil {
+			return nil, err
 		}
 		workers = append(workers, &apiWorker{url: workerURL})
 	}
@@ -244,13 +307,24 @@ func (s *Server) nextHealthyWorker(r *http.Request) *apiWorker {
 func (s *Server) checkAPIWorkers() {
 	client := &http.Client{Timeout: 2 * time.Second}
 	for _, worker := range s.apiWorkers {
-		resp, err := client.Get(strings.TrimRight(worker.url.String(), "/") + "/api/health")
+		resp, err := client.Get(workerHealthURL(worker.url))
 		healthy := err == nil && resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
 		if resp != nil {
 			_ = resp.Body.Close()
 		}
 		worker.healthy.Store(healthy)
 	}
+}
+
+// workerHealthURL builds the health probe URL from a validated worker origin,
+// always resolving the path to /api/health.
+func workerHealthURL(u *url.URL) string {
+	health := *u
+	health.Path = "/api/health"
+	health.RawPath = ""
+	health.RawQuery = ""
+	health.Fragment = ""
+	return health.String()
 }
 
 func (s *Server) monitorAPIWorkers() {

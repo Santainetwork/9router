@@ -804,3 +804,81 @@ func TestRateLimitExceededReturns429(t *testing.T) {
 		t.Fatalf("expected error code 429, got %d", errBody.Error.Code)
 	}
 }
+
+func TestParseWorkerURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    string // normalized String(); empty when invalid
+		wantErr bool
+	}{
+		{name: "http loopback ipv4", in: "http://127.0.0.1:20131", want: "http://127.0.0.1:20131"},
+		{name: "scheme omitted ipv4", in: "127.0.0.1:20131", want: "http://127.0.0.1:20131"},
+		{name: "localhost", in: "http://localhost:20131", want: "http://localhost:20131"},
+		{name: "ipv6 loopback", in: "http://[::1]:20131", want: "http://[::1]:20131"},
+		{name: "trailing slash normalized", in: "http://127.0.0.1:20131/", want: "http://127.0.0.1:20131"},
+		{name: "https loopback", in: "https://127.0.0.1:8443", want: "https://127.0.0.1:8443"},
+
+		{name: "ftp scheme", in: "ftp://127.0.0.1:20131", wantErr: true},
+		{name: "ftp scheme prefixed bug", in: "ftp://host", wantErr: true},
+		{name: "external host name", in: "http://example.com:20131", wantErr: true},
+		{name: "external ip", in: "http://10.0.0.5:20131", wantErr: true},
+		{name: "no port", in: "http://127.0.0.1", wantErr: true},
+		{name: "port zero", in: "http://127.0.0.1:0", wantErr: true},
+		{name: "port out of range", in: "http://127.0.0.1:70000", wantErr: true},
+		{name: "path", in: "http://127.0.0.1:20131/v1", wantErr: true},
+		{name: "query", in: "http://127.0.0.1:20131?x=1", wantErr: true},
+		{name: "fragment", in: "http://127.0.0.1:20131#frag", wantErr: true},
+		{name: "userinfo", in: "http://user:pass@127.0.0.1:20131", wantErr: true},
+		{name: "malformed", in: "http://127.0.0.1:notaport", wantErr: true},
+		{name: "empty", in: "   ", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseWorkerURL(tc.in)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q, got %v", tc.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", tc.in, err)
+			}
+			if got.String() != tc.want {
+				t.Fatalf("parseWorkerURL(%q) = %q, want %q", tc.in, got.String(), tc.want)
+			}
+		})
+	}
+}
+
+func TestNewServerRejectsInvalidWorkerURL(t *testing.T) {
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "control") }))
+	defer control.Close()
+
+	for _, bad := range []string{
+		"ftp://127.0.0.1:20131",
+		"http://example.com:20131",
+		"http://127.0.0.1",
+		"http://127.0.0.1:0",
+		"http://127.0.0.1:20131/v1",
+		"http://user@127.0.0.1:20131",
+	} {
+		t.Run(bad, func(t *testing.T) {
+			if _, err := NewServer(Config{UpstreamURL: control.URL, APIWorkerURLs: []string{bad}, AllowAllPaths: true}); err == nil {
+				t.Fatalf("expected NewServer to reject %q", bad)
+			}
+		})
+	}
+}
+
+func TestWorkerHealthURLResolvesPath(t *testing.T) {
+	u, err := parseWorkerURL("http://127.0.0.1:20131")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := workerHealthURL(u); got != "http://127.0.0.1:20131/api/health" {
+		t.Fatalf("workerHealthURL = %q", got)
+	}
+}
