@@ -220,7 +220,7 @@ npm start
 ### Docker
 ```bash
 docker build -t 9router .
-docker run -d \
+docker run -d --stop-timeout 330 \
   -p 3000:3000 \
   -e JWT_SECRET="your-secret" \
   -v 9router-data:/app/data \
@@ -302,9 +302,9 @@ npm start
 ### Docker
 ```bash
 docker pull 9router:latest
-docker stop 9router
+docker stop -t 330 9router
 docker rm 9router
-docker run -d \
+docker run -d --stop-timeout 330 \
   -p 3000:3000 \
   -v 9router-data:/app/data \
   9router:latest

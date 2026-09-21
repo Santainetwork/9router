@@ -403,7 +403,7 @@ pm2 startup
 ```bash
 docker pull 9router/9router:latest
 
-docker run -d \
+docker run -d --stop-timeout 330 \
   -p 20128:20128 \
   -e JWT_SECRET="your-secure-secret" \
   -e INITIAL_PASSWORD="your-password" \

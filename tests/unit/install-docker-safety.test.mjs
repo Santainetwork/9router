@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const DOCKER_INSTALL_SH = path.join(REPO_ROOT, "scripts/install-docker.sh");
 const ROOT_WRAPPER_SH = path.join(REPO_ROOT, "install-docker.sh");
+const START_SH = path.join(REPO_ROOT, "start.sh");
 const DOCKERFILE = path.join(REPO_ROOT, "Dockerfile");
 const COMPOSE_YML = path.join(REPO_ROOT, "docker-compose.yml");
 const ENTRYPOINT_SH = path.join(REPO_ROOT, "deploy/docker-entrypoint.sh");
@@ -212,6 +213,34 @@ test("docker-compose.yml configures gateway and public proxy ports and persisten
   assert.match(composeContent, /9router-data:/);
   assert.match(composeContent, /ENABLE_GO_HYBRID=true/);
   assert.match(composeContent, /profiles:\s*\["postgres"\]/);
+  const appBlock = extractServiceBlock(composeContent, "9router");
+  const drainMs = Number(readFileSync(CUSTOM_SERVER_JS, "utf8").match(/NINEROUTER_DRAIN_TIMEOUT_MS \|\| (\d+)/)?.[1]);
+  const graceSeconds = Number(appBlock.match(/stop_grace_period:\s*(\d+)s/)?.[1]);
+  assert.ok(graceSeconds * 1000 > drainMs, "Docker grace must exceed the application drain timeout");
+});
+
+test("direct Docker launcher preserves the application drain window", () => {
+  const source = readFileSync(START_SH, "utf8");
+  const drainMs = Number(readFileSync(CUSTOM_SERVER_JS, "utf8").match(/NINEROUTER_DRAIN_TIMEOUT_MS \|\| (\d+)/)?.[1]);
+  const stopSeconds = Number(source.match(/docker stop -t (\d+) 9router/)?.[1]);
+  const runSeconds = Number(source.match(/docker run[^\n]*--stop-timeout (\d+)/)?.[1]);
+  assert.ok(stopSeconds * 1000 > drainMs);
+  assert.ok(runSeconds * 1000 > drainMs);
+});
+
+test("documented direct Docker stop commands preserve the drain window", () => {
+  const files = execFileSync("git", ["ls-files", "*.md"], { cwd: REPO_ROOT, encoding: "utf8" }).trim().split("\n");
+  let directRuns = 0;
+  for (const file of files) {
+    const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
+    assert.doesNotMatch(source, /docker stop 9router\b/, `${file} must preserve the 330s drain timeout`);
+    for (const block of source.split("```").filter((_, index) => index % 2 === 1)) {
+      if (!/docker run -d\b/.test(block)) continue;
+      directRuns++;
+      assert.match(block, /--stop-timeout 330/, `${file} must configure the 330s stop timeout`);
+    }
+  }
+  assert.ok(directRuns > 0, "expected documented direct Docker run commands");
 });
 
 test("entrypoint validates API worker roles and preserves singleton defaults", () => {

@@ -1164,7 +1164,7 @@ Imágenes publicadas (multi-plataforma `linux/amd64` + `linux/arm64`):
 **Inicio rápido (usa la imagen publicada):**
 
 ```bash
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 20128:20128 \
   -v "$HOME/.9router:/app/data" \
@@ -1180,7 +1180,7 @@ docker run -d \
 git clone https://github.com/decolua/9router.git
 cd 9router/app
 docker build -t 9router .
-docker run -d --name 9router -p 20128:20128 \
+docker run -d --stop-timeout 330 --name 9router -p 20128:20128 \
   -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data 9router
 ```
 
@@ -1194,7 +1194,7 @@ docker run -d --name 9router -p 20128:20128 \
 ```bash
 docker logs -f 9router
 docker restart 9router
-docker stop 9router && docker rm 9router
+docker stop -t 330 9router && docker rm 9router
 docker pull decolua/9router:latest   # actualiza a la última versión
 ```
 

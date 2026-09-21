@@ -1056,7 +1056,7 @@ pm2 startup
 docker build -t 9router .
 
 # 运行容器（当前设置使用的命令）
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 20128:20128 \
   --env-file /root/dev/9router/.env \
@@ -1068,7 +1068,7 @@ docker run -d \
 便携命令（如果你已经在仓库根目录）：
 
 ```bash
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 20128:20128 \
   --env-file ./.env \
@@ -1086,7 +1086,7 @@ docker run -d \
 ```bash
 docker logs -f 9router
 docker restart 9router
-docker stop 9router && docker rm 9router
+docker stop -t 330 9router && docker rm 9router
 ```
 
 ### 环境变量

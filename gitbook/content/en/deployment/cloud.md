@@ -150,7 +150,7 @@ CMD ["npm", "run", "start"]
 docker build -t 9router .
 
 # Run container
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 3000:3000 \
   -p 20128:20128 \

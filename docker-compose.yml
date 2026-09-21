@@ -6,6 +6,9 @@ services:
     image: santainetwork/9router:latest
     container_name: 9router
     restart: unless-stopped
+    # custom-server.js drains active streams for up to 300s; leave margin for
+    # entrypoint child reaping and the Go engine's bounded shutdown.
+    stop_grace_period: 330s
     ports:
       - "${GATEWAY_PORT:-20128}:20128"
       - "${PUBLIC_PORT:-20140}:20140"

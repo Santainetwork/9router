@@ -870,7 +870,7 @@ Biaya bulanan: $0
 <summary><b>Docker</b></summary>
 
 ```bash
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 20128:20128 \
   -v 9router-data:/app/data \

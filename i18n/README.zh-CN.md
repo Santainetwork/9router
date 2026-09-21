@@ -980,7 +980,7 @@ pm2 startup
 docker build -t 9router .
 
 # Run container (command used in current setup)
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router  -p 20128:20128 \
   --env-file /root/dev/9router/.env \
   -v 9router-data:/app/data \
@@ -991,7 +991,7 @@ docker run -d \
 便携式命令（如果您已在仓库根目录）：
 
 ```bash
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 20128:20128 \
   --env-file ./.env \
@@ -1009,7 +1009,7 @@ docker run -d \
 ```bash
 docker logs -f 9router
 docker restart 9router
-docker stop 9router && docker rm 9router
+docker stop -t 330 9router && docker rm 9router
 ```
 
 ### 环境变量

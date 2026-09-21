@@ -50,7 +50,7 @@ npx 9router
 **Option 2 — Docker (server/VPS):**
 
 ```bash
-docker run -d --name 9router -p 20128:20128 \
+docker run -d --stop-timeout 330 --name 9router -p 20128:20128 \
   -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data \
   decolua/9router:latest
 ```

@@ -979,7 +979,7 @@ pm2 startup
 docker build -t 9router .
 
 # Chạy container (lệnh được sử dụng trong thiết lập hiện tại)
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 20128:20128 \
   --env-file /root/dev/9router/.env \
@@ -991,7 +991,7 @@ docker run -d \
 Lệnh di động (nếu bạn đã ở gốc kho lưu trữ):
 
 ```bash
-docker run -d \
+docker run -d --stop-timeout 330 \
   --name 9router \
   -p 20128:20128 \
   --env-file ./.env \
@@ -1009,7 +1009,7 @@ Các lệnh hữu ích:
 ```bash
 docker logs -f 9router
  restart 9router
-docker stop 9router && docker rm 9router
+docker stop -t 330 9router && docker rm 9router
 ```
 
 ### Biến môi trường
