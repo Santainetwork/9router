@@ -4,6 +4,32 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
+function validateWorkerConfig(env = process.env) {
+  const role = env.WORKER_ROLE || "control";
+  const workersValue = env.API_WORKERS || "1";
+  const workers = Number(workersValue);
+  const postgres = String(env.DB_TYPE || "").toLowerCase() === "postgres" || /^(postgres|postgresql):\/\//.test(env.DATABASE_URL || "");
+  if (!/^[1-9]\d*$/.test(workersValue) || !Number.isSafeInteger(workers)) {
+    throw new Error("API_WORKERS must be a positive integer");
+  }
+  if (role !== "control" && role !== "api") throw new Error("WORKER_ROLE must be control or api");
+  if ((role === "api" || workers > 1) && !postgres) {
+    throw new Error("WORKER_ROLE=api or API_WORKERS>1 requires PostgreSQL (set DATABASE_URL=postgres://... or DB_TYPE=postgres)");
+  }
+  return { role, workers, postgres };
+}
+
+if (process.argv.includes("--check-config")) {
+  try { validateWorkerConfig(); process.exit(0); }
+  catch (error) { console.error(`[9Router] Invalid worker configuration: ${error.message}`); process.exit(1); }
+}
+
+const workerConfig = validateWorkerConfig();
+if (workerConfig.role === "api") {
+  process.env.NINEROUTER_WORKER_ROLE = "api";
+  process.env.DISABLE_BACKGROUND_TOKEN_REFRESH = "true";
+}
+
 const origCreate = http.createServer.bind(http);
 const DRAIN_TIMEOUT_MS = Number(process.env.NINEROUTER_DRAIN_TIMEOUT_MS || 300000);
 let gracefulShutdownInstalled = false;
@@ -111,7 +137,7 @@ http.createServer = (...args) => {
   const server = origCreate(...rest, wrapped);
   installGracefulShutdown(server);
   server.once("listening", () => {
-    startBackgroundTokenRefreshFromCustomServer();
+    if (workerConfig.role !== "api") startBackgroundTokenRefreshFromCustomServer();
   });
   const origEmit = server.emit;
   // JBR 25 sends h2c upgrades that the HTTP/1.1 server would otherwise close.
@@ -174,3 +200,5 @@ if (require.main === module) {
     require(nextBin);
   }
 }
+
+module.exports = { validateWorkerConfig };
