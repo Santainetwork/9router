@@ -7,7 +7,7 @@
 
 import { getApiKeyLimits, getApiKeyTokenUsage } from "@/lib/localDb";
 import { acquire, RateLimitTimeoutError } from "open-sse/services/rateLimiter.js";
-import { unavailableResponse, errorResponse } from "open-sse/utils/error.js";
+import { unavailableResponse, errorResponse, limiterUnavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 
@@ -58,6 +58,13 @@ export async function enforceApiKeyRateLimit(apiKey, queueMeta = null, signal = 
         `${e.retryAfter}s`,
       );
       return { limited: resp, release: () => {} };
+    }
+    // API-worker Go limiter unavailable: surface its own 503 instead of letting
+    // it bubble to a generic Next 500. Timeout/429 handling stays above.
+    const limiterResp = limiterUnavailableResponse(e);
+    if (limiterResp) {
+      log.warn("RATELIMIT", e.message || "Go hybrid limiter unavailable");
+      return { limited: limiterResp, release: () => {} };
     }
     throw e;
   }

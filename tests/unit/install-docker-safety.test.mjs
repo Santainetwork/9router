@@ -244,6 +244,22 @@ test("custom-server refuses API role without PostgreSQL", () => {
   assert.match(`${result.stdout}\n${result.stderr}`, /WORKER_ROLE=api.*PostgreSQL|PostgreSQL.*WORKER_ROLE=api/i);
 });
 
+test("custom-server honors NINEROUTER_WORKER_ROLE alias for the API role", () => {
+  // The driver/engine role detection (isApiWorker/isApiWorkerRole) accepts either
+  // env var; validateWorkerConfig must agree, otherwise an alias-only API worker
+  // silently passes the SQLite guard and then shares state across replicas.
+  const rejected = checkWorkerConfig({ NINEROUTER_WORKER_ROLE: "api", API_WORKERS: "1", DB_TYPE: "sqlite" });
+  assert.equal(rejected.status, 1, `${rejected.stdout}\n${rejected.stderr}`);
+  assert.match(`${rejected.stdout}\n${rejected.stderr}`, /requires PostgreSQL/);
+
+  const accepted = checkWorkerConfig({ NINEROUTER_WORKER_ROLE: "api", API_WORKERS: "1", DATABASE_URL: "postgres://db/app" });
+  assert.equal(accepted.status, 0, `${accepted.stdout}\n${accepted.stderr}`);
+
+  const invalid = checkWorkerConfig({ NINEROUTER_WORKER_ROLE: "bogus" });
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /WORKER_ROLE must be control or api/);
+});
+
 test("custom-server marks API workers and skips background token refresh", () => {
   const source = readFileSync(CUSTOM_SERVER_JS, "utf8");
   assert.match(source, /NINEROUTER_WORKER_ROLE\s*=\s*["']api["']/);

@@ -142,6 +142,33 @@ export function unavailableResponse(statusCode, message, retryAfter, retryAfterH
 }
 
 /**
+ * Convert a no-fallback limiter error (e.g. GoLimiterUnavailableError, or the
+ * GoLimiterProtocolError shape) into a 503 Response. API workers must never
+ * degrade to the per-process JS limiter, so this surfaces the shared limiter
+ * being unavailable as its own HTTP status instead of a generic Next 500.
+ *
+ * Returns null for any other error so callers keep their existing behavior
+ * (notably RateLimitTimeoutError / 429 handling). `release` runs first so a
+ * key or lease held by the caller is not leaked before returning.
+ *
+ * @param {Error} error  error carrying { noFallback, status, message }
+ * @param {() => void} [release]  optional release of an acquired key/lease
+ * @returns {Response|null}
+ */
+export function limiterUnavailableResponse(error, release) {
+  if (!(error?.noFallback && error?.status)) return null;
+  if (typeof release === "function") {
+    try { release(); } catch { /* release is best-effort */ }
+  }
+  return unavailableResponse(
+    error.status,
+    error.message || "Go hybrid limiter unavailable",
+    Date.now(),
+    "retry shortly",
+  );
+}
+
+/**
  * Format provider error with context
  * @param {Error} error - Original error
  * @param {string} provider - Provider name

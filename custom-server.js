@@ -10,7 +10,9 @@ const { pathToFileURL } = require("url");
 const MAX_API_WORKERS = 8;
 
 function validateWorkerConfig(env = process.env) {
-  const role = env.WORKER_ROLE || "control";
+  // Honor the NINEROUTER_WORKER_ROLE alias too, matching driver/engine role
+  // detection so an api worker is recognized regardless of which is set.
+  const role = env.WORKER_ROLE || env.NINEROUTER_WORKER_ROLE || "control";
   const workersValue = env.API_WORKERS || "1";
   const workers = Number(workersValue);
   const postgres = String(env.DB_TYPE || "").toLowerCase() === "postgres" || /^(postgres|postgresql):\/\//.test(env.DATABASE_URL || "");

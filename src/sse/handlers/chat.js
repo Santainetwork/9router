@@ -16,7 +16,7 @@ import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
-import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { errorResponse, unavailableResponse, limiterUnavailableResponse } from "open-sse/utils/error.js";
 import { resolveCustomErrorMessage } from "open-sse/utils/customErrorResolver.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
@@ -389,6 +389,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           const chatSettings = await getSettings().catch(() => null);
           const finalMsg = resolveCustomErrorMessage(HTTP_STATUS.RATE_LIMITED, e.message || `[${provider}/${model}] provider rate limit / concurrency exceeded`, chatSettings);
           return unavailableResponse(HTTP_STATUS.RATE_LIMITED, finalMsg, e.retryAfter, `${e.retryAfter}s`);
+        }
+        // API-worker Go limiter unavailable at provider scope: release the API
+        // key held for this attempt and surface 503 rather than a Next 500.
+        const limiterResp = limiterUnavailableResponse(e, doReleaseApiKey);
+        if (limiterResp) {
+          log.warn("RATELIMIT", e.message || "Go hybrid limiter unavailable");
+          return limiterResp;
         }
         doReleaseApiKey();
         throw e;
