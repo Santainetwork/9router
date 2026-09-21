@@ -4,11 +4,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const DOCKER_INSTALL_SH = path.join(REPO_ROOT, "scripts/install-docker.sh");
@@ -17,6 +18,7 @@ const DOCKERFILE = path.join(REPO_ROOT, "Dockerfile");
 const COMPOSE_YML = path.join(REPO_ROOT, "docker-compose.yml");
 const ENTRYPOINT_SH = path.join(REPO_ROOT, "deploy/docker-entrypoint.sh");
 const CUSTOM_SERVER_JS = path.join(REPO_ROOT, "custom-server.js");
+const INSTRUMENTATION_JS = path.join(REPO_ROOT, "src/instrumentation.js");
 
 const SCRIPT_SRC = readFileSync(DOCKER_INSTALL_SH, "utf8");
 
@@ -56,8 +58,8 @@ function runEntrypointHarness({ apiWorkers = "1", failRole = "" } = {}) {
   const suExec = path.join(tempDir, "su-exec");
   writeFileSync(suExec, `#!/bin/sh
 if [ "\${3:-}" = "custom-server.js" ] && [ "\${4:-}" = "--check-config" ]; then exit 0; fi
-echo "start role=\${WORKER_ROLE:-} port=\${PORT:-}" >> "$PROCESS_LOG"
-trap 'echo "term role=\${WORKER_ROLE:-} port=\${PORT:-}" >> "$PROCESS_LOG"; exit 0' TERM INT
+echo "start role=\${WORKER_ROLE:-} port=\${PORT:-} host=\${HOSTNAME:-}" >> "$PROCESS_LOG"
+trap 'echo "term role=\${WORKER_ROLE:-} port=\${PORT:-} host=\${HOSTNAME:-}" >> "$PROCESS_LOG"; exit 0' TERM INT
 if [ "\${WORKER_ROLE:-}" = "$FAIL_ROLE" ]; then exit 7; fi
 while :; do sleep 1; done
 `);
@@ -81,6 +83,60 @@ while :; do sleep 1; done
   const log = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
   rmSync(tempDir, { recursive: true, force: true });
   return { result, log };
+}
+
+// Live (non-crashing) harness: keeps every child alive so a test can send TERM
+// and observe the entrypoint's clean-shutdown exit code and termination logs.
+function launchEntrypointHarness({ apiWorkers = "1" } = {}) {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "9r-entrypoint-live-"));
+  const logPath = path.join(tempDir, "processes.log");
+  const suExec = path.join(tempDir, "su-exec");
+  writeFileSync(suExec, `#!/bin/sh
+if [ "\${3:-}" = "custom-server.js" ] && [ "\${4:-}" = "--check-config" ]; then exit 0; fi
+echo "start role=\${WORKER_ROLE:-} port=\${PORT:-} host=\${HOSTNAME:-}" >> "$PROCESS_LOG"
+trap 'echo "term role=\${WORKER_ROLE:-} port=\${PORT:-} host=\${HOSTNAME:-}" >> "$PROCESS_LOG"; exit 0' TERM INT
+while :; do sleep 1; done
+`);
+  chmodSync(suExec, 0o755);
+
+  const child = spawn("sh", [ENTRYPOINT_SH, "run"], {
+    env: {
+      ...process.env,
+      PATH: `${tempDir}:${process.env.PATH}`,
+      DATA_DIR: path.join(tempDir, "data"),
+      ENABLE_GO_HYBRID: "false",
+      DB_TYPE: "postgres",
+      API_WORKERS: apiWorkers,
+      PROCESS_LOG: logPath,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const readLog = () => (existsSync(logPath) ? readFileSync(logPath, "utf8") : "");
+  const waitFor = async (predicate, timeoutMs = 8000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate(readLog())) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`timed out waiting for entrypoint; log=${readLog()}\nstderr=${stderr}`);
+  };
+  const stop = async () => {
+    child.kill("SIGTERM");
+    const [code] = await once(child, "exit");
+    return code;
+  };
+  return {
+    child,
+    readLog,
+    waitFor,
+    stop,
+    getStderr: () => stderr,
+    cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
+  };
 }
 
 test("install-docker.sh is valid bash syntax", () => {
@@ -247,28 +303,95 @@ test("entrypoint rejects API role backed by SQLite", () => {
   assert.match(result.stderr, /WORKER_ROLE=api.*PostgreSQL|PostgreSQL.*WORKER_ROLE=api/i);
 });
 
-test("entrypoint starts one control process by default", () => {
+test("entrypoint starts one control process by default and stops cleanly on TERM", async () => {
+  const h = launchEntrypointHarness({ apiWorkers: "1" });
+  try {
+    await h.waitFor((log) => /start role=control port=20128/.test(log));
+    const code = await h.stop();
+    const log = h.readLog();
+    assert.equal(code, 0, `expected clean exit 0; log=${log}\nstderr=${h.getStderr()}`);
+    assert.doesNotMatch(log, /start role=api/);
+    assert.match(log, /term role=control port=20128/);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("entrypoint terminates every configured API worker on clean shutdown", async () => {
+  const h = launchEntrypointHarness({ apiWorkers: "3" });
+  try {
+    await h.waitFor((log) => /start role=api port=20132/.test(log));
+    const code = await h.stop();
+    const log = h.readLog();
+    assert.equal(code, 0, `expected clean exit 0; log=${log}\nstderr=${h.getStderr()}`);
+    assert.match(log, /start role=control port=20128/);
+    assert.match(log, /start role=api port=20131/);
+    assert.match(log, /start role=api port=20132/);
+    assert.match(log, /term role=control port=20128/);
+    assert.match(log, /term role=api port=20131/);
+    assert.match(log, /term role=api port=20132/);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("API workers bind loopback even when the engine is disabled and control binds 0.0.0.0", async () => {
+  const h = launchEntrypointHarness({ apiWorkers: "2" });
+  try {
+    await h.waitFor((log) => /start role=api port=20131 host=127\.0\.0\.1/.test(log));
+    const log = h.readLog();
+    assert.match(log, /start role=control port=20128 host=0\.0\.0\.0/);
+    assert.match(log, /start role=api port=20131 host=127\.0\.0\.1/);
+    assert.equal(await h.stop(), 0, `expected clean exit; log=${log}`);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("entrypoint exits non-zero when the control process crashes", () => {
   const { result, log } = runEntrypointHarness({ failRole: "control" });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.equal(result.status, 1, `expected non-zero exit; stderr=${result.stderr}`);
   assert.match(log, /start role=control port=20128/);
-  assert.doesNotMatch(log, /start role=api/);
 });
 
-test("entrypoint starts and terminates every configured API worker", () => {
-  const { result, log } = runEntrypointHarness({ apiWorkers: "3", failRole: "control" });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(log, /start role=control port=20128/);
-  assert.match(log, /start role=api port=20131/);
-  assert.match(log, /start role=api port=20132/);
-  assert.match(log, /term role=api port=20131/);
-  assert.match(log, /term role=api port=20132/);
-});
-
-test("entrypoint exits when an API worker dies", () => {
+test("entrypoint exits non-zero when an API worker dies", () => {
   const { result, log } = runEntrypointHarness({ apiWorkers: "2", failRole: "api" });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.equal(result.status, 1, `expected non-zero exit; stderr=${result.stderr}`);
   assert.match(log, /start role=api port=20131/);
   assert.match(log, /term role=control port=20128/);
+});
+
+test("custom-server caps API_WORKERS at 8", () => {
+  const over = checkWorkerConfig({ API_WORKERS: "9", DATABASE_URL: "postgres://db/app" });
+  assert.equal(over.status, 1);
+  assert.match(over.stderr, /API_WORKERS must not exceed 8/);
+  assert.equal(
+    checkWorkerConfig({ API_WORKERS: "8", DATABASE_URL: "postgres://db/app" }).status,
+    0,
+    "8 API workers must remain valid",
+  );
+});
+
+test("entrypoint rejects API_WORKERS above the shared cap of 8", () => {
+  const result = runEntrypointForInvalidConfig({ API_WORKERS: "9" });
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /API_WORKERS must not exceed 8/);
+});
+
+test("API workers skip the model catalog sync", async () => {
+  const src = readFileSync(INSTRUMENTATION_JS, "utf8");
+  assert.match(
+    src,
+    /if\s*\(\s*!isApiWorkerRole\(\)\s*\)\s*\{[\s\S]*?startModelCatalogSync\(\)/,
+    "startModelCatalogSync must be guarded by isApiWorkerRole",
+  );
+  const { isApiWorkerRole } = await import(
+    pathToFileURL(path.join(REPO_ROOT, "src/shared/utils/engineConfig.js")).href
+  );
+  assert.equal(isApiWorkerRole({ WORKER_ROLE: "api" }), true);
+  assert.equal(isApiWorkerRole({ NINEROUTER_WORKER_ROLE: "api" }), true);
+  assert.equal(isApiWorkerRole({ WORKER_ROLE: "control" }), false);
+  assert.equal(isApiWorkerRole({}), false);
 });
 
 // ---------------------------------------------------------------------------

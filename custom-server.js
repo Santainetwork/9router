@@ -4,6 +4,11 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
+// Shared ceiling: the Docker entrypoint derives ::20131.. ::20137 for 7 API
+// workers, so 8 total processes is the supported maximum. Keep both validators
+// in agreement.
+const MAX_API_WORKERS = 8;
+
 function validateWorkerConfig(env = process.env) {
   const role = env.WORKER_ROLE || "control";
   const workersValue = env.API_WORKERS || "1";
@@ -11,6 +16,9 @@ function validateWorkerConfig(env = process.env) {
   const postgres = String(env.DB_TYPE || "").toLowerCase() === "postgres" || /^(postgres|postgresql):\/\//.test(env.DATABASE_URL || "");
   if (!/^[1-9]\d*$/.test(workersValue) || !Number.isSafeInteger(workers)) {
     throw new Error("API_WORKERS must be a positive integer");
+  }
+  if (workers > MAX_API_WORKERS) {
+    throw new Error(`API_WORKERS must not exceed ${MAX_API_WORKERS}`);
   }
   if (role !== "control" && role !== "api") throw new Error("WORKER_ROLE must be control or api");
   if ((role === "api" || workers > 1) && !postgres) {

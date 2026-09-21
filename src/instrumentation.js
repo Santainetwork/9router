@@ -8,7 +8,13 @@ export async function register() {
     const { installCatalogSource } = await import("open-sse/providers/catalogOverride.js");
     await installCatalogSource();
 
-    const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
-    startModelCatalogSync();
+    // Only the control process owns the recurring catalog refresh. API workers
+    // read the catalog the control process wrote, so they skip the sync to avoid
+    // N replicas racing to rewrite the same file.
+    const { isApiWorkerRole } = await import("@/shared/utils/engineConfig.js");
+    if (!isApiWorkerRole()) {
+      const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
+      startModelCatalogSync();
+    }
   }
 }

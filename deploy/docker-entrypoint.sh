@@ -31,6 +31,12 @@ su-exec node node custom-server.js --check-config
 case "$API_WORKERS" in
   ''|*[!0-9]*|0*) echo "[9router-docker] API_WORKERS must be a positive integer" >&2; exit 1 ;;
 esac
+# Keep this ceiling identical to MAX_API_WORKERS in custom-server.js. Worker
+# ports are derived as BACKEND_PORT+4+i, so 8 processes is the supported max.
+if [ "$API_WORKERS" -gt 8 ]; then
+  echo "[9router-docker] API_WORKERS must not exceed 8" >&2
+  exit 1
+fi
 case "$WORKER_ROLE" in
   control|api) ;;
   *) echo "[9router-docker] WORKER_ROLE must be control or api" >&2; exit 1 ;;
@@ -53,8 +59,9 @@ while [ "$i" -lt $((API_WORKERS - 1)) ]; do
 done
 export API_WORKER_URLS
 
-cleanup() {
-  echo "[9router-docker] Shutdown signal received, stopping services..."
+# Terminate every managed process and reap it. Safe to call more than once:
+# a missing/reaped pid is ignored.
+terminate_children() {
   for pid in $NODE_PID $API_NODE_PIDS; do
     kill -TERM "$pid" 2>/dev/null || true
   done
@@ -64,9 +71,26 @@ cleanup() {
   for pid in $NODE_PID $API_NODE_PIDS; do
     wait "$pid" 2>/dev/null || true
   done
-  wait "$ENGINE_PID" 2>/dev/null || true
+  if [ -n "$ENGINE_PID" ]; then
+    wait "$ENGINE_PID" 2>/dev/null || true
+  fi
+}
+
+# TERM/INT is an operator-requested stop: drain and report success.
+cleanup() {
+  echo "[9router-docker] Shutdown signal received, stopping services..."
+  terminate_children
   echo "[9router-docker] All services stopped."
   exit 0
+}
+
+# A managed child died on its own: stop the rest but surface a non-zero exit so
+# the orchestrator can restart the container.
+fail() {
+  echo "[9router-docker] A managed service exited unexpectedly, stopping remaining services..." >&2
+  terminate_children
+  echo "[9router-docker] All services stopped." >&2
+  exit 1
 }
 
 trap cleanup TERM INT
@@ -101,7 +125,9 @@ if [ "$API_WORKERS" -gt 1 ]; then
   i=0
   while [ "$i" -lt $((API_WORKERS - 1)) ]; do
     worker_port=$((BACKEND_PORT + 4 + i))
-    PORT="$worker_port" WORKER_ROLE=api API_WORKERS="$API_WORKERS" su-exec node node custom-server.js --no-browser --log --skip-update &
+    # API workers are internal and must never bind a public interface, even when
+    # the Go engine is disabled and the parent HOSTNAME was set to 0.0.0.0.
+    PORT="$worker_port" HOSTNAME="127.0.0.1" WORKER_ROLE=api API_WORKERS="$API_WORKERS" su-exec node node custom-server.js --no-browser --log --skip-update &
     API_NODE_PIDS="${API_NODE_PIDS} $!"
     i=$((i + 1))
   done
@@ -109,8 +135,8 @@ fi
 
 # 3. Monitor both processes
 while kill -0 "$NODE_PID" 2>/dev/null && { [ -z "$ENGINE_PID" ] || kill -0 "$ENGINE_PID" 2>/dev/null; }; do
-  for pid in $API_NODE_PIDS; do kill -0 "$pid" 2>/dev/null || cleanup; done
+  for pid in $API_NODE_PIDS; do kill -0 "$pid" 2>/dev/null || fail; done
   sleep 2
 done
 
-cleanup
+fail
