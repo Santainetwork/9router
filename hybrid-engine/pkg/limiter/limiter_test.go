@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -126,6 +127,147 @@ func TestContextCancellationAbortsWaiter(t *testing.T) {
 	}
 }
 
+func TestLeaseOwnershipReleaseOrderAndDuplicateRelease(t *testing.T) {
+	e := NewEngine()
+	defer e.Stop()
+
+	first, err := e.AcquireLease(context.Background(), "apikey", "lease-order", 0, 2, 0)
+	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+	second, err := e.AcquireLease(context.Background(), "apikey", "lease-order", 0, 2, 0)
+	if err != nil {
+		t.Fatalf("second acquire: %v", err)
+	}
+	if first == "" || second == "" || first == second {
+		t.Fatalf("concurrency grants need unique opaque leases, got first=%q second=%q", first, second)
+	}
+
+	e.Release("apikey", "lease-order", second)
+	b := e.getBucket("apikey", "lease-order")
+	b.mu.Lock()
+	_, firstOwned := b.activeLeases[first]
+	_, secondOwned := b.activeLeases[second]
+	active := len(b.activeLeases)
+	b.mu.Unlock()
+	if !firstOwned || secondOwned || active != 1 {
+		t.Fatalf("out-of-order release removed wrong ownership: first=%t second=%t active=%d", firstOwned, secondOwned, active)
+	}
+
+	e.Release("apikey", "lease-order", second)
+	e.Release("apikey", "lease-order", LeaseID("unknown"))
+	b.mu.Lock()
+	active = len(b.activeLeases)
+	unknown := b.unknownReleases
+	b.mu.Unlock()
+	if active != 1 {
+		t.Fatalf("duplicate/unknown releases changed ownership, active=%d", active)
+	}
+	if unknown != 2 {
+		t.Fatalf("duplicate and unknown releases must be counted, got %d", unknown)
+	}
+
+	e.Release("apikey", "lease-order", first)
+	if got := e.GetBucketDetail("apikey", "lease-order").ActiveConcurrency; got != 0 {
+		t.Fatalf("all owned leases released, activeConcurrency=%d", got)
+	}
+}
+
+func TestWaiterTerminalRaceHasSingleOwner(t *testing.T) {
+	tests := []struct {
+		name        string
+		terminalErr error
+	}{
+		{name: "grant versus timeout", terminalErr: ErrQueueTimeout},
+		{name: "grant versus cancel", terminalErr: context.Canceled},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+" grant wins", func(t *testing.T) {
+			e := NewEngine()
+			defer e.Stop()
+			b := e.getBucket("apikey", tt.name+"-grant")
+			w := &Waiter{done: make(chan struct{}), state: waiterWaiting}
+
+			b.mu.Lock()
+			b.concurrencyLast = 1
+			b.waiters = append(b.waiters, w)
+			b.pumpAt(time.Now())
+			b.mu.Unlock()
+
+			lease, err := b.resolveWaiter(w, tt.terminalErr)
+			if err != nil || lease == "" {
+				t.Fatalf("grant transition must win once committed: lease=%q err=%v", lease, err)
+			}
+			b.mu.Lock()
+			active := len(b.activeLeases)
+			queued := len(b.waiters)
+			b.mu.Unlock()
+			if active != 1 || queued != 0 {
+				t.Fatalf("granted waiter ownership mismatch: active=%d queued=%d", active, queued)
+			}
+		})
+
+		t.Run(tt.name+" terminal wins", func(t *testing.T) {
+			e := NewEngine()
+			defer e.Stop()
+			b := e.getBucket("apikey", tt.name+"-terminal")
+			w := &Waiter{done: make(chan struct{}), state: waiterWaiting}
+
+			b.mu.Lock()
+			b.concurrencyLast = 1
+			b.waiters = append(b.waiters, w)
+			b.mu.Unlock()
+
+			lease, err := b.resolveWaiter(w, tt.terminalErr)
+			if lease != "" || !errors.Is(err, tt.terminalErr) {
+				t.Fatalf("terminal transition result: lease=%q err=%v, want no lease and %v", lease, err, tt.terminalErr)
+			}
+			b.mu.Lock()
+			b.pumpAt(time.Now())
+			active := len(b.activeLeases)
+			queued := len(b.waiters)
+			b.mu.Unlock()
+			if active != 0 || queued != 0 {
+				t.Fatalf("terminal waiter retained ownership: active=%d queued=%d", active, queued)
+			}
+		})
+	}
+}
+
+func TestResetClearsLeasesAndCancelsWaitersWithoutPumping(t *testing.T) {
+	e := NewEngine()
+	defer e.Stop()
+
+	lease, err := e.AcquireLease(context.Background(), "apikey", "reset-waiters", 0, 1, 0)
+	if err != nil || lease == "" {
+		t.Fatalf("initial acquire: lease=%q err=%v", lease, err)
+	}
+	b := e.getBucket("apikey", "reset-waiters")
+	w := &Waiter{done: make(chan struct{}), state: waiterWaiting}
+	b.mu.Lock()
+	b.waiters = append(b.waiters, w)
+	b.mu.Unlock()
+
+	if cleared := e.Reset("apikey", "reset-waiters"); cleared != 1 {
+		t.Fatalf("reset cleared %d leases, want 1", cleared)
+	}
+	select {
+	case <-w.done:
+	default:
+		t.Fatal("reset did not wake queued waiter")
+	}
+	b.mu.Lock()
+	active := len(b.activeLeases)
+	queued := len(b.waiters)
+	state := w.state
+	wErr := w.err
+	b.mu.Unlock()
+	if active != 0 || queued != 0 || state != waiterCancelled || !errors.Is(wErr, ErrLimiterReset) {
+		t.Fatalf("reset state: active=%d queued=%d waiterState=%v waiterErr=%v", active, queued, state, wErr)
+	}
+}
+
 func TestResetClearsActiveConcurrency(t *testing.T) {
 	e := NewEngine()
 	defer e.Stop()
@@ -212,29 +354,45 @@ func TestSnapshotRedactsBucketKeys(t *testing.T) {
 	}
 }
 
-// TestPerSlotStaleExpiry verifies the watchdog reclaims individual stale slots
-// (not the whole bucket) once StaleSlotTTL elapses, matching the JS behavior
-// of tracking inFlightTimes per acquire rather than a single lastActivityAt.
-func TestPerSlotStaleExpiry(t *testing.T) {
+// TestMixedAgeLeaseExpiry verifies the watchdog expires ownership by lease ID,
+// leaving fresh leases untouched even when stale leases are released later.
+func TestMixedAgeLeaseExpiry(t *testing.T) {
 	e := NewEngine()
 	defer e.Stop()
 
+	staleOne, err := e.AcquireLease(context.Background(), "apikey", "stale1", 0, 3, 0)
+	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+	fresh, err := e.AcquireLease(context.Background(), "apikey", "stale1", 0, 3, 0)
+	if err != nil {
+		t.Fatalf("second acquire: %v", err)
+	}
+	staleTwo, err := e.AcquireLease(context.Background(), "apikey", "stale1", 0, 3, 0)
+	if err != nil {
+		t.Fatalf("third acquire: %v", err)
+	}
+
 	b := e.getBucket("apikey", "stale1")
 	b.mu.Lock()
-	b.concurrencyLast = 2
-	// Slot 1: stale (acquired long ago)
-	b.activeConcurrency = 2
-	b.inFlightTimes = []time.Time{
-		time.Now().Add(-10 * time.Minute), // stale, older than StaleSlotTTL
-		time.Now(),                        // fresh
-	}
+	b.activeLeases[staleOne] = time.Now().Add(-10 * time.Minute)
+	b.activeLeases[fresh] = time.Now()
+	b.activeLeases[staleTwo] = time.Now().Add(-StaleSlotTTL - time.Second)
 	b.mu.Unlock()
 
 	e.watchdogSweep()
 
-	detail := e.GetBucketDetail("apikey", "stale1")
-	if detail.ActiveConcurrency != 1 {
-		t.Fatalf("expected 1 remaining active slot after stale sweep, got %d", detail.ActiveConcurrency)
+	b.mu.Lock()
+	_, freshOwned := b.activeLeases[fresh]
+	active := len(b.activeLeases)
+	b.mu.Unlock()
+	if !freshOwned || active != 1 {
+		t.Fatalf("watchdog ownership mismatch: fresh=%t active=%d", freshOwned, active)
+	}
+
+	e.Release("apikey", "stale1", staleOne)
+	if got := e.GetBucketDetail("apikey", "stale1").ActiveConcurrency; got != 1 {
+		t.Fatalf("late stale release removed fresh lease, activeConcurrency=%d", got)
 	}
 }
 

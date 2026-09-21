@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,6 +14,7 @@ var (
 	ErrConcurrencyLimit = errors.New("concurrency limit reached")
 	ErrRateLimit        = errors.New("rate limit reached")
 	ErrQueueTimeout     = errors.New("rate limit / concurrency queue timeout")
+	ErrLimiterReset     = errors.New("limiter reset")
 )
 
 const (
@@ -22,23 +24,37 @@ const (
 	WatchdogInterval = 30 * time.Second // sweep frequency
 )
 
+type LeaseID string
+
+type waiterState uint8
+
+const (
+	waiterWaiting waiterState = iota
+	waiterGranted
+	waiterCancelled
+)
+
 type Waiter struct {
-	done chan struct{}
-	err  error
+	done    chan struct{}
+	state   waiterState
+	leaseID LeaseID
+	err     error
+	legacy  bool
 }
 
 type Bucket struct {
-	mu                sync.Mutex
-	scope             string
-	key               string
-	windowStart       time.Time
-	count             int
-	activeConcurrency int
-	rpmLast           int
-	concurrencyLast   int
-	lastActivityAt    time.Time
-	inFlightTimes     []time.Time // per-slot acquire timestamps
-	waiters           []*Waiter
+	mu              sync.Mutex
+	scope           string
+	key             string
+	windowStart     time.Time
+	count           int
+	rpmLast         int
+	concurrencyLast int
+	lastActivityAt  time.Time
+	activeLeases    map[LeaseID]time.Time
+	legacyLeases    []LeaseID
+	waiters         []*Waiter
+	unknownReleases uint64
 }
 
 type Engine struct {
@@ -80,6 +96,7 @@ func (e *Engine) getBucket(scope, key string) *Bucket {
 		key:            key,
 		windowStart:    now,
 		lastActivityAt: now,
+		activeLeases:   make(map[LeaseID]time.Time),
 	}
 	e.buckets[id] = b
 	return b
@@ -92,25 +109,43 @@ func (b *Bucket) roll(now time.Time) {
 	}
 }
 
-func (b *Bucket) pump() {
-	now := time.Now()
+func (b *Bucket) grant(now time.Time, hasRPM, hasConcurrency, legacy bool) LeaseID {
+	if hasRPM {
+		b.count++
+	}
+	var leaseID LeaseID
+	if hasConcurrency {
+		for leaseID == "" {
+			candidate := LeaseID(rand.Text())
+			if _, exists := b.activeLeases[candidate]; !exists {
+				leaseID = candidate
+			}
+		}
+		b.activeLeases[leaseID] = now
+		if legacy {
+			b.legacyLeases = append(b.legacyLeases, leaseID)
+		}
+	}
+	b.lastActivityAt = now
+	return leaseID
+}
+
+func (b *Bucket) pumpAt(now time.Time) {
 	b.roll(now)
 
 	for len(b.waiters) > 0 {
+		w := b.waiters[0]
+		if w.state != waiterWaiting {
+			b.waiters = b.waiters[1:]
+			continue
+		}
 		rpmOk := b.rpmLast <= 0 || b.count < b.rpmLast
-		concOk := b.concurrencyLast <= 0 || b.activeConcurrency < b.concurrencyLast
+		concOk := b.concurrencyLast <= 0 || len(b.activeLeases) < b.concurrencyLast
 
 		if rpmOk && concOk {
-			w := b.waiters[0]
 			b.waiters = b.waiters[1:]
-			if b.rpmLast > 0 {
-				b.count++
-			}
-			if b.concurrencyLast > 0 {
-				b.activeConcurrency++
-				b.inFlightTimes = append(b.inFlightTimes, now)
-			}
-			b.lastActivityAt = now
+			w.leaseID = b.grant(now, b.rpmLast > 0, b.concurrencyLast > 0, w.legacy)
+			w.state = waiterGranted
 			close(w.done)
 		} else {
 			break
@@ -118,20 +153,56 @@ func (b *Bucket) pump() {
 	}
 }
 
+func (b *Bucket) pump() {
+	b.pumpAt(time.Now())
+}
+
+func (b *Bucket) resolveWaiter(w *Waiter, terminalErr error) (LeaseID, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	switch w.state {
+	case waiterGranted:
+		return w.leaseID, nil
+	case waiterCancelled:
+		return "", w.err
+	}
+
+	for i, item := range b.waiters {
+		if item == w {
+			b.waiters = append(b.waiters[:i], b.waiters[i+1:]...)
+			break
+		}
+	}
+	w.state = waiterCancelled
+	w.err = terminalErr
+	close(w.done)
+	return "", terminalErr
+}
+
 // isIdle returns true when the bucket has no waiters, no in-flight slots,
 // no RPM window activity, and has been idle longer than IdleBucketTTL.
 func (b *Bucket) isIdle(now time.Time) bool {
-	return b.activeConcurrency == 0 &&
+	return len(b.activeLeases) == 0 &&
 		len(b.waiters) == 0 &&
 		(now.Sub(b.windowStart) >= WindowDuration || b.count == 0) &&
 		now.Sub(b.lastActivityAt) >= IdleBucketTTL
 }
 
 func (e *Engine) Acquire(ctx context.Context, scope, key string, rpm, concurrency int, timeout time.Duration) error {
+	_, err := e.acquireLease(ctx, scope, key, rpm, concurrency, timeout, true)
+	return err
+}
+
+func (e *Engine) AcquireLease(ctx context.Context, scope, key string, rpm, concurrency int, timeout time.Duration) (LeaseID, error) {
+	return e.acquireLease(ctx, scope, key, rpm, concurrency, timeout, false)
+}
+
+func (e *Engine) acquireLease(ctx context.Context, scope, key string, rpm, concurrency int, timeout time.Duration, legacy bool) (LeaseID, error) {
 	hasRpm := rpm > 0
 	hasConc := concurrency > 0
 	if !hasRpm && !hasConc {
-		return nil
+		return "", nil
 	}
 
 	b := e.getBucket(scope, key)
@@ -143,33 +214,27 @@ func (e *Engine) Acquire(ctx context.Context, scope, key string, rpm, concurrenc
 	b.roll(now)
 
 	rpmOk := !hasRpm || b.count < rpm
-	concOk := !hasConc || b.activeConcurrency < concurrency
+	concOk := !hasConc || len(b.activeLeases) < concurrency
 
 	// Direct grant
 	if len(b.waiters) == 0 && rpmOk && concOk {
-		if hasRpm {
-			b.count++
-		}
-		if hasConc {
-			b.activeConcurrency++
-			b.inFlightTimes = append(b.inFlightTimes, now)
-		}
-		b.lastActivityAt = now
+		leaseID := b.grant(now, hasRpm, hasConc, legacy)
 		b.mu.Unlock()
-		return nil
+		return leaseID, nil
 	}
 
 	// No timeout allowed: immediate rejection
 	if timeout <= 0 {
-		b.mu.Unlock()
-		if hasConc && b.activeConcurrency >= concurrency {
-			return ErrConcurrencyLimit
+		limitErr := ErrRateLimit
+		if hasConc && !concOk {
+			limitErr = ErrConcurrencyLimit
 		}
-		return ErrRateLimit
+		b.mu.Unlock()
+		return "", limitErr
 	}
 
 	// Queue waiter
-	w := &Waiter{done: make(chan struct{})}
+	w := &Waiter{done: make(chan struct{}), state: waiterWaiting, legacy: legacy}
 	b.waiters = append(b.waiters, w)
 	b.mu.Unlock()
 
@@ -178,35 +243,17 @@ func (e *Engine) Acquire(ctx context.Context, scope, key string, rpm, concurrenc
 
 	select {
 	case <-w.done:
-		if ctx.Err() != nil {
-			e.Release(scope, key)
-			return ctx.Err()
-		}
-		return nil
+		return b.resolveWaiter(w, nil)
 	case <-timer.C:
-		b.mu.Lock()
-		for i, item := range b.waiters {
-			if item == w {
-				b.waiters = append(b.waiters[:i], b.waiters[i+1:]...)
-				break
-			}
-		}
-		b.mu.Unlock()
-		return ErrQueueTimeout
+		return b.resolveWaiter(w, ErrQueueTimeout)
 	case <-ctx.Done():
-		b.mu.Lock()
-		for i, item := range b.waiters {
-			if item == w {
-				b.waiters = append(b.waiters[:i], b.waiters[i+1:]...)
-				break
-			}
-		}
-		b.mu.Unlock()
-		return ctx.Err()
+		return b.resolveWaiter(w, ctx.Err())
 	}
 }
 
-func (e *Engine) Release(scope, key string) {
+// Release accepts one lease ID for owned releases. Omitting it temporarily
+// releases only a lease created through the legacy Acquire method.
+func (e *Engine) Release(scope, key string, leaseIDs ...LeaseID) {
 	id := scope + ":" + key
 	e.mu.RLock()
 	b, ok := e.buckets[id]
@@ -216,12 +263,25 @@ func (e *Engine) Release(scope, key string) {
 	}
 
 	b.mu.Lock()
-	if b.activeConcurrency > 0 {
-		b.activeConcurrency--
-		if len(b.inFlightTimes) > 0 {
-			b.inFlightTimes = b.inFlightTimes[1:] // FIFO: remove oldest slot
+	var leaseID LeaseID
+	if len(leaseIDs) > 0 {
+		leaseID = leaseIDs[0]
+	} else {
+		for len(b.legacyLeases) > 0 {
+			leaseID = b.legacyLeases[0]
+			b.legacyLeases = b.legacyLeases[1:]
+			if _, exists := b.activeLeases[leaseID]; exists {
+				break
+			}
+			leaseID = ""
 		}
 	}
+	if _, exists := b.activeLeases[leaseID]; !exists || leaseID == "" {
+		b.unknownReleases++
+		b.mu.Unlock()
+		return
+	}
+	delete(b.activeLeases, leaseID)
 	b.lastActivityAt = time.Now()
 	b.pump()
 	b.mu.Unlock()
@@ -237,10 +297,18 @@ func (e *Engine) Reset(scope, key string) int {
 	}
 
 	b.mu.Lock()
-	cleared := b.activeConcurrency
-	b.activeConcurrency = 0
-	b.inFlightTimes = nil
-	b.pump()
+	cleared := len(b.activeLeases)
+	clear(b.activeLeases)
+	b.legacyLeases = nil
+	for _, w := range b.waiters {
+		if w.state == waiterWaiting {
+			w.state = waiterCancelled
+			w.err = ErrLimiterReset
+			close(w.done)
+		}
+	}
+	b.waiters = nil
+	b.lastActivityAt = time.Now()
 	b.mu.Unlock()
 	return cleared
 }
@@ -251,10 +319,18 @@ func (e *Engine) ResetAll() int {
 	cleared := 0
 	for _, b := range e.buckets {
 		b.mu.Lock()
-		cleared += b.activeConcurrency
-		b.activeConcurrency = 0
-		b.inFlightTimes = nil
-		b.pump()
+		cleared += len(b.activeLeases)
+		clear(b.activeLeases)
+		b.legacyLeases = nil
+		for _, w := range b.waiters {
+			if w.state == waiterWaiting {
+				w.state = waiterCancelled
+				w.err = ErrLimiterReset
+				close(w.done)
+			}
+		}
+		b.waiters = nil
+		b.lastActivityAt = time.Now()
 		b.mu.Unlock()
 	}
 	return cleared
@@ -302,7 +378,7 @@ func (e *Engine) GetBucketDetail(scope, key string) BucketDetail {
 
 	return BucketDetail{
 		Count:             b.count,
-		ActiveConcurrency: b.activeConcurrency,
+		ActiveConcurrency: len(b.activeLeases),
 		Queued:            queued,
 		InWindow:          inWindow,
 		RPM:               b.rpmLast,
@@ -355,7 +431,7 @@ func (e *Engine) Snapshot() Snapshot {
 			inWindow = b.count
 		}
 		queued := len(b.waiters)
-		active := b.activeConcurrency
+		active := len(b.activeLeases)
 
 		if inWindow == 0 && queued == 0 && active == 0 {
 			b.mu.Unlock()
@@ -405,29 +481,19 @@ func (e *Engine) watchdogLoop() {
 func (e *Engine) watchdogSweep() {
 	now := time.Now()
 
-	// Phase 1: per-slot stale expiry (under read lock to iterate, bucket lock per entry)
+	// Phase 1: per-lease stale expiry (under read lock to iterate, bucket lock per entry)
 	e.mu.RLock()
 	for _, b := range e.buckets {
 		b.mu.Lock()
-		if b.activeConcurrency > 0 && len(b.inFlightTimes) > 0 {
-			alive := b.inFlightTimes[:0]
-			for _, ts := range b.inFlightTimes {
-				if now.Sub(ts) <= StaleSlotTTL {
-					alive = append(alive, ts)
-				}
+		expired := false
+		for leaseID, acquiredAt := range b.activeLeases {
+			if now.Sub(acquiredAt) > StaleSlotTTL {
+				delete(b.activeLeases, leaseID)
+				expired = true
 			}
-			expired := len(b.inFlightTimes) - len(alive)
-			if expired > 0 {
-				b.inFlightTimes = alive
-				b.activeConcurrency = max(0, b.activeConcurrency-expired)
-				b.pump()
-			}
-		} else if b.activeConcurrency > 0 && len(b.inFlightTimes) == 0 {
-			// Legacy fallback: no per-slot data, use lastActivityAt
-			if now.Sub(b.lastActivityAt) > StaleSlotTTL {
-				b.activeConcurrency = 0
-				b.pump()
-			}
+		}
+		if expired {
+			b.pumpAt(now)
 		}
 		b.mu.Unlock()
 	}
