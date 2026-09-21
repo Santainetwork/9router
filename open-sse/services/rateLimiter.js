@@ -97,6 +97,8 @@ function rollWindow(b, t) {
 }
 
 // Try to consume one slot immediately honoring both RPM and Concurrency limits.
+// Returns an opaque lease ID on concurrency grant, null on an RPM-only grant
+// (no concurrency slot), or false when no slot is available.
 function tryConsume(b, rpm, concurrency, t) {
   rollWindow(b, t);
   const rpmOk = !rpm || rpm <= 0 || b.count < rpm;
@@ -105,27 +107,35 @@ function tryConsume(b, rpm, concurrency, t) {
   if (rpmOk && concurrencyOk) {
     if (rpm > 0) b.count += 1;
     if (concurrency > 0) {
-      b.activeConcurrency += 1;
-      if (!Array.isArray(b.inFlightTimes)) b.inFlightTimes = [];
-      b.inFlightTimes.push(t);
+      const leaseId = newFallbackLeaseId();
+      b.activeLeases.set(leaseId, t);
+      b.activeConcurrency = b.activeLeases.size;
+      return leaseId;
     }
-    return true;
+    return null;
   }
   return false;
 }
 
-// Release one active concurrency slot and drain queued waiters.
-export function release(scope, key) {
+// Release one active concurrency slot by lease ID and drain queued waiters.
+// Public API stays `release(scope, key)` compatible; internal callers pass the
+// owned lease ID so only the owning request can free its slot.
+export function release(scope, key, leaseId) {
   const m = scopes.get(scope);
   if (!m) return;
   const b = m.get(key);
   if (!b) return;
-  if (b.activeConcurrency > 0) {
-    b.activeConcurrency -= 1;
-    if (Array.isArray(b.inFlightTimes) && b.inFlightTimes.length > 0) {
-      b.inFlightTimes.shift();
-    }
+  if (b.activeLeases.size === 0) return;
+  if (leaseId && b.activeLeases.has(leaseId)) {
+    b.activeLeases.delete(leaseId);
+  } else if (!leaseId) {
+    // Legacy FIFO release: reclaim the oldest lease (old callers without ownership).
+    const oldest = b.activeLeases.keys().next().value;
+    if (oldest) b.activeLeases.delete(oldest);
+  } else {
+    return; // unknown or already-released lease ID is a no-op
   }
+  b.activeConcurrency = b.activeLeases.size;
   pump(scope, key);
 }
 
@@ -150,12 +160,13 @@ function pump(scope, key) {
       clearTimeout(w.timer);
       w.settled = true;
       if (b.rpmLast > 0) b.count += 1;
+      let leaseId = null;
       if (b.concurrencyLast > 0) {
-        b.activeConcurrency += 1;
-        if (!Array.isArray(b.inFlightTimes)) b.inFlightTimes = [];
-        b.inFlightTimes.push(t);
+        leaseId = newFallbackLeaseId();
+        b.activeLeases.set(leaseId, t);
+        b.activeConcurrency = b.activeLeases.size;
       }
-      w.resolve(createReleaseFn(scope, key, b.concurrencyLast > 0));
+      w.resolve(createReleaseFn(scope, key, leaseId));
     } else {
       break;
     }
@@ -171,13 +182,13 @@ function pump(scope, key) {
   }
 }
 
-function createReleaseFn(scope, key, hasConcurrency) {
+function createReleaseFn(scope, key, leaseId) {
   let released = false;
   return function releaseFn() {
     if (released) return;
     released = true;
-    if (hasConcurrency) {
-      release(scope, key);
+    if (leaseId) {
+      release(scope, key, leaseId);
     }
   };
 }
@@ -240,8 +251,11 @@ function jsAcquire(scope, key, { rpm, concurrency, timeoutMs, onQueued, hasRpm, 
   b.lastActivityAt = now();
   const t = now();
 
-  if (b.queue.length === 0 && tryConsume(b, rpm, concurrency, t)) {
-    return Promise.resolve(createReleaseFn(scope, key, hasConcurrency));
+  if (b.queue.length === 0) {
+    const leaseId = tryConsume(b, rpm, concurrency, t);
+    if (leaseId !== false) {
+      return Promise.resolve(createReleaseFn(scope, key, leaseId));
+    }
   }
 
   // Must queue. If no timeout budget, reject immediately with time until window rolls or retry estimate.
@@ -318,7 +332,7 @@ export function resetActiveConcurrency(scope, key) {
   if (!b) return 0;
   const before = b.activeConcurrency;
   b.activeConcurrency = 0;
-  b.inFlightTimes = [];
+  b.activeLeases.clear();
   pump(scope, key);
   return before;
 }
@@ -329,7 +343,7 @@ export function resetAllActiveConcurrency() {
     for (const [key, b] of m.entries()) {
       cleared += b.activeConcurrency || 0;
       b.activeConcurrency = 0;
-      b.inFlightTimes = [];
+      b.activeLeases.clear();
       pump(scope, key);
     }
   }
