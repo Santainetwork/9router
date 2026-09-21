@@ -26,8 +26,9 @@ type AcquireReq struct {
 }
 
 type ReleaseReq struct {
-	Scope string `json:"scope"`
-	Key   string `json:"key"`
+	Scope   string `json:"scope"`
+	Key     string `json:"key"`
+	LeaseID string `json:"leaseId"`
 }
 
 type ResetReq struct {
@@ -39,6 +40,60 @@ type ResetReq struct {
 type BucketDetailReq struct {
 	Scope string `json:"scope"`
 	Key   string `json:"key"`
+}
+
+func limiterAcquireHandler(eng *limiter.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req AcquireReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		timeout := time.Duration(req.TimeoutMs) * time.Millisecond
+		leaseID, err := eng.AcquireLease(r.Context(), req.Scope, req.Key, req.RPM, req.Concurrency, timeout)
+
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(map[string]any{
+				"allowed": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"allowed": true,
+			"leaseId": string(leaseID),
+		})
+	}
+}
+
+func limiterReleaseHandler(eng *limiter.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req ReleaseReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if req.LeaseID == "" {
+			http.Error(w, "leaseId required", http.StatusBadRequest)
+			return
+		}
+
+		eng.Release(req.Scope, req.Key, limiter.LeaseID(req.LeaseID))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"released": true})
+	}
 }
 
 func newPublicServer(addr string, handler http.Handler) *http.Server {
@@ -115,51 +170,9 @@ func main() {
 	})
 	mux.Handle("/ready", readyHandler(*upstream))
 
-	mux.HandleFunc("/v1/limiter/acquire", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var req AcquireReq
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	mux.HandleFunc("/v1/limiter/acquire", limiterAcquireHandler(eng))
 
-		timeout := time.Duration(req.TimeoutMs) * time.Millisecond
-		err := eng.Acquire(r.Context(), req.Scope, req.Key, req.RPM, req.Concurrency, timeout)
-
-		w.Header().Set("Content-Type", "application/json")
-		if err != nil {
-			status := http.StatusTooManyRequests
-			w.WriteHeader(status)
-			json.NewEncoder(w).Encode(map[string]any{
-				"allowed": false,
-				"error":   err.Error(),
-			})
-			return
-		}
-
-		json.NewEncoder(w).Encode(map[string]any{
-			"allowed": true,
-		})
-	})
-
-	mux.HandleFunc("/v1/limiter/release", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var req ReleaseReq
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		eng.Release(req.Scope, req.Key)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"released": true})
-	})
+	mux.HandleFunc("/v1/limiter/release", limiterReleaseHandler(eng))
 
 	mux.HandleFunc("/v1/limiter/reset", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
