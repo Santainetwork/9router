@@ -73,6 +73,72 @@ describe("Responses abort terminal synthesis", () => {
   });
 });
 
+describe("locked cancellation and idempotent finalizer", () => {
+  it("finalizes exactly once when the client cancels mid-stream", async () => {
+    const ts = new TransformStream();
+    let finalizers = 0;
+    let connected = true;
+    const ctrl = {
+      signal: new AbortController().signal,
+      startTime: Date.now(),
+      isConnected: () => connected,
+      handleComplete: () => { finalizers++; connected = false; },
+      handleError: () => { finalizers++; connected = false; },
+      handleDisconnect: () => { finalizers++; connected = false; },
+      abort: () => {},
+    };
+
+    const out = createDisconnectAwareStream(
+      { readable: ts.readable, writable: ts.writable },
+      ctrl,
+      null
+    );
+
+    const reader = out.getReader();
+    const pending = reader.read();
+    // Let the pending pull fully establish before cancelling, so the
+    // in-flight read resolves done after the cancel and reaches handleComplete.
+    await new Promise((r) => setTimeout(r, 10));
+    await reader.cancel("client abort");
+    await pending;
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(finalizers).toBe(1);
+  });
+
+  it("swallows a locked writer abort during upstream error", async () => {
+    const enc = new TextEncoder();
+    const upstream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(enc.encode("data: hi\n\n"));
+      },
+      pull(controller) {
+        controller.error(Object.assign(new Error("socket hang up"), { name: "AbortError" }));
+      },
+    });
+    let aborts = 0;
+    const out = createDisconnectAwareStream(
+      {
+        readable: upstream,
+        writable: {
+          getWriter: () => ({
+            abort: () => {
+              aborts++;
+              throw new TypeError("This ReadableStream is locked");
+            },
+          }),
+        },
+      },
+      makeController(),
+      null
+    );
+
+    const text = await readAll(out);
+    expect(aborts).toBe(1);
+    expect(text).toContain("data: hi");
+  });
+});
+
 // A stream that aborts after HTTP 200 cannot change status, so the failure must
 // travel in-band: structured error frame first, then [DONE]. openai-python raises
 // APIError on any `data:` payload carrying an `error` key (checked before [DONE]);

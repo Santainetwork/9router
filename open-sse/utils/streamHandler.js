@@ -106,6 +106,16 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   const reader = transformStream.readable.getReader();
   const writer = transformStream.writable.getWriter();
   let terminalEmitted = false;
+  let finalized = false;
+
+  // One idempotent finalizer for complete/error/disconnect/cancellation. A plain
+  // controller (tests, pipeWithDisconnect wrappers) can observe both cancel and
+  // the in-flight pull resolving done, so the stream layer must not finalize twice.
+  const finalize = (handler, ...args) => {
+    if (finalized) return;
+    finalized = true;
+    streamController[handler]?.(...args);
+  };
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -134,7 +144,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const { done, value } = await reader.read();
 
         if (done) {
-          streamController.handleComplete();
+          finalize("handleComplete");
           controller.close();
           return;
         }
@@ -144,7 +154,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // Controller already closed = downstream ended; not an upstream error, skip noisy log.
         const msg0 = error?.message || "";
         const isControllerClosed = msg0.includes("already closed") || msg0.includes("Invalid state");
-        if (!isControllerClosed) streamController.handleError(error);
+        if (!isControllerClosed) finalize("handleError", error);
         cleanupStream(error);
 
         // Treat network resets / socket hang up / abort as graceful close
@@ -176,7 +186,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     },
 
     cancel(reason) {
-      streamController.handleDisconnect(reason || "cancelled");
+      finalize("handleDisconnect", reason || "cancelled");
       cleanupStream(reason);
     }
   });
