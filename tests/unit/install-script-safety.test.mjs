@@ -255,6 +255,18 @@ test("legacy units are backed up before removal, never silently deleted", () => 
   assert.match(fn.slice(0, 800), /BACKUP_DIR\/retired/, "must copy the unit into the backup first");
 });
 
+test("native systemd installer keeps one control worker by default", () => {
+  assert.match(SRC, /WORKER_ROLE=control/, "native service must declare control role");
+  assert.match(SRC, /API_WORKERS=1/, "native service must remain single-process by default");
+  assert.match(SRC, /API_WORKERS=1[\s\S]{0,300}EOF/, "generated env must pin native default worker count");
+  assert.match(SRC, /WORKER_ROLE=control[\s\S]{0,300}EOF/, "generated env must pin native control role");
+});
+
+test("native systemd engine remains single-backend unless explicitly extended", () => {
+  const engine = SRC.slice(SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service"'), SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'));
+  assert.doesNotMatch(engine, /-api-workers/, "native default must not invent API worker ports");
+});
+
 test("health checks cover every public surface and can trigger rollback", () => {
   for (const url of ["/api/health", "/login", "/usage-check", "/health"]) {
     assert.ok(SRC.includes(url), `health checks must cover ${url}`);

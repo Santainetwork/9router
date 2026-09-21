@@ -761,6 +761,10 @@ ${EXISTING_DBURL:-# DATABASE_URL=postgres://user:password@localhost:5432/9router
 # ── Feature toggles ─────────────────────────────────────────────────────────
 ENABLE_GO_HYBRID=true
 GO_ENGINE_URL=http://127.0.0.1:${LIMITER_PORT}
+# Native systemd installs remain one control process. Multi-worker orchestration
+# is currently provided by deploy/docker-entrypoint.sh for PostgreSQL deployments.
+WORKER_ROLE=control
+API_WORKERS=1
 NODE_OPTIONS=--max-old-space-size=512
 EOF
 chmod 600 "$ENV_FILE"
