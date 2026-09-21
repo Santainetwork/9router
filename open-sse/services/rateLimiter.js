@@ -8,7 +8,7 @@
 // When either limit is reached, callers wait in a FIFO queue until a slot frees
 // (window rolls over or active request releases) or per-caller timeout elapses.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const WINDOW_MS = 60_000;
 
@@ -29,6 +29,16 @@ const HYBRID_ENABLED = getEngineConfig().enabled;
 const scopes = new Map();
 const STALE_IN_FLIGHT_MS = 5 * 60 * 1000; // 5 minutes max in-flight protection
 
+// In-process lease ownership for the JS fallback limiter. Mirrors the Go
+// engine's `activeLeases map[LeaseID]time.Time`: each granted concurrency slot
+// owns a unique opaque lease ID and only that ID can release it.
+// ponytail: single-process only; cross-process ownership stays in Go.
+let fallbackLeaseSeq = 0;
+function newFallbackLeaseId() {
+  fallbackLeaseSeq += 1;
+  return `js-${process.pid}-${fallbackLeaseSeq}-${randomUUID()}`;
+}
+
 function bucketFor(scope, key) {
   let m = scopes.get(scope);
   if (!m) { m = new Map(); scopes.set(scope, m); }
@@ -41,7 +51,7 @@ function bucketFor(scope, key) {
       rpmLast: 0,
       concurrencyLast: 0,
       lastActivityAt: Date.now(),
-      inFlightTimes: [],
+      activeLeases: new Map(), // leaseId -> acquiredAt
       queue: [] 
     };
     m.set(key, b);
@@ -55,18 +65,16 @@ if (typeof setInterval === "function") {
     const t = Date.now();
     for (const [scope, m] of scopes.entries()) {
       for (const [key, b] of m.entries()) {
-        if (b.activeConcurrency > 0) {
-          if (Array.isArray(b.inFlightTimes) && b.inFlightTimes.length > 0) {
-            const initialLen = b.inFlightTimes.length;
-            b.inFlightTimes = b.inFlightTimes.filter(ts => t - ts <= STALE_IN_FLIGHT_MS);
-            const expired = initialLen - b.inFlightTimes.length;
-            if (expired > 0) {
-              b.activeConcurrency = Math.max(0, b.activeConcurrency - expired);
-              pump(scope, key);
+        if (b.activeLeases.size > 0) {
+          let expired = false;
+          for (const [leaseId, acquiredAt] of b.activeLeases.entries()) {
+            if (t - acquiredAt > STALE_IN_FLIGHT_MS) {
+              b.activeLeases.delete(leaseId);
+              expired = true;
             }
-          } else if (t - b.lastActivityAt > STALE_IN_FLIGHT_MS) {
-            b.activeConcurrency = 0;
-            b.lastActivityAt = t;
+          }
+          if (expired) {
+            b.activeConcurrency = b.activeLeases.size;
             pump(scope, key);
           }
         }
