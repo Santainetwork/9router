@@ -23,14 +23,14 @@ export APP_NAME="${APP_NAME:-SantaiNetwork}"
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=512}"
 WORKER_ROLE="${WORKER_ROLE:-control}"
 API_WORKERS="${API_WORKERS:-1}"
+export WORKER_ROLE API_WORKERS
+
+# Keep shell orchestration behind the same fail-closed validator as direct Node startup.
+su-exec node node custom-server.js --check-config
 
 case "$API_WORKERS" in
-  ''|*[!0-9]*) echo "[9router-docker] API_WORKERS must be a positive integer" >&2; exit 1 ;;
+  ''|*[!0-9]*|0*) echo "[9router-docker] API_WORKERS must be a positive integer" >&2; exit 1 ;;
 esac
-if [ "$API_WORKERS" -lt 1 ]; then
-  echo "[9router-docker] API_WORKERS must be a positive integer" >&2
-  exit 1
-fi
 case "$WORKER_ROLE" in
   control|api) ;;
   *) echo "[9router-docker] WORKER_ROLE must be control or api" >&2; exit 1 ;;
@@ -43,7 +43,6 @@ if [ "$WORKER_ROLE" = "api" ] || [ "$API_WORKERS" -gt 1 ]; then
     fi ;;
   esac
 fi
-export WORKER_ROLE API_WORKERS
 
 API_WORKER_URLS=""
 i=0

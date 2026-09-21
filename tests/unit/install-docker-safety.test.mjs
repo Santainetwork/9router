@@ -32,7 +32,7 @@ function runEntrypointForInvalidConfig(env) {
   const tempDir = mkdtempSync(path.join(tmpdir(), "9r-entrypoint-test-"));
   try {
     const suExec = path.join(tempDir, "su-exec");
-    execFileSync("sh", ["-c", 'printf \'#!/bin/sh\\nexit 0\\n\' > "$1" && chmod +x "$1"', "sh", suExec]);
+    execFileSync("sh", ["-c", 'printf \'#!/bin/sh\\nshift\\nexec "$@"\\n\' > "$1" && chmod +x "$1"', "sh", suExec]);
     return spawnSync("sh", [ENTRYPOINT_SH, "run"], {
       encoding: "utf8",
       env: {
@@ -55,6 +55,7 @@ function runEntrypointHarness({ apiWorkers = "1", failRole = "" } = {}) {
   const logPath = path.join(tempDir, "processes.log");
   const suExec = path.join(tempDir, "su-exec");
   writeFileSync(suExec, `#!/bin/sh
+if [ "\${3:-}" = "custom-server.js" ] && [ "\${4:-}" = "--check-config" ]; then exit 0; fi
 echo "start role=\${WORKER_ROLE:-} port=\${PORT:-}" >> "$PROCESS_LOG"
 trap 'echo "term role=\${WORKER_ROLE:-} port=\${PORT:-}" >> "$PROCESS_LOG"; exit 0' TERM INT
 if [ "\${WORKER_ROLE:-}" = "$FAIL_ROLE" ]; then exit 7; fi
@@ -225,6 +226,14 @@ test("entrypoint rejects invalid WORKER_ROLE before launching services", () => {
   const result = runEntrypointForInvalidConfig({ WORKER_ROLE: "worker", API_WORKERS: "1" });
   assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stderr, /WORKER_ROLE must be control or api/);
+});
+
+test("entrypoint rejects unsafe API_WORKERS integers before arithmetic", () => {
+  for (const value of ["08", "999999999999999999999999999"]) {
+    const result = runEntrypointForInvalidConfig({ API_WORKERS: value });
+    assert.equal(result.status, 1, `API_WORKERS=${value} unexpectedly passed`);
+    assert.match(result.stderr, /API_WORKERS must be a positive integer/);
+  }
 });
 
 test("entrypoint rejects API role backed by SQLite", () => {
