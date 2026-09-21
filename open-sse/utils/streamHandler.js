@@ -117,6 +117,11 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     } catch { /* best-effort terminal */ }
   };
 
+  const cleanupStream = (reason) => {
+    try { Promise.resolve(reader.cancel(reason)).catch(() => {}); } catch {}
+    try { Promise.resolve(writer.abort(reason)).catch(() => {}); } catch {}
+  };
+
   return new ReadableStream({
     async pull(controller) {
       if (!streamController.isConnected()) {
@@ -140,8 +145,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const msg0 = error?.message || "";
         const isControllerClosed = msg0.includes("already closed") || msg0.includes("Invalid state");
         if (!isControllerClosed) streamController.handleError(error);
-        reader.cancel().catch(() => {});
-        writer.abort().catch(() => {});
+        cleanupStream(error);
 
         // Treat network resets / socket hang up / abort as graceful close
         const msg = error?.message || "";
@@ -161,7 +165,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // Graceful close on network/abort, or when a structured terminal is available
         // (Responses passthrough prefers response.failed + [DONE] over a raw transport error)
         try {
-          if (!wasConnected || isNetworkClose || onAbortTerminal) {
+          if (!wasConnected || isControllerClosed || isNetworkClose || onAbortTerminal) {
             emitTerminal(controller);
             controller.close();
           } else {
@@ -173,8 +177,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
 
     cancel(reason) {
       streamController.handleDisconnect(reason || "cancelled");
-      try { reader.cancel(reason).catch(() => {}); } catch {}
-      try { writer.abort(reason).catch(() => {}); } catch {}
+      cleanupStream(reason);
     }
   });
 }
