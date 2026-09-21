@@ -75,6 +75,141 @@ func TestExtractAPIKey(t *testing.T) {
 	}
 }
 
+func TestAPIWorkersRoundRobin(t *testing.T) {
+	var hits [2]int32
+	workers := make([]*httptest.Server, 2)
+	for i := range workers {
+		i := i
+		workers[i] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/health" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			atomic.AddInt32(&hits[i], 1)
+			fmt.Fprintf(w, "worker-%d", i)
+		}))
+		defer workers[i].Close()
+	}
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "control") }))
+	defer control.Close()
+	s, err := NewServer(Config{UpstreamURL: control.URL, APIWorkerURLs: []string{workers[0].URL, workers[1].URL}, AllowAllPaths: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for i := 0; i < 4; i++ {
+		rr := httptest.NewRecorder()
+		s.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+		if rr.Body.String() != fmt.Sprintf("worker-%d", i%2) {
+			t.Fatalf("request %d routed to %q", i, rr.Body.String())
+		}
+	}
+}
+
+func TestAPIWorkersRoundRobinSkipsUnhealthyWorkers(t *testing.T) {
+	workers := make([]*httptest.Server, 3)
+	for i := range workers {
+		i := i
+		workers[i] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/health" {
+				if i == 1 {
+					http.Error(w, "down", http.StatusServiceUnavailable)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			_, _ = fmt.Fprintf(w, "worker-%d", i)
+		}))
+		defer workers[i].Close()
+	}
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "control")
+	}))
+	defer control.Close()
+	s, err := NewServer(Config{
+		UpstreamURL:   control.URL,
+		APIWorkerURLs: []string{workers[0].URL, workers[1].URL, workers[2].URL},
+		AllowAllPaths: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for i, want := range []string{"worker-0", "worker-2", "worker-0", "worker-2"} {
+		rr := httptest.NewRecorder()
+		s.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+		if got := rr.Body.String(); got != want {
+			t.Fatalf("request %d routed to %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestAPIWorkersFallbackToControlWhenUnhealthy(t *testing.T) {
+	worker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "down", http.StatusServiceUnavailable) }))
+	defer worker.Close()
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "control") }))
+	defer control.Close()
+	s, err := NewServer(Config{UpstreamURL: control.URL, APIWorkerURLs: []string{worker.URL}, AllowAllPaths: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v2/chat", nil))
+	if rr.Body.String() != "control" {
+		t.Fatalf("expected control fallback, got %q", rr.Body.String())
+	}
+}
+
+func TestDashboardNeverRoutedToAPIWorker(t *testing.T) {
+	worker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "worker") }))
+	defer worker.Close()
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "control") }))
+	defer control.Close()
+	s, err := NewServer(Config{UpstreamURL: control.URL, APIWorkerURLs: []string{worker.URL}, AllowAllPaths: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
+	if rr.Body.String() != "control" {
+		t.Fatalf("expected dashboard on control, got %q", rr.Body.String())
+	}
+}
+
+func TestAPIWorkerRoutesAllSupportedAPIPrefixes(t *testing.T) {
+	worker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_, _ = fmt.Fprint(w, "worker")
+	}))
+	defer worker.Close()
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "control")
+	}))
+	defer control.Close()
+	s, err := NewServer(Config{UpstreamURL: control.URL, APIWorkerURLs: []string{worker.URL}, AllowAllPaths: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for _, path := range []string{"/nosaver/chat/completions", "/v1beta/models"} {
+		t.Run(path, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			s.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, path, nil))
+			if rr.Body.String() != "worker" {
+				t.Fatalf("expected %s on API worker, got %q", path, rr.Body.String())
+			}
+		})
+	}
+}
+
 func TestAllowedPathsForwarded(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Upstream-Path", r.URL.Path)

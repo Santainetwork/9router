@@ -155,7 +155,14 @@ func main() {
 	proxyConcurrency := flag.Int("proxy-concurrency", 0, "Default per-key concurrency limit in proxy (0 = dynamic from limiter or disabled)")
 	proxyRPM := flag.Int("proxy-rpm", 0, "Default per-key RPM limit in proxy (0 = disabled)")
 	proxyTimeout := flag.Int("proxy-timeout", 60, "Proxy queue timeout in seconds")
+	apiWorkers := flag.String("api-workers", "", "Comma-separated API worker URLs")
 	flag.Parse()
+	var apiWorkerURLs []string
+	for _, workerURL := range strings.Split(*apiWorkers, ",") {
+		if workerURL = strings.TrimSpace(workerURL); workerURL != "" {
+			apiWorkerURLs = append(apiWorkerURLs, workerURL)
+		}
+	}
 
 	eng := limiter.NewEngine()
 	mux := http.NewServeMux()
@@ -239,10 +246,12 @@ func main() {
 			KeyRPM:         *proxyRPM,
 			QueueTimeout:   time.Duration(*proxyTimeout) * time.Second,
 			AllowAllPaths:  true, // Master Gateway allows /dashboard, /_next, /api, and gates /v1
+			APIWorkerURLs:  apiWorkerURLs,
 		})
 		if err != nil {
 			log.Fatalf("[Master Gateway] Initialization error: %v", err)
 		}
+		defer gatewayHandler.Close()
 
 		gatewayAddr := fmt.Sprintf(":%d", *gatewayPort)
 		gatewaySrv = newPublicServer(gatewayAddr, gatewayHandler)
@@ -265,10 +274,12 @@ func main() {
 			KeyRPM:         *proxyRPM,
 			QueueTimeout:   time.Duration(*proxyTimeout) * time.Second,
 			AllowAllPaths:  false, // Public proxy mode: blocks admin routes with 404
+			APIWorkerURLs:  apiWorkerURLs,
 		})
 		if err != nil {
 			log.Fatalf("[Frontdoor Proxy] Initialization error: %v", err)
 		}
+		defer proxyHandler.Close()
 
 		proxyAddr := fmt.Sprintf(":%d", *proxyPort)
 		proxySrv = newPublicServer(proxyAddr, proxyHandler)

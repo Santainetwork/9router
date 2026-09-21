@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/santainetwork/9router-hybrid/pkg/limiter"
@@ -41,6 +43,12 @@ type Config struct {
 	QueueTimeout   time.Duration
 	Scope          string
 	AllowAllPaths  bool // When true (gateway mode), forwards all paths (e.g. /dashboard, /_next, /api)
+	APIWorkerURLs  []string
+}
+
+type apiWorker struct {
+	url     *url.URL
+	healthy atomic.Bool
 }
 
 // Server is the HTTP front-door reverse proxy server.
@@ -48,6 +56,10 @@ type Server struct {
 	cfg          Config
 	upstreamURL  *url.URL
 	reverseProxy *httputil.ReverseProxy
+	apiWorkers   []*apiWorker
+	nextWorker   atomic.Uint64
+	stopHealth   chan struct{}
+	closeOnce    sync.Once
 }
 
 func (s *Server) proxyGatingEnabled() bool {
@@ -86,6 +98,28 @@ func ExtractAPIKey(r *http.Request) string {
 	return ""
 }
 
+func isAPIRequest(path string) bool {
+	return strings.HasPrefix(path, "/v1/") ||
+		strings.HasPrefix(path, "/api/v1/") ||
+		strings.HasPrefix(path, "/v2/") ||
+		strings.HasPrefix(path, "/api/v2/") ||
+		strings.HasPrefix(path, "/nosaver/") ||
+		strings.HasPrefix(path, "/v1beta/")
+}
+
+func isAPIWorkerRequest(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		return false
+	}
+	path := r.URL.Path
+	return strings.HasPrefix(path, "/v1/") ||
+		strings.HasPrefix(path, "/api/v1/") ||
+		strings.HasPrefix(path, "/v2/") ||
+		strings.HasPrefix(path, "/api/v2/") ||
+		strings.HasPrefix(path, "/nosaver/") ||
+		strings.HasPrefix(path, "/v1beta/")
+}
+
 // NewServer initializes a new front-door reverse proxy server.
 func NewServer(cfg Config) (*Server, error) {
 	if cfg.UpstreamURL == "" {
@@ -107,6 +141,22 @@ func NewServer(cfg Config) (*Server, error) {
 		cfg.QueueTimeout = 60 * time.Second
 	}
 
+	workers := make([]*apiWorker, 0, len(cfg.APIWorkerURLs))
+	for _, rawWorkerURL := range cfg.APIWorkerURLs {
+		rawWorkerURL = strings.TrimSpace(rawWorkerURL)
+		if rawWorkerURL == "" {
+			continue
+		}
+		if !strings.HasPrefix(rawWorkerURL, "http://") && !strings.HasPrefix(rawWorkerURL, "https://") {
+			rawWorkerURL = "http://" + rawWorkerURL
+		}
+		workerURL, err := url.Parse(rawWorkerURL)
+		if err != nil || workerURL.Host == "" {
+			return nil, fmt.Errorf("invalid API worker URL %q", rawWorkerURL)
+		}
+		workers = append(workers, &apiWorker{url: workerURL})
+	}
+
 	rp := httputil.NewSingleHostReverseProxy(target)
 	rp.FlushInterval = -1 // Stream SSE chunks immediately without buffering
 
@@ -125,9 +175,20 @@ func NewServer(cfg Config) (*Server, error) {
 		ResponseHeaderTimeout: 300 * time.Second, // Long-lived streaming/reasoning models
 	}
 
+	s := &Server{
+		cfg:          cfg,
+		upstreamURL:  target,
+		reverseProxy: rp,
+		apiWorkers:   workers,
+		stopHealth:   make(chan struct{}),
+	}
 	originalDirector := rp.Director
 	rp.Director = func(req *http.Request) {
 		originalDirector(req)
+		if worker := s.nextHealthyWorker(req); worker != nil {
+			req.URL.Scheme = worker.url.Scheme
+			req.URL.Host = worker.url.Host
+		}
 		if req.Header.Get("X-Forwarded-Host") == "" && req.Host != "" {
 			req.Header.Set("X-Forwarded-Host", req.Host)
 		}
@@ -156,11 +217,58 @@ func NewServer(cfg Config) (*Server, error) {
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 	}
 
-	return &Server{
-		cfg:          cfg,
-		upstreamURL:  target,
-		reverseProxy: rp,
-	}, nil
+	if len(workers) > 0 {
+		s.checkAPIWorkers()
+		go s.monitorAPIWorkers()
+	}
+	return s, nil
+}
+
+func (s *Server) nextHealthyWorker(r *http.Request) *apiWorker {
+	if !isAPIWorkerRequest(r) || len(s.apiWorkers) == 0 {
+		return nil
+	}
+	start := s.nextWorker.Add(1) - 1
+	healthy := make([]*apiWorker, 0, len(s.apiWorkers))
+	for _, worker := range s.apiWorkers {
+		if worker.healthy.Load() {
+			healthy = append(healthy, worker)
+		}
+	}
+	if len(healthy) == 0 {
+		return nil
+	}
+	return healthy[int(start%uint64(len(healthy)))]
+}
+
+func (s *Server) checkAPIWorkers() {
+	client := &http.Client{Timeout: 2 * time.Second}
+	for _, worker := range s.apiWorkers {
+		resp, err := client.Get(strings.TrimRight(worker.url.String(), "/") + "/api/health")
+		healthy := err == nil && resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		worker.healthy.Store(healthy)
+	}
+}
+
+func (s *Server) monitorAPIWorkers() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.checkAPIWorkers()
+		case <-s.stopHealth:
+			return
+		}
+	}
+}
+
+// Close stops API worker health checks.
+func (s *Server) Close() {
+	s.closeOnce.Do(func() { close(s.stopHealth) })
 }
 
 func (s *Server) serveStatic(w http.ResponseWriter, filename string) bool {
@@ -206,14 +314,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Front-door concurrency & rate limiting gating for API endpoints
-	isAPIRequest := strings.HasPrefix(reqPath, "/v1/") ||
-		strings.HasPrefix(reqPath, "/api/v1/") ||
-		strings.HasPrefix(reqPath, "/v2/") ||
-		strings.HasPrefix(reqPath, "/api/v2/") ||
-		strings.HasPrefix(reqPath, "/nosaver/") ||
-		strings.HasPrefix(reqPath, "/v1beta/")
-
-	if isAPIRequest && s.cfg.Limiter != nil && s.proxyGatingEnabled() {
+	if isAPIRequest(reqPath) && s.cfg.Limiter != nil && s.proxyGatingEnabled() {
 		apiKey := ExtractAPIKey(r)
 		if apiKey != "" {
 			concurrency := s.cfg.KeyConcurrency
