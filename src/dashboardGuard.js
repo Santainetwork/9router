@@ -205,11 +205,6 @@ export const __test__ = {
 };
 
 export async function proxy(request) {
-  // Always allow CORS preflight requests
-  if (request.method === "OPTIONS") {
-    return NextResponse.next();
-  }
-
   const { pathname } = request.nextUrl;
 
   // Readiness is strictly internal: allow only a trusted loopback peer, and
@@ -218,6 +213,11 @@ export async function proxy(request) {
   if (pathname === READINESS_PATH || pathname.startsWith(`${READINESS_PATH}/`)) {
     if (isLocalRequest(request)) return NextResponse.next();
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Always allow CORS preflight requests
+  if (request.method === "OPTIONS") {
+    return NextResponse.next();
   }
 
   // Local-only gate for spawn-capable / host-secret routes.

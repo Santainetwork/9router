@@ -9,9 +9,9 @@ process.env.NINEROUTER_PEER_TOKEN = "readiness-peer-token";
 
 const { proxy } = await import(`../../src/dashboardGuard.js?readiness=${Date.now()}`);
 
-function request(headers = {}) {
+function request(headers = {}, method = "GET") {
   return {
-    method: "GET",
+    method,
     url: "http://router.example.com/api/ready",
     nextUrl: new URL("http://router.example.com/api/ready"),
     headers: new Headers(headers),
@@ -37,4 +37,10 @@ test("dashboard guard allows readiness only from the trusted loopback peer", asy
     assert.equal(remote.status, 404);
     assert.deepEqual(await remote.json(), { error: "Not found" });
   }
+});
+
+test("dashboard guard denies remote readiness preflight", async () => {
+  const remote = await proxy(request({}, "OPTIONS"));
+  assert.equal(remote.status, 404);
+  assert.deepEqual(await remote.json(), { error: "Not found" });
 });
