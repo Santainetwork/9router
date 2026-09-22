@@ -1,6 +1,8 @@
 # 🐳 9Router Docker Deployment & Installer
 
-Deploy 9Router SantaiNetwork Edition in an isolated, multi-platform Docker container stack. Recommended for operating systems without systemd (Alpine, macOS, Windows WSL, Synology NAS, Proxmox LXC, or containerized VPS).
+Deploy 9Router SantaiNetwork Edition in an isolated, multi-platform Docker container stack. Published image: [`decolua/9router`](https://hub.docker.com/r/decolua/9router) — multi-platform `linux/amd64` + `linux/arm64`.
+
+Recommended for operating systems without systemd (Alpine, macOS, Windows WSL, Synology NAS, Proxmox LXC, or containerized VPS).
 
 ---
 
@@ -59,7 +61,15 @@ Incoming Traffic
 
 ---
 
-## 🚀 Manual Docker Compose Deployment
+## 👤 Quick Start
+
+To pin a specific version instead of following `latest`, use a numbered image tag:
+
+```bash
+docker pull decolua/9router:0.5.81
+```
+
+### Manual Docker Compose Deployment
 
 If you prefer running standard Docker Compose commands without the installer script:
 
@@ -83,69 +93,125 @@ JWT_SECRET=your_random_secret_here
 ### 2. Launch Services
 
 ```bash
-# Build and run with default SQLite database
-docker compose up -d --build
+docker build -t 9router .
 
-# Or run with containerized PostgreSQL service
-docker compose --profile postgres up -d --build
-
-# Or run with Headroom prompt compression sidecar
-docker compose --profile headroom up -d --build
+docker run --rm -p 20128:20128 \
+  -v "$HOME/.9router:/app/data" \
+  -e DATA_DIR=/app/data \
+  9router
 ```
 
----
+The Dockerfile uses the official Alpine and npm registries by default. Regional mirrors can be supplied when needed.
 
-## 🧩 Multi-Worker Mode (PostgreSQL only)
+App listens on port `20128`. Open: http://localhost:20128
 
-### What `API_WORKERS` means
-
-`API_WORKERS` counts **total Node processes**, not API-only processes:
-
-- `API_WORKERS=1` (default): exactly **one** Node process, running `WORKER_ROLE=control`. This is the only supported mode for SQLite.
-- `API_WORKERS=N` with `N > 1` (**PostgreSQL required**): Total Node processes = 1 control + `API_WORKERS` - 1 API workers. The control process (`WORKER_ROLE=control`) keeps dashboard, auth, tunnel, MITM, MCP, quota auto-ping, and background token refresh. The API workers (`WORKER_ROLE=api`) serve request handling only. The Go gateway round-robins `/v1/`, `/v2/`, `/api/v1/`, `/api/v2/` across healthy workers; admin/dashboard routes stay on the control process.
-
-Example: `API_WORKERS=3` means **1 control + 2 API workers**.
-
-### PostgreSQL multi-worker example (one control + two API workers)
-
-Edit `.env`:
-
-```env
-DATABASE_URL=postgres://user:pass@db.example.com:5432/9router
-WORKER_ROLE=control
-API_WORKERS=3
-```
-
-Then start the stack (with the bundled PostgreSQL profile if needed):
+### Manage container
 
 ```bash
-docker compose --profile postgres up -d --build
+docker logs -f 9router        # view logs
+docker stop --time 330 9router  # stop
+docker start 9router          # start again
+docker rm -f 9router          # remove
 ```
-
-This launches a single container that runs `1` control process bound to the internal backend port, `2` API workers on internal loopback ports `20131` and `20132`, and the Go gateway front door. SQLite is intentionally rejected here: `API_WORKERS>1` or `WORKER_ROLE=api` without `DATABASE_URL=postgres://...` (or `DB_TYPE=postgres`) fails closed at startup.
-
-API worker ports are **internal only**. Only the Master Gateway (`20128`) and the public proxy (`20140`) are exposed; the backend port and worker ports never leave the container.
-
-### Rollback
-
-Set `API_WORKERS=1` (and optionally `WORKER_ROLE=control`) in `.env`, then `docker compose up -d` again. The stack returns to a single Node process. This is the recommended rollback for SQLite and for any database not on PostgreSQL.
-
-### systemd deployments
-
-This repository ships no systemd unit; the installer-generated service (if used) should not be edited here. Configure multi-worker mode via the Environment override instead, for example:
-
-```ini
-[Service]
-Environment=WORKER_ROLE=control
-Environment=API_WORKERS=3
-Environment=DATABASE_URL=postgres://user:pass@host:5432/9router
-```
-
-Keep the default single-process topology (`API_WORKERS=1`) on SQLite.
 
 ---
 
-## 🛠️ Management Commands
+## Data persistence
+
+Host path: `$HOME/.9router/db/data.sqlite`
+Container path: `/app/data/db/data.sqlite`
+
+Data layout under `$DATA_DIR/`:
+
+```text
+$DATA_DIR/
+├── db/
+│   ├── data.sqlite       # main SQLite database
+│   └── backups/          # auto backups
+└── ...                   # certs, logs, runtime configs
+```
+
+Without `DATA_DIR`, the app falls back to `~/.9router/` (macOS/Linux) or `%APPDATA%\9router\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
+
+---
+
+## Optional env vars
+
+```bash
+docker run -d --stop-timeout 330 \
+  -p 20128:20128 \
+  -v "$HOME/.9router:/app/data" \
+  -e DATA_DIR=/app/data \
+  -e PORT=20128 \
+  -e HOSTNAME=0.0.0.0 \
+  -e DEBUG=true \
+  --name 9router \
+  decolua/9router:latest
+```
+
+---
+
+## Optional Headroom sidecar
+
+The 9Router image does not bundle Python or Headroom. To use Headroom in Docker, run it as a separate service and point 9Router at that proxy:
+
+```yaml
+services:
+  9router:
+    image: decolua/9router:latest
+    ports:
+      - "20128:20128"
+    volumes:
+      - "$HOME/.9router:/app/data"
+    environment:
+      DATA_DIR: /app/data
+```
+
+---
+
+## Environment Variables Reference
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `APP_NAME` | `SantaiNetwork` | Dynamic branding displayed across UI and endpoints |
+| `GATEWAY_PORT` | `20128` | Host port for Master Gateway & Dashboard |
+| `PUBLIC_PORT` | `20140` | Host port for Public Usage Check and Docs |
+| `INITIAL_PASSWORD` | auto-generated | Default admin password on first launch |
+| `JWT_SECRET` | auto-generated | JWT token signing key |
+| `MACHINE_ID_SALT` | auto-generated | Salt for deterministic CLI tokens |
+| `API_KEY_SECRET` | auto-generated | Encryption salt for API keys |
+| `DATABASE_URL` | empty (SQLite) | PostgreSQL URL (`postgres://user:pass@host:5432/db`) |
+| `WORKER_ROLE` | `control` | `control` runs dashboard/auth/tunnel/MITM/MCP and background jobs; `api` runs request handling only |
+| `API_WORKERS` | `1` | Total Node processes: `1` control + (`API_WORKERS` - 1) API workers. Must be `1` for SQLite |
+| `ENABLE_GO_HYBRID` | `true` | Enables Golang Master Gateway and concurrency semaphores |
+| `NODE_OPTIONS` | `--max-old-space-size=512` | Memory clamp preventing V8 heap runaway |
+
+---
+
+## Persistent Data Structure
+
+Data is stored in the Docker volume `9router-data` mounted at `/app/data`:
+
+```text
+/app/data/
+├── db/
+│   ├── data.sqlite        # Main SQLite database (when not using PostgreSQL)
+│   └── backups/           # Automated database backups
+├── auth/
+│   └── cli-secret         # Machine credentials
+└── machine-id             # Stable container instance identity
+```
+
+To backup your SQLite database from Docker:
+
+```bash
+docker run --rm -v 9router-data:/data -v $(pwd):/backup alpine \
+  cp /data/db/data.sqlite /backup/data.sqlite.bak
+```
+
+---
+
+## Management Commands
 
 Using the installer script:
 
@@ -171,42 +237,76 @@ Using the installer script:
 
 ---
 
-## 📁 Persistent Data Structure
+## systemd deployments
 
-Data is stored in the Docker volume `9router-data` mounted at `/app/data`:
+This repository ships no systemd unit; the installer-generated service (if used) should not be edited here. Configure multi-worker mode via the Environment override instead, for example:
 
-```text
-/app/data/
-├── db/
-│   ├── data.sqlite        # Main SQLite database (when not using PostgreSQL)
-│   └── backups/           # Automated database backups
-├── auth/
-│   └── cli-secret         # Machine credentials
-└── machine-id             # Stable container instance identity
+```ini
+[Service]
+Environment=WORKER_ROLE=control
+Environment=API_WORKERS=3
+Environment=DATABASE_URL=postgres://user:pass@host:5432/9router
 ```
 
-To backup your SQLite database from Docker:
+Keep the default single-process topology (`API_WORKERS=1`) on SQLite.
+---
+
+## Graceful Shutdown & Drain Timeout
+
+9Router supports graceful shutdown with a 330-second (5.5 minute) drain window to allow in-flight requests to complete before container stop. This prevents request loss during rolling deployments or planned restarts.
+
+### Docker Compose with Grace Period
+
+```yaml
+services:
+  9router:
+    image: decolua/9router:latest
+    # ... other config ...
+    stop_grace_period: 331s  # MUST exceed NINEROUTER_DRAIN_TIMEOUT_MS (default 330000ms = 330s)
+```
+
+### Direct Docker Usage
+
+When running containers directly, use `--stop-timeout` to preserve the drain window:
 
 ```bash
-docker run --rm -v 9router-data:/data -v $(pwd):/backup alpine \
-  cp /data/db/data.sqlite /backup/data.sqlite.bak
+docker stop --time 330 9router  # matches application's 330s drain
 ```
+
+**Important**: Always document and respect the drain timeout in production runbooks. Never use bare `docker stop` which defaults to 10s — that will terminate active sessions.
 
 ---
 
-## ⚙️ Environment Variables Reference
+## PostgreSQL Multi-Worker Semantics
 
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `APP_NAME` | `SantaiNetwork` | Dynamic branding displayed across UI and endpoints |
-| `GATEWAY_PORT` | `20128` | Host port for Master Gateway & Dashboard |
-| `PUBLIC_PORT` | `20140` | Host port for Public Usage Check and Docs |
-| `INITIAL_PASSWORD` | auto-generated | Default admin password on first launch |
-| `JWT_SECRET` | auto-generated | JWT token signing key |
-| `MACHINE_ID_SALT` | auto-generated | Salt for deterministic CLI tokens |
-| `API_KEY_SECRET` | auto-generated | Encryption salt for API keys |
-| `DATABASE_URL` | empty (SQLite) | PostgreSQL URL (`postgres://user:pass@host:5432/db`) |
-| `WORKER_ROLE` | `control` | `control` runs dashboard/auth/tunnel/MITM/MCP and background jobs; `api` runs request handling only |
-| `API_WORKERS` | `1` | Total Node processes: `1` control + (`API_WORKERS` - 1) API workers. Must be `1` for SQLite |
-| `ENABLE_GO_HYBRID` | `true` | Enables Golang Master Gateway and concurrency semaphores |
-| `NODE_OPTIONS` | `--max-old-space-size=512` | Memory clamp preventing V8 heap runaway |
+Multi-worker mode requires PostgreSQL; SQLite only supports single-process mode (`API_WORKERS=1`).
+
+### Total-Process Model
+
+The total process count is calculated as:
+
+```
+Total Processes = 1 control + (API_WORKERS - 1) API workers
+```
+
+Example: `API_WORKERS=3` creates **1 control process + 2 API workers = 3 processes total**.
+
+### Worker Role Distribution
+
+- **control**: Handles dashboard UI, authentication tunnels, MITM proxy, MCP tools, and background jobs
+- **api**: Stateless request handling only
+
+On SQLite: must set `API_WORKERS=1` (single process runs both roles).
+
+### Configuration Override
+
+Edit systemd service environment or compose file:
+
+```ini
+[Service]
+Environment=WORKER_ROLE=control
+Environment=API_WORKERS=3
+Environment=DATABASE_URL=postgres://user:pass@host:5432/9router
+```
+
+Rollback: set `API_WORKERS=1` and restart. Single-process mode is safe for SQLite deployments.

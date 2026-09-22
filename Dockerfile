@@ -1,22 +1,42 @@
 # syntax=docker/dockerfile:1.7
 ARG GO_IMAGE=golang:1.24-alpine
 ARG NODE_IMAGE=node:22-alpine
+ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+ARG APP_VERSION=unknown
 
-# --- Stage 1: Build Golang Hybrid Concurrency Engine ---
+# --- Stage 0: Build Golang Hybrid Concurrency Engine ---
 FROM ${GO_IMAGE} AS engine-builder
 WORKDIR /src/hybrid-engine
 COPY hybrid-engine/ ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/router-engine ./cmd/engine
 
-# --- Stage 2: Build Next.js Web Dashboard ---
-FROM ${NODE_IMAGE} AS node-builder
+# --- Stage 1: Base Node Builder ---
+FROM ${NODE_IMAGE} AS base
+ARG ALPINE_MIRROR
 WORKDIR /app
 
-RUN apk --no-cache add python3 make g++ linux-headers
+# Use the official Alpine mirror by default. A repository variable/build arg can
+# override it for environments that require a regional mirror.
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
 
-COPY package.json package-lock.json* ./
-ARG NPM_REGISTRY=https://registry.npmjs.org
-RUN npm install --registry=${NPM_REGISTRY}
+# --- Stage 2: Build Next.js Web Dashboard ---
+FROM base AS builder
+ARG NPM_REGISTRY
+
+RUN apk add --no-cache python3 make g++ linux-headers
+
+COPY package.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm install \
+      --registry="${NPM_REGISTRY}" \
+      --fetch-retries=5 \
+      --fetch-retry-factor=2 \
+      --fetch-retry-mintimeout=10000 \
+      --fetch-retry-maxtimeout=120000 \
+      --fetch-timeout=300000
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -24,10 +44,17 @@ RUN npm run build
 
 # --- Stage 3: Production Runner ---
 FROM ${NODE_IMAGE} AS runner
+ARG ALPINE_MIRROR
+ARG APP_VERSION
 WORKDIR /app
 
-LABEL org.opencontainers.image.title="9router"
-LABEL org.opencontainers.image.description="9Router with Golang Hybrid Concurrency Engine"
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
+
+LABEL org.opencontainers.image.title="9router" \
+      org.opencontainers.image.description="9Router with Golang Hybrid Concurrency Engine" \
+      org.opencontainers.image.version="${APP_VERSION}"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -45,22 +72,23 @@ ENV NODE_OPTIONS=--max-old-space-size=512
 COPY --from=engine-builder /bin/router-engine /app/router-engine
 
 # Copy Next.js standalone artifacts
-COPY --from=node-builder /app/public ./public
-COPY --from=node-builder /app/.next/static ./.next/static
-COPY --from=node-builder /app/.next/standalone ./
-COPY --from=node-builder /app/custom-server.js ./custom-server.js
-COPY --from=node-builder /app/open-sse ./open-sse
-COPY --from=node-builder /app/deploy ./deploy
-COPY --from=node-builder /app/src/mitm ./src/mitm
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/custom-server.js ./custom-server.js
+COPY --from=builder /app/open-sse ./open-sse
+COPY --from=builder /app/deploy ./deploy
+# Next file tracing can omit sibling files; MITM runs server.js as a separate process.
+COPY --from=builder /app/src/mitm ./src/mitm
 
 # Standalone dependency fallbacks
-COPY --from=node-builder /app/node_modules/node-forge ./node_modules/node-forge
-COPY --from=node-builder /app/node_modules/next ./node_modules/next
-COPY --from=node-builder /app/node_modules/sql.js ./node_modules/sql.js
-COPY --from=node-builder /app/node_modules/node-machine-id ./node_modules/node-machine-id
+COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
+COPY --from=builder /app/node_modules/next ./node_modules/next
+COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
+COPY --from=builder /app/node_modules/node-machine-id ./node_modules/node-machine-id
 
 # Runtime requirements and directory setup
-RUN apk --no-cache add su-exec ca-certificates tzdata && \
+RUN apk add --no-cache su-exec ca-certificates tzdata && \
     mkdir -p /app/data /app/data-home && \
     chown -R node:node /app && \
     ln -sf /app/data-home /root/.9router 2>/dev/null || true
