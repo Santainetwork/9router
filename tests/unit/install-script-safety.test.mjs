@@ -279,6 +279,13 @@ test("engine staging skips self-copy during an in-place upgrade", () => {
   assert.match(stage, /\[ "\$REPO_DIR" != "\$INSTALL_DIR" \]/, "in-place source/install path must skip same-file cp");
 });
 
+test("shipped engine binary supports the native API worker flag", () => {
+  const engine = path.join(REPO_ROOT, "hybrid-engine/bin/router-engine");
+  const r = spawnSync(engine, ["-h"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(`${r.stdout || ""}${r.stderr || ""}`, /-api-workers\b/);
+});
+
 test("upgrade rollback restores the engine binary and preserves the failing exit code", () => {
   assert.ok(SRC.includes('backup_paths engine "$INSTALL_DIR/hybrid-engine/bin/router-engine"'));
   assert.ok(SRC.includes('cp -a "$BACKUP_DIR/engine/router-engine" "$INSTALL_DIR/hybrid-engine/bin/router-engine"'));

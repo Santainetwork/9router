@@ -37,10 +37,10 @@
 
 ### Task 4: Whole-result acceptance
 
-- [x] Focused Node tests pass (43/43).
-- [x] Full Node verification (198 pass, 2 skip) and production build pass.
+- [x] Focused Node tests pass (44/44).
+- [x] Full Node verification (199 pass, 2 skip) and production build pass.
 - [x] Go race/vet pass.
-- [ ] **BLOCKED** — Isolated real control + 2 workers + gateway: worker health, API round-robin, dashboard control route, public/limiter normal. Requires live PostgreSQL + systemd; no evidence in current session.
+- [x] Isolated real control + 2 workers + gateway on disposable ports with local PostgreSQL and transient systemd: worker health, 6/6 API round-robin, dashboard control-only routing, failover, public proxy, limiter cancellation/release, and graceful shutdown passed.
 - [x] Default SQLite/single-worker path remains unchanged (`API_WORKERS=1` default tested).
 - [x] Independent safety/systemd reviews found no critical blocker; findings fixed and retested.
-- [ ] Pending — Commit changes and record evidence, without deploying production.
+- [x] Commit changes and record evidence, without deploying production (`09e3fe5a`; acceptance follow-up separate).

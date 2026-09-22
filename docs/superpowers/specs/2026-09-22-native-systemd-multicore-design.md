@@ -45,12 +45,16 @@ Workers use loopback host, `WORKER_ROLE=api`, `NINEROUTER_WORKER_ROLE=api`, tota
 
 | Check | Status | Evidence |
 |---|---|---|
-| Focused native-systemd tests (43/43) | ✅ Pass | `node --test tests/unit/install-script-safety.test.mjs tests/unit/systemd-worker-topology.test.mjs` |
-| Full Node verification suite (198 pass, 2 skip) | ✅ Pass | `npm test` |
+| Focused native-systemd tests (44/44) | ✅ Pass | `node --test tests/unit/install-script-safety.test.mjs tests/unit/systemd-worker-topology.test.mjs` |
+| Full Node verification suite (199 pass, 2 skip) | ✅ Pass | `npm run verify` |
 | Production build | ✅ Pass | `npm run build` |
 | Go vet + race detector | ✅ Pass | `cd hybrid-engine && go vet ./... && go test ./... -race` |
 | `systemd-analyze verify` (sandbox) | ✅ Pass | Unit syntax validated in dry-run sandbox |
 | Default SQLite/single-worker path unchanged | ✅ Pass | `API_WORKERS=1` default tested; no workers enabled without PostgreSQL |
-| Isolated real control + 2 workers + gateway | ⏳ Pending | Requires live PostgreSQL instance + systemd; blocked until integration environment available |
+| Isolated real control + 2 workers + gateway | ✅ Pass | Fresh standalone artifact + local PostgreSQL + transient systemd: control `:32127`, workers `:32131/:32132`, gateway `:32128`, limiter `:32129`, public proxy `:32140` |
+| API round-robin and control-only dashboard | ✅ Pass | Request-byte traces: 12 `/v1/models` probes split 6/6 across workers; 5 `/dashboard` probes reached control and 0 reached either worker |
+| Worker failure and queue cancellation | ✅ Pass | With worker 1 stopped, 8/8 API probes reached worker 2 and 0 reached control; cancelled limiter waiter left `queued=0`; release returned `activeConcurrency=0` |
+| Graceful shutdown | ✅ Pass | All four disposable services became inactive, all six listeners disappeared, and every Node process logged the 300-second drain handler |
 | Independent safety/systemd review | ✅ Pass | Swarm audit found no critical issues; actionable findings were fixed and retested |
-| Commit evidence | ⏳ Pending | Awaiting completion of all checks |
+| Shipped engine compatibility | ✅ Pass | Real gateway start exposed a stale tracked binary missing `-api-workers`; binary rebuilt and a CLI regression test now checks the shipped artifact |
+| Commit evidence | ✅ Pass | Native supervisor committed as `09e3fe5a`; acceptance follow-up committed separately |
