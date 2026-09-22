@@ -316,6 +316,10 @@ test("release staging is atomic and keeps a rollback copy", () => {
   const stage = SRC.indexOf("STAGE_DIR=");
   const swap = SRC.indexOf("mv \"$STAGE_DIR\" \"$RELEASE_DIR\"");
   assert.ok(stage > 0 && swap > 0 && stage < swap, "release must be staged before swap");
+  assert.ok(
+    !SRC.includes('mkdir -p "$RELEASE_DIR" "$DATA_DIR"'),
+    "fresh install must not pre-create RELEASE_DIR and nest the staged release inside it",
+  );
 });
 
 test("secrets survive an upgrade", () => {

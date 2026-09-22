@@ -923,7 +923,7 @@ ok "Install dir ready at $INSTALL_DIR"
 
 # ─── 3. Lay out release + data dirs ──────────────────────────────────────────
 step "Preparing directories"
-mkdir -p "$RELEASE_DIR" "$DATA_DIR"
+mkdir -p "$DATA_DIR"
 
 # Stage into a sibling dir first so a failed copy never leaves a half-written
 # release the service would pick up on its next restart.
