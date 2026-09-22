@@ -157,6 +157,41 @@ test("a foreign listener on a required port is a hard failure", async () => {
   }
 });
 
+test("configured listener and worker ports must be mutually distinct", () => {
+  const sb = sandbox();
+  try {
+    const duplicateMain = runInstaller(["--dry-run"], { ...sb.env, GATEWAY_PORT: "20128", LIMITER_PORT: "20128" });
+    assert.notEqual(duplicateMain.code, 0);
+    assert.match(duplicateMain.out, /ports must be distinct/i);
+
+    const workerCollision = runInstaller(["--dry-run"], {
+      ...sb.env,
+      BACKEND_PORT: "20127",
+      PUBLIC_PORT: "20131",
+      API_WORKERS: "2",
+      DATABASE_URL: "postgres://u:p@127.0.0.1:5432/9router",
+    });
+    assert.notEqual(workerCollision.code, 0);
+    assert.match(workerCollision.out, /ports must be distinct/i);
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test("DATABASE_URL cannot inject another EnvironmentFile assignment", () => {
+  const sb = sandbox();
+  try {
+    const r = runInstaller(["--dry-run"], {
+      ...sb.env,
+      DATABASE_URL: "postgres://u:p@127.0.0.1:5432/db\nWORKER_ROLE=api",
+    });
+    assert.notEqual(r.code, 0);
+    assert.match(r.out, /DATABASE_URL must be a single line/);
+  } finally {
+    sb.cleanup();
+  }
+});
+
 test("port ownership detection ignores generic node listeners", () => {
   // A bare `node` process is NOT treated as ours, otherwise the installer could
   // overwrite an unrelated service that happens to share a port.
@@ -197,6 +232,22 @@ test("backup/rollback plumbing exists and is wired to the error trap", () => {
   assert.match(SRC, /set -E/, "errtrace must be enabled so the trap fires inside functions");
   assert.match(SRC, /ROLLBACK_ARMED=1/, "rollback must be armed during upgrade/reinstall");
   assert.match(SRC, /BACKUP_ROOT.*\/var\/backups\/9router/, "must default to /var/backups/9router");
+  const failFn = SRC.slice(SRC.indexOf("fail()"), SRC.indexOf("read_reply()"));
+  assert.match(failFn, /ROLLBACK_ARMED.*rollback 1/s, "fail() must not bypass rollback after mutation");
+});
+
+test("fail() invokes rollback exactly once after mutation is armed", () => {
+  const failFn = SRC.slice(SRC.indexOf("fail()"), SRC.indexOf("read_reply()"));
+  const script = `${failFn}\nROLLBACK_ARMED=1\nC_RED= C_BOLD= C_RESET=\nrollback() { echo rollback >> "$LOG"; ROLLBACK_ARMED=0; exit "$1"; }\nfail simulated`;
+  const dir = mkdtempSync(path.join(tmpdir(), "9router-fail-"));
+  const log = path.join(dir, "calls.log");
+  try {
+    const r = spawnSync("bash", ["-c", script], { env: { ...process.env, LOG: log }, encoding: "utf8" });
+    assert.equal(r.status, 1);
+    assert.equal(readFileSync(log, "utf8"), "rollback\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("port conflicts are validated before any mutating step", () => {
@@ -265,6 +316,93 @@ test("native systemd installer keeps one control worker by default", () => {
 test("native systemd engine remains single-backend unless explicitly extended", () => {
   const engine = SRC.slice(SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service"'), SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'));
   assert.doesNotMatch(engine, /-api-workers/, "native default must not invent API worker ports");
+});
+
+test("native PostgreSQL worker supervisor derives loopback workers and gateway URLs", () => {
+  assert.match(SRC, /9router-worker@\.service/, "must install worker template");
+  assert.match(SRC, /9router-workers\.target/, "must install worker target");
+  assert.match(SRC, /API_WORKER_URLS/, "must generate gateway worker URLs");
+  assert.match(SRC, /BACKEND_PORT \+ 3 \+ i|BACKEND_PORT\+3\+i/, "worker index i must map to backend + 4, matching Docker");
+  // The api role cannot come from `Environment=WORKER_ROLE=api`: systemd lets
+  // EnvironmentFile values win, so the worker role is written per instance by
+  // the staged topology helper instead.
+  assert.match(SRC, /scripts\/systemd-worker-topology\.sh/, "must stage the per-instance env helper");
+  assert.match(SRC, /EnvironmentFile=-\$\{WORKER_ENV_DIR\}\/%i\.env/, "worker must read its private instance env last");
+  assert.match(SRC, /DATABASE_URL.*postgres|DB_TYPE.*postgres/i, "worker path must require PostgreSQL");
+  assert.match(SRC, /systemctl (enable|start|restart).*\$SERVICE_WORKERS_TARGET/, "installer must manage worker target");
+  assert.match(SRC, /API_WORKERS=1[\s\S]{0,300}no worker|worker.*API_WORKERS.*1|API_WORKERS.*1.*worker/i, "default must keep one control process");
+});
+
+test("native worker supervisor has ordered lifecycle and loopback health checks", () => {
+  assert.match(SRC, /After=.*(\$\{SERVICE_MAIN\}|9router)\.service/);
+  assert.match(SRC, /Requires=.*(\$\{SERVICE_MAIN\}|9router)\.service/);
+  assert.match(SRC, /-api-workers/);
+  assert.match(SRC, /20131|BACKEND_PORT \+ 4\b|BACKEND_PORT \+ 3 \+ i/);
+  assert.match(SRC, /worker.*api.*health|api.*worker.*health/i);
+  const engine = SRC.slice(SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service"'), SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'));
+  assert.match(engine, /After=.*\$\{SERVICE_WORKERS_TARGET\}/, "on reboot the gateway must wait for an enabled worker target");
+});
+
+test("worker instance env overrides shared control env and is regenerated before start", () => {
+  const worker = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}"'),
+  );
+  const shared = worker.indexOf("EnvironmentFile=${ENV_FILE}");
+  const instance = worker.indexOf("EnvironmentFile=-${WORKER_ENV_DIR}/%i.env");
+  assert.ok(shared >= 0 && instance > shared, "later instance EnvironmentFile must override WORKER_ROLE=control");
+  assert.doesNotMatch(worker, /ExecStartPre=/, "worker must not generate its own EnvironmentFile in the same unit state");
+  assert.match(worker, /Requires=.*\$\{SERVICE_WORKER_ENV\}@%i\.service/, "worker must require the env generator");
+  assert.match(worker, /After=.*\$\{SERVICE_WORKER_ENV\}@%i\.service/, "worker must start after the env generator completes");
+  assert.doesNotMatch(worker, /^Environment=WORKER_ROLE=/m, "Environment= cannot override EnvironmentFile values");
+  assert.match(SRC, /cp -a .*systemd-worker-topology\.sh/, "reboot path needs an installed topology helper");
+  assert.doesNotMatch(worker, /CONTROL_PLANE_ORDER:.*date/, "generated unit must be deterministic");
+  const generator = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}"'),
+  );
+  assert.match(generator, /Type=oneshot/);
+  assert.match(generator, /ExecStart=.*systemd-worker-topology\.sh write-one/);
+});
+
+test("backup and rollback preserve actual worker templates and remove failed topology", () => {
+  assert.doesNotMatch(SRC, /systemctl cat "\$worker_unit"/, "snapshotting instantiated cat output creates bogus explicit units");
+  assert.match(SRC, /\$\{SERVICE_WORKER\}@\.service/, "worker template must be backed up directly");
+  assert.match(SRC, /\$\{SERVICE_WORKER_ENV\}@\.service/, "worker env template must be backed up directly");
+  const rollback = SRC.slice(SRC.indexOf("rollback()"), SRC.indexOf("on_error()"));
+  assert.match(rollback, /stop_all_worker_instances/, "rollback must stop and disable failed worker topology");
+  assert.match(rollback, /restore_worker_topology/, "rollback must restore the prior worker count");
+});
+
+test("engine API worker arguments are omitted atomically for the single-control default", () => {
+  assert.match(SRC, /API_WORKER_ARGS=/, "env must carry an optional complete argument list");
+  assert.match(SRC, /\$API_WORKER_ARGS/, "ExecStart must expand the optional argument list");
+  assert.doesNotMatch(SRC, /API_WORKER_ENGINE_FLAG/, "comment-prefixing one continued ExecStart line is unsafe");
+});
+
+test("upgrade preserves installed PostgreSQL worker topology unless caller overrides it", () => {
+  const sb = sandbox();
+  try {
+    mkdirSync(sb.env.RELEASE_DIR, { recursive: true });
+    writeFileSync(sb.env.ENV_FILE, "DATABASE_URL=postgres://u:p@127.0.0.1:5432/9router\nAPI_WORKERS=3\n");
+    const inheritedEnv = { ...sb.env };
+    delete inheritedEnv.API_WORKERS;
+    delete inheritedEnv.DATABASE_URL;
+    const inherited = runInstaller(["--upgrade", "--dry-run"], inheritedEnv);
+    assert.equal(inherited.code, 0, inherited.out);
+    assert.match(inherited.out, /api workers\s+3 total Node process/);
+
+    const overridden = runInstaller(["--upgrade", "--dry-run"], { ...inheritedEnv, API_WORKERS: "1" });
+    assert.equal(overridden.code, 0, overridden.out);
+    assert.match(overridden.out, /api workers\s+1 total Node process/);
+
+    writeFileSync(sb.env.ENV_FILE, "DB_TYPE=postgres\nAPI_WORKERS=2\n");
+    const dbTypeOnly = runInstaller(["--upgrade", "--dry-run"], inheritedEnv);
+    assert.equal(dbTypeOnly.code, 0, dbTypeOnly.out);
+    assert.match(dbTypeOnly.out, /api workers\s+2 total Node process/);
+  } finally {
+    sb.cleanup();
+  }
 });
 
 test("health checks cover every public surface and can trigger rollback", () => {

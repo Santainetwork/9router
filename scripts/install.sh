@@ -35,6 +35,12 @@
 #   sudo bash scripts/install.sh --uninstall
 #   sudo bash scripts/install.sh --uninstall --purge
 #
+#   # Opt into native API workers (PostgreSQL only: DATABASE_URL=postgres://...).
+#   # API_WORKERS counts TOTAL Node processes: 1 control + (API_WORKERS-1) API
+#   # workers on 127.0.0.1:20131, 20132, ... Default is 1 (control only).
+#   sudo DATABASE_URL=postgres://user:pass@host:5432/9router API_WORKERS=3 \
+#     bash scripts/install.sh --upgrade
+#
 # Requirements: Linux + systemd, Node.js >= 20, Go >= 1.21 (build only),
 # at least 2 GB RAM and 3 GB free disk. Validated on Debian 12/13 and Ubuntu 22.04+.
 #
@@ -60,9 +66,16 @@ GATEWAY_PORT="${GATEWAY_PORT:-20128}"
 LIMITER_PORT="${LIMITER_PORT:-20129}"
 BACKEND_PORT="${BACKEND_PORT:-20127}"
 PUBLIC_PORT="${PUBLIC_PORT:-20140}"
+API_WORKERS_EXPLICIT=0
+[ -n "${API_WORKERS+x}" ] && API_WORKERS_EXPLICIT=1
+API_WORKERS="${API_WORKERS:-1}"
 
 SERVICE_MAIN="9router"
 SERVICE_ENGINE="9router-hybrid-engine"
+SERVICE_WORKER="9router-worker"
+SERVICE_WORKER_ENV="9router-worker-env"
+SERVICE_WORKERS_TARGET="9router-workers.target"
+WORKER_ENV_DIR="${WORKER_ENV_DIR:-/run/9router-workers}"
 
 ASSUME_YES=0
 DO_UNINSTALL=0
@@ -95,6 +108,21 @@ done
 
 ENV_FILE="${ENV_FILE:-/etc/9router.env}"
 
+# An upgrade inherits the installed topology unless the caller explicitly
+# overrides it. Read only the two non-secret values needed by preflight.
+if [ -f "$ENV_FILE" ]; then
+  if [ "$API_WORKERS_EXPLICIT" != 1 ]; then
+    API_WORKERS="$(grep -E '^API_WORKERS=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
+    [ -n "$API_WORKERS" ] || API_WORKERS=1
+  fi
+  if [ -z "${DATABASE_URL+x}" ]; then
+    DATABASE_URL="$(grep -E '^DATABASE_URL=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
+  fi
+  if [ -z "${DB_TYPE+x}" ]; then
+    DB_TYPE="$(grep -E '^DB_TYPE=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
+  fi
+fi
+
 # ─── Output helpers ──────────────────────────────────────────────────────────
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
@@ -107,7 +135,11 @@ step()  { printf '\n%s==> %s%s\n' "$C_BOLD$C_CYAN" "$*" "$C_RESET"; }
 info()  { printf '    %s\n' "$*"; }
 ok()    { printf '    %s✓%s %s\n' "$C_GREEN" "$C_RESET" "$*"; }
 warn()  { printf '    %s!%s %s\n' "$C_YELLOW" "$C_RESET" "$*"; }
-fail()  { printf '\n%s✗ %s%s\n' "$C_RED$C_BOLD" "$*" "$C_RESET" >&2; exit 1; }
+fail()  {
+  printf '\n%s✗ %s%s\n' "$C_RED$C_BOLD" "$*" "$C_RESET" >&2
+  if [ "${ROLLBACK_ARMED:-0}" = 1 ]; then rollback 1; fi
+  exit 1
+}
 
 read_reply() { # read_reply <timeout> <varname> — prefer the controlling tty
   local t="$1" __out="$2" __v=""
@@ -212,6 +244,14 @@ require_free_ports() { # hard-fail when a foreign process holds one of our ports
   fi
 }
 
+require_distinct_ports() { # hard-fail when two configured listeners collide
+  local seen=" " p
+  for p in "$@"; do
+    case "$seen" in *" $p "*) fail "Configured ports must be distinct (duplicate: $p)." ;; esac
+    seen="$seen$p "
+  done
+}
+
 backup_paths() { # backup_paths <tag> <path...>
   local tag="$1"; shift
   local p base dest
@@ -230,10 +270,86 @@ snapshot_systemd_units() {
   if [ "$DRY_RUN" = 1 ]; then printf '    [dry-run] snapshot systemd units -> %s\n' "$BACKUP_DIR/systemd"; return 0; fi
   mkdir -p "$BACKUP_DIR/systemd"
   local u
+  # Templates and the grouping target are copied as files. `systemctl cat` output
+  # for an instance is a rendered drop-in, not a unit, and restoring it would
+  # create a bogus explicit 9router-worker@N.service that shadows the template.
+  snapshot_worker_topology
   for u in "$SERVICE_ENGINE" "$SERVICE_MAIN" 9router-public-proxy 9router-rl; do
     systemctl cat "$u" > "$BACKUP_DIR/systemd/$u.service" 2>/dev/null || true
     [ -s "$BACKUP_DIR/systemd/$u.service" ] || rm -f "$BACKUP_DIR/systemd/$u.service"
   done
+}
+
+# Worker topology artefacts are files, so snapshot them directly and record which
+# instances were enabled from the target's .wants directory.
+snapshot_worker_topology() {
+  local f list="$BACKUP_DIR/systemd/worker-instances.list"
+  for f in "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service" \
+           "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service" \
+           "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}"; do
+    [ -f "$f" ] && cp -a "$f" "$BACKUP_DIR/systemd/"
+  done
+  : > "$list"
+  for f in "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}.wants/${SERVICE_WORKER}@"*.service; do
+    [ -e "$f" ] || continue
+    basename "$f" .service | sed "s/^${SERVICE_WORKER}@//" >> "$list"
+  done
+}
+
+# Every live worker instance of this install, in instance order.
+worker_instance_numbers() {
+  local f instance wants="${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}.wants"
+  for f in "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@"*.service "$wants/${SERVICE_WORKER}@"*.service; do
+    [ -e "$f" ] || continue
+    instance="$(basename "$f" .service)"
+    case "$instance" in "${SERVICE_WORKER}@"*) instance="${instance#${SERVICE_WORKER}@}" ;; *) continue ;; esac
+    case "$instance" in ''|*[!0-9]*) continue ;; esac
+    printf '%s\n' "$instance"
+  done | sort -nu
+}
+
+# Stop and remove a topology this install just created but could not verify.
+stop_all_worker_instances() {
+  local instance
+  systemctl stop "$SERVICE_WORKERS_TARGET" 2>/dev/null || true
+  for instance in $(worker_instance_numbers); do
+    systemctl disable --now "${SERVICE_WORKER}@${instance}" 2>/dev/null || true
+    systemctl disable --now "${SERVICE_WORKER_ENV}@${instance}" 2>/dev/null || true
+    rm -f "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@${instance}.service" \
+          "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@${instance}.service" \
+          "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}.wants/${SERVICE_WORKER}@${instance}.service"
+  done
+  systemctl disable "$SERVICE_WORKERS_TARGET" 2>/dev/null || true
+  rm -f "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service" \
+        "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service" \
+        "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}"
+  rm -rf "$WORKER_ENV_DIR"
+}
+
+# Re-enable exactly the instances the backup recorded, and nothing else. The
+# caller reloads systemd and starts the control process before invoking this.
+restore_worker_topology() {
+  local list="$BACKUP_DIR/systemd/worker-instances.list" instance wanted=0
+  local wants="${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}.wants"
+  rm -f "$wants/${SERVICE_WORKER}@"*.service 2>/dev/null || true
+  if [ ! -f "$list" ]; then
+    # Backups created before native workers had no topology metadata.
+    return 0
+  fi
+  if [ ! -s "$list" ]; then
+    systemctl disable "$SERVICE_WORKERS_TARGET" >/dev/null 2>&1 || true
+    return 0
+  fi
+  while IFS= read -r instance; do
+    case "$instance" in ''|*[!0-9]*) continue ;; esac
+    systemctl enable "${SERVICE_WORKER}@${instance}" >/dev/null 2>&1 || true
+    wanted=$((wanted + 1))
+  done < "$list"
+  if [ "$wanted" -gt 0 ]; then
+    systemctl enable "$SERVICE_WORKERS_TARGET" >/dev/null 2>&1 || true
+    systemctl restart "$SERVICE_WORKERS_TARGET" 2>/dev/null || true
+    printf '   restored %s API worker instance(s)\n' "$wanted" >&2
+  fi
 }
 
 STATE_DIR="${STATE_DIR:-/var/lib/9router-installer}"
@@ -246,6 +362,7 @@ rollback() { # rollback <exit-code>  (callers pass the original error code)
   if [ "$ROLLBACK_ARMED" != 1 ]; then exit "$rc"; fi
   ROLLBACK_ARMED=0
   printf '\n%s!! install failed (exit %s) — rolling back%s\n' "$C_RED$C_BOLD" "$rc" "$C_RESET" >&2
+  stop_all_worker_instances
   if [ -z "$BACKUP_DIR" ] || [ ! -d "$BACKUP_DIR" ]; then
     RESCUE="${RELEASE_DIR}.previous"
     if [ -d "$RESCUE" ]; then
@@ -263,9 +380,12 @@ rollback() { # rollback <exit-code>  (callers pass the original error code)
 
   local p base
   if [ -d "$BACKUP_DIR/systemd" ]; then
-    for p in "$BACKUP_DIR"/systemd/*.service; do
+    for p in "$BACKUP_DIR"/systemd/*.service "$BACKUP_DIR"/systemd/*.target; do
       [ -e "$p" ] || continue
       base="$(basename "$p")"
+      case "$base" in
+        "${SERVICE_WORKER}@"[0-9]*.service|"${SERVICE_WORKER_ENV}@"[0-9]*.service) continue ;;
+      esac
       cp -a "$p" "${SYSTEMD_UNIT_DIR}/$base" 2>/dev/null && printf '   restored unit %s\n' "$base" >&2
     done
   fi
@@ -298,6 +418,7 @@ rollback() { # rollback <exit-code>  (callers pass the original error code)
 
   systemctl daemon-reload 2>/dev/null || true
   systemctl restart "$SERVICE_MAIN" 2>/dev/null || true
+  restore_worker_topology
   systemctl restart "$SERVICE_ENGINE" 2>/dev/null || true
   printf '   rollback complete. Backup retained at %s\n' "$BACKUP_DIR" >&2
   exit "$rc"
@@ -324,6 +445,42 @@ cleanup_stage() {
     printf '    removing leftover staging dir %s\n' "$d"
     rm -rf "$d"
   done
+}
+
+disable_stale_workers() { # disable_stale_workers <effective-total>
+  local total="$1" stale path
+  while read -r stale path; do
+    [ -n "$stale" ] || continue
+    if [ "$DRY_RUN" = 1 ]; then
+      printf '    [dry-run] disable+remove stale worker %s\n' "$stale"
+      continue
+    fi
+    systemctl disable --now "${SERVICE_WORKER}@${stale}" 2>/dev/null || true
+    systemctl disable --now "${SERVICE_WORKER_ENV}@${stale}" 2>/dev/null || true
+    rm -f "$path"
+    info "retired ${SERVICE_WORKER}@${stale} (API_WORKERS=$total)"
+  done < <(worker_stale_units "$SYSTEMD_UNIT_DIR" "$total")
+}
+
+check_worker_health() { # check_worker_health <count> -> 0 when every worker is ready
+  local count="$1" i port ok=0
+  for ((i = 1; i < count; i++)); do
+    port=$((BACKEND_PORT + 3 + i))
+    ok=0
+    local tries
+    for tries in $(seq 1 45); do
+      if curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+        ok=1; info "API worker ${i} healthy on 127.0.0.1:${port}"; break
+      fi
+      sleep 1
+    done
+    if [ "$ok" != 1 ]; then
+      warn "API worker ${i} did not report healthy at http://127.0.0.1:${port}/api/health"
+      journalctl -u "${SERVICE_WORKER}@${i}" -n 20 --no-pager || true
+      return 1
+    fi
+  done
+  return 0
 }
 
 # ─── Install-mode resolution ─────────────────────────────────────────────────
@@ -390,6 +547,7 @@ if [ -n "$RESTORE_FROM" ]; then
   fi
 
   BACKUP_DIR="$RESTORE_FROM"
+  stop_all_worker_instances
 
   if [ -f "$BACKUP_DIR/env/9router.env" ]; then
     info "restoring $ENV_FILE"
@@ -400,15 +558,19 @@ if [ -n "$RESTORE_FROM" ]; then
   fi
 
   RESTORED_UNIT=0
-  for f in "$BACKUP_DIR"/systemd/*.service; do
+  # Worker artefacts are restored from their real files below; a `systemctl cat`
+  # snapshot of an instance is rendered output and must never become a unit.
+  for f in "$BACKUP_DIR"/systemd/*.service "$BACKUP_DIR"/systemd/*.target; do
     [ -s "$f" ] || continue
     base="$(basename "$f")"
+    case "$base" in
+      "${SERVICE_WORKER}@"[0-9]*.service|"${SERVICE_WORKER_ENV}@"[0-9]*.service) continue ;;
+    esac
     cp -a "$f" "${SYSTEMD_UNIT_DIR}/$base"
     info "restored unit $base"
     RESTORED_UNIT=1
   done
   [ "$RESTORED_UNIT" = 1 ] || warn "no systemd units in $BACKUP_DIR/systemd"
-
   RESTORED_RELEASE=0
   for src in "$BACKUP_DIR/release-live" "$BACKUP_DIR/release"; do
     if [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ]; then
@@ -425,8 +587,9 @@ if [ -n "$RESTORE_FROM" ]; then
   [ "$RESTORED_RELEASE" = 1 ] || warn "no release snapshot in $BACKUP_DIR — release dir left untouched"
 
   systemctl daemon-reload
-  systemctl restart "$SERVICE_ENGINE" 2>/dev/null || true
   systemctl restart "$SERVICE_MAIN" 2>/dev/null || systemctl start "$SERVICE_MAIN" 2>/dev/null || true
+  restore_worker_topology
+  systemctl restart "$SERVICE_ENGINE" 2>/dev/null || true
   sleep 3
   if curl -fsS --max-time 5 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null | grep -q '"ok":true'; then
     ok "Restore complete and backend healthy"
@@ -444,7 +607,8 @@ if [ "$DO_UNINSTALL" = 1 ]; then
   step "Uninstalling 9Router services"
 
   if [ "$DRY_RUN" = 1 ]; then
-    info "[dry-run] would remove units: $SERVICE_ENGINE $SERVICE_MAIN 9router-public-proxy 9router-rl"
+    info "[dry-run] would remove units: $SERVICE_ENGINE $SERVICE_MAIN $SERVICE_WORKERS_TARGET ${SERVICE_WORKER}@* 9router-public-proxy 9router-rl"
+    info "[dry-run] would remove API worker instances via ${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@*.service and ${WORKER_ENV_DIR}"
     info "[dry-run] would remove ${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service.d"
     if [ "$DO_PURGE" = 1 ]; then
       info "[dry-run] would delete $RELEASE_DIR, $DATA_DIR and $ENV_FILE"
@@ -482,13 +646,20 @@ if [ "$DO_UNINSTALL" = 1 ]; then
     cp -a "$STATE_DIR/legacy-9router.unit" "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service" || true
   fi
 
-  for unit in "$SERVICE_ENGINE" "$SERVICE_MAIN" 9router-public-proxy 9router-rl; do
+  # Instance symlinks live under the target's .wants directory, not beside the
+  # template. Tear them down before removing the templates and target.
+  stop_all_worker_instances
+  for unit in "$SERVICE_ENGINE" "$SERVICE_MAIN" "$SERVICE_WORKERS_TARGET" 9router-public-proxy 9router-rl; do
     if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
       systemctl disable --now "$unit" 2>/dev/null || true
       rm -f "${SYSTEMD_UNIT_DIR}/${unit}.service"
       ok "removed $unit"
     fi
   done
+  rm -f "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service" \
+        "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service"
+  rm -rf "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}.wants"
+  rm -rf "$WORKER_ENV_DIR"
   rm -rf "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service.d"
   systemctl daemon-reload
   if [ "$DO_PURGE" = 1 ]; then
@@ -512,6 +683,14 @@ step "Preflight checks"
 [ -f "$REPO_DIR/package.json" ] || fail "Run this from the 9Router repo (expected package.json at $REPO_DIR)"
 [ -f "$REPO_DIR/hybrid-engine/go.mod" ] || fail "hybrid-engine/go.mod missing — is this the full repo checkout?"
 
+# Worker topology validation and per-instance env derivation live in a separate,
+# testable file: bash arithmetic must never be attempted inside a unit file.
+WORKER_TOPOLOGY_SH="$REPO_DIR/scripts/systemd-worker-topology.sh"
+[ -f "$WORKER_TOPOLOGY_SH" ] || fail "scripts/systemd-worker-topology.sh missing — is this the full repo checkout?"
+# shellcheck source=scripts/systemd-worker-topology.sh
+. "$WORKER_TOPOLOGY_SH"
+ok "Worker topology helper loaded"
+
 # Safety gate: never touch an existing install unless the user explicitly asked.
 resolve_install_mode
 case "$INSTALL_MODE" in
@@ -529,8 +708,53 @@ fi
 # Port validation — a foreign listener is a hard failure, not a warning, and it
 # must surface in --dry-run too (that is the point of a preview).
 step "Validating ports"
+require_distinct_ports "$GATEWAY_PORT" "$LIMITER_PORT" "$BACKEND_PORT" "$PUBLIC_PORT"
 require_free_ports "$GATEWAY_PORT" "$LIMITER_PORT" "$BACKEND_PORT" "$PUBLIC_PORT"
 ok "Ports validated"
+
+# Worker topology is validated here, before any mutation, so a rejected request
+# costs nothing. The ports it adds are loopback-only and reserved by the units,
+# so they are validated with the rest.
+# NOEXEC=1 is a test/sandbox switch: the helper otherwise re-validates the exact
+# topology with `custom-server.js --check-config` before any unit is generated.
+export NOEXEC="${NOEXEC:-0}"
+if ! WORKER_TOTAL="$(worker_env_prepare "$BACKEND_PORT" "$API_WORKERS")"; then
+  fail "Refusing to install: API worker topology is invalid (see the message above)."
+fi
+# WORKER_ENV_DIR must sit on a writable filesystem by the time units start. The
+# default under /run is cleared on reboot, and the worker units carry
+# AssertPathExists, so a stale install fails loudly instead of silently.
+[ -n "$WORKER_ENV_DIR" ] || fail "WORKER_ENV_DIR must not be empty."
+case "$WORKER_ENV_DIR" in
+  /run/*) : ;;
+  *) fail "WORKER_ENV_DIR must be under /run (got '$WORKER_ENV_DIR')." ;;
+esac
+if [ "$WORKER_TOTAL" -gt 1 ]; then
+  step "Validating API worker ports"
+  WORKER_PORTS=""
+  for ((i = 1; i < WORKER_TOTAL; i++)); do WORKER_PORTS="$WORKER_PORTS $((BACKEND_PORT + 3 + i))"; done
+  require_free_ports $WORKER_PORTS
+  ok "API worker ports validated ($WORKER_TOTAL total Node processes)"
+  API_WORKER_URLS=""
+  for ((i = 1; i < WORKER_TOTAL; i++)); do
+    API_WORKER_URLS="${API_WORKER_URLS:+${API_WORKER_URLS},}http://127.0.0.1:$((BACKEND_PORT + 3 + i))"
+  done
+else
+  API_WORKER_URLS=""
+  ok "API_WORKERS=1 — control process only, no worker instances"
+fi
+require_distinct_ports "$GATEWAY_PORT" "$LIMITER_PORT" "$BACKEND_PORT" "$PUBLIC_PORT" ${WORKER_PORTS:-}
+
+# systemd EnvironmentFile supports spaces and '#', but a newline would create a
+# second assignment. Reject it at this trust boundary instead of serializing an
+# ambiguous file.
+case "${DATABASE_URL:-}" in *$'\n'*|*$'\r'*) fail "DATABASE_URL must be a single line." ;; esac
+
+# Default-path compatibility: with no workers the engine must see exactly the
+# same argv as before, so the whole `-api-workers <urls>` pair is dropped rather
+# than passed empty. systemd performs no expansion in ExecStart, so the prefix
+# is decided here.
+if [ -n "$API_WORKER_URLS" ]; then API_WORKER_ARGS="-api-workers $API_WORKER_URLS"; else API_WORKER_ARGS=""; fi
 
 if [ "$DRY_RUN" = 1 ]; then
   step "Dry run — nothing will be changed"
@@ -542,8 +766,18 @@ if [ "$DRY_RUN" = 1 ]; then
   info "env file      $ENV_FILE"
   info "backup root   $BACKUP_ROOT"
   info "ports         gateway $GATEWAY_PORT · limiter $LIMITER_PORT · backend $BACKEND_PORT · public $PUBLIC_PORT"
+  info "api workers   $WORKER_TOTAL total Node process(es); URLs: ${API_WORKER_URLS:-<none>}"
+  if [ "$WORKER_TOTAL" -gt 1 ]; then
+    info "worker ports  $WORKER_PORTS (loopback 127.0.0.1 only)"
+    info "worker envs   ${WORKER_ENV_DIR}/1.env … ${WORKER_ENV_DIR}/$((WORKER_TOTAL - 1)).env"
+  else
+    info "worker units  disabled (API_WORKERS=1) — stale instances would be removed"
+  fi
   info "units         ${SERVICE_ENGINE}.service · ${SERVICE_MAIN}.service · ${SERVICE_MAIN}.service.d/override.conf"
-  info "steps         preflight → backup → npm install → go build → next build → stage release → env → units → start → health"
+  if [ "$WORKER_TOTAL" -gt 1 ]; then
+    info "worker units  ${SERVICE_WORKER}@.service · ${SERVICE_WORKER_ENV}@.service · ${SERVICE_WORKERS_TARGET}"
+  fi
+  info "steps         preflight → backup → npm install → go build → next build → stage release → env → units → control → workers → engine → health"
   printf '\n%sDry run complete. Re-run without --dry-run to apply.%s\n' "$C_GREEN$C_BOLD" "$C_RESET"
   exit 0
 fi
@@ -701,6 +935,8 @@ mkdir -p "$STAGE_DIR/.next"
 cp -a "$REPO_DIR/.next/static" "$STAGE_DIR/.next/static"
 cp -a "$REPO_DIR/public" "$STAGE_DIR/public"
 cp -a "$REPO_DIR/custom-server.js" "$STAGE_DIR/custom-server.js"
+mkdir -p "$STAGE_DIR/scripts"
+cp -a "$REPO_DIR/scripts/systemd-worker-topology.sh" "$STAGE_DIR/scripts/systemd-worker-topology.sh"
 [ -f "$STAGE_DIR/custom-server.js" ] || fail "custom-server.js missing from the staged release"
 
 # Atomic swap; keep the previous release so rollback has something to restore.
@@ -728,7 +964,8 @@ preserve_secret() { # preserve_secret VARNAME
 EXISTING_JWT="$(preserve_secret JWT_SECRET)";       [ -n "$EXISTING_JWT" ] && JWT_SECRET="$EXISTING_JWT"
 EXISTING_SALT="$(preserve_secret MACHINE_ID_SALT)"; [ -n "$EXISTING_SALT" ] && MACHINE_SALT="$EXISTING_SALT"
 EXISTING_AKS="$(preserve_secret API_KEY_SECRET)";   [ -n "$EXISTING_AKS" ] && API_KEY_SECRET="$EXISTING_AKS"
-EXISTING_DBURL="$(preserve_secret DATABASE_URL)"
+EXISTING_DBURL="${DATABASE_URL:-$(preserve_secret DATABASE_URL)}"
+EXISTING_DBTYPE="${DB_TYPE:-$(preserve_secret DB_TYPE)}"
 
 # Refuse to hand the backend a config file with a literal unset port.
 [ -n "$GATEWAY_PORT" ] && [ -n "$LIMITER_PORT" ] && [ -n "$BACKEND_PORT" ] && [ -n "$PUBLIC_PORT" ] || fail "Port variables must not be empty."
@@ -757,15 +994,20 @@ RELEASE_DIR=${RELEASE_DIR}
 # Set DATABASE_URL to switch to PostgreSQL and restart the backend.
 ${EXISTING_DBURL:+DATABASE_URL=${EXISTING_DBURL}}
 ${EXISTING_DBURL:-# DATABASE_URL=postgres://user:password@localhost:5432/9router}
+${EXISTING_DBTYPE:+DB_TYPE=${EXISTING_DBTYPE}}
 
 # ── Feature toggles ─────────────────────────────────────────────────────────
 ENABLE_GO_HYBRID=true
 GO_ENGINE_URL=http://127.0.0.1:${LIMITER_PORT}
-# Native systemd installs remain one control process. Multi-worker orchestration
-# is currently provided by deploy/docker-entrypoint.sh for PostgreSQL deployments.
+# API_WORKERS semantics: API_WORKERS=1 keeps exactly one Node process (the
+# control process) and enables no worker instance. Values above 1 require
+# PostgreSQL and enable instances 1..API_WORKERS-1.
 WORKER_ROLE=control
-API_WORKERS=1
+# Pinned to the installed topology; regenerate with install.sh --upgrade.
+API_WORKER_URLS=${API_WORKER_URLS}
+API_WORKER_ARGS=${API_WORKER_ARGS}
 NODE_OPTIONS=--max-old-space-size=512
+API_WORKERS=${WORKER_TOTAL}
 EOF
 chmod 600 "$ENV_FILE"
 ok "Wrote $ENV_FILE"
@@ -773,12 +1015,17 @@ ok "Wrote $ENV_FILE"
 # ─── 5. Install systemd units ────────────────────────────────────────────────
 step "Installing systemd services"
 
+# Literal unit names on purpose: makes the generated topology discoverable in
+# the installer source and in the installed unit list.
+#   API worker template : 9router-worker@.service      (${SERVICE_WORKER}@.service)
+#   Env generator       : 9router-worker-env@.service  (${SERVICE_WORKER_ENV}@.service)
+#   API worker target   : 9router-workers.target       (${SERVICE_WORKERS_TARGET})
 # The Go binary owns every public port and fronts the internal Next.js server.
 cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service" <<EOF
 [Unit]
 Description=9Router Golang Master Gateway (gateway :${GATEWAY_PORT}, limiter :${LIMITER_PORT}, public :${PUBLIC_PORT})
 Documentation=file://${INSTALL_DIR}/README.md
-After=network-online.target ${SERVICE_MAIN}.service
+After=network-online.target ${SERVICE_MAIN}.service ${SERVICE_WORKERS_TARGET}
 Wants=network-online.target
 Requires=${SERVICE_MAIN}.service
 PartOf=${SERVICE_MAIN}.service
@@ -793,6 +1040,7 @@ ExecStart=${INSTALL_DIR}/hybrid-engine/bin/router-engine \\
   -gateway-port \${GATEWAY_PORT} \\
   -proxy-port \${PUBLIC_PORT} \\
   -upstream http://127.0.0.1:\${BACKEND_PORT} \\
+  \$API_WORKER_ARGS \\
   -static-dir ${INSTALL_DIR}/deploy
 Restart=always
 RestartSec=3
@@ -863,6 +1111,95 @@ chmod 0644 "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service" "${SYSTEMD_UNIT_DIR}/${
           "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service.d/override.conf"
 [ -x "$INSTALL_DIR/hybrid-engine/bin/router-engine" ] || fail "engine binary missing before unit install"
 
+# ── API worker instances (only when API_WORKERS > 1) ────────────────────────
+# The template is installed even for API_WORKERS=1 so operators can raise the
+# count by editing the env file; with no instance enabled the target is empty
+# and the gateway receives an empty API_WORKER_URLS, i.e. today's behaviour.
+worker_env_write "$WORKER_ENV_DIR" "$WORKER_TOTAL"
+
+cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service" <<EOF
+[Unit]
+Description=9Router API worker %i (loopback :$((BACKEND_PORT + 4))…)
+Documentation=file://${INSTALL_DIR}/README.md
+AssertPathExists=${RELEASE_DIR}/custom-server.js
+# The control process owns migrations, the catalog and the schedulers, so it
+# must already be running before a stateless worker serves traffic.
+After=network-online.target ${SERVICE_MAIN}.service ${SERVICE_WORKER_ENV}@%i.service
+Wants=network-online.target
+Requires=${SERVICE_MAIN}.service ${SERVICE_WORKER_ENV}@%i.service
+# PartOf lets `systemctl stop 9router-workers.target` drain every instance.
+PartOf=${SERVICE_WORKERS_TARGET}
+
+[Service]
+Type=simple
+User=root
+# EnvironmentFile entries are applied in order, with later files winning.
+# The required oneshot generator recreates the private file first because /run
+# is cleared on reboot. EnvironmentFile is then read for this service state.
+EnvironmentFile=${ENV_FILE}
+EnvironmentFile=-${WORKER_ENV_DIR}/%i.env
+Environment=HOME=${DATA_DIR}
+Environment=NODE_OPTIONS=--max-old-space-size=512
+ExecStart=/usr/bin/env node ${RELEASE_DIR}/custom-server.js --no-browser --log --skip-update
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+# Matches the control process so long SSE streams finish instead of being cut.
+TimeoutStopSec=300
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=${DATA_DIR} ${RELEASE_DIR}
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=${SERVICE_WORKER}-%i
+
+[Install]
+WantedBy=${SERVICE_WORKERS_TARGET}
+EOF
+
+cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service" <<EOF
+[Unit]
+Description=Prepare 9Router API worker %i environment
+After=${SERVICE_MAIN}.service
+Requires=${SERVICE_MAIN}.service
+PartOf=${SERVICE_WORKERS_TARGET}
+
+[Service]
+Type=oneshot
+User=root
+RuntimeDirectory=${WORKER_ENV_DIR#/run/}
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/env bash ${RELEASE_DIR}/scripts/systemd-worker-topology.sh write-one ${WORKER_ENV_DIR} ${BACKEND_PORT} ${WORKER_TOTAL} %i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=${WORKER_ENV_DIR}
+EOF
+
+cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}" <<EOF
+# Grouping target for the 9Router API worker instances. Enabling an instance is
+# what makes the target non-empty; API_WORKERS=${WORKER_TOTAL} currently wants
+# $((WORKER_TOTAL - 1)) instance(s). The gateway is only given worker URLs that
+# exist here, and it also health-checks each of them before routing /v1 traffic.
+[Unit]
+Description=9Router API workers
+Documentation=file://${INSTALL_DIR}/README.md
+After=${SERVICE_MAIN}.service
+Requires=${SERVICE_MAIN}.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+chmod 0644 "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service" \
+           "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service" \
+           "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}"
+ok "API worker units installed (${WORKER_TOTAL} total Node processes)"
+
 # Never silently delete a unit we did not create: back it up, then retire it.
 retire_legacy_unit() { # retire_legacy_unit <unit>
   local unit="$1" f="${SYSTEMD_UNIT_DIR}/$1.service"
@@ -883,43 +1220,99 @@ ok "systemd units installed"
 # ─── 6. Start services ───────────────────────────────────────────────────────
 step "Starting services"
 # Stop anything still holding our ports before the new units take them.
+systemctl stop "$SERVICE_WORKERS_TARGET" 2>/dev/null || true
 systemctl stop "$SERVICE_ENGINE" 2>/dev/null || true
 systemctl stop "$SERVICE_MAIN" 2>/dev/null || true
+
+# Reconcile worker instances with API_WORKERS. Stale instances are removed
+# FIRST, so a shrunken install never keeps serving on an orphaned port.
+disable_stale_workers "$WORKER_TOTAL"
+
 systemctl enable "$SERVICE_MAIN" "$SERVICE_ENGINE" >/dev/null 2>&1 || true
+# 6a. Control process alone must serve /api/health before anything else starts.
 systemctl restart "$SERVICE_MAIN"
-step "Waiting for backend readiness"
+step "Waiting for control process readiness"
 BACKEND_OK=0
 for i in $(seq 1 45); do
   if curl -fsS --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null | grep -q '"ok":true'; then
-    BACKEND_OK=1; info "backend ready after ${i}s"; break
+    BACKEND_OK=1; info "control process ready after ${i}s"; break
   fi
   sleep 1
 done
 if [ "$BACKEND_OK" != 1 ]; then
-  fail "Backend did not become ready at http://127.0.0.1:${BACKEND_PORT}/api/health"
+  fail "Control process did not become ready at http://127.0.0.1:${BACKEND_PORT}/api/health"
 fi
+
+# 6b. Now enable exactly the instances API_WORKERS asks for and start the target.
+systemctl disable "${SERVICE_WORKER}@1" "${SERVICE_WORKER}@2" "${SERVICE_WORKER}@3" \
+                  "${SERVICE_WORKER}@4" "${SERVICE_WORKER}@5" "${SERVICE_WORKER}@6" \
+                  "${SERVICE_WORKER}@7" "${SERVICE_WORKER}@8" >/dev/null 2>&1 || true
+WORKER_ENABLED=0
+for ((i = 1; i < WORKER_TOTAL; i++)); do
+  systemctl enable "${SERVICE_WORKER}@${i}" >/dev/null 2>&1 || true
+  WORKER_ENABLED=$((WORKER_ENABLED + 1))
+done
+if [ "$WORKER_TOTAL" -gt 1 ]; then
+  systemctl enable "$SERVICE_WORKERS_TARGET" >/dev/null 2>&1 || true
+  systemctl restart "$SERVICE_WORKERS_TARGET"
+  step "Waiting for API worker readiness"
+  check_worker_health "$WORKER_TOTAL" || fail "API worker health checks failed — see the journal lines above."
+  ok "$WORKER_ENABLED API worker instance(s) healthy"
+else
+  # API_WORKERS=1: no instance is enabled, so the target is empty and the
+  # gateway is told about zero workers. This is the pre-existing behaviour.
+  systemctl stop "$SERVICE_WORKERS_TARGET" 2>/dev/null || true
+  systemctl disable "$SERVICE_WORKERS_TARGET" >/dev/null 2>&1 || true
+  info "API_WORKERS=1 — no worker instances enabled"
+fi
+
+# 6c. The gateway is restarted last: it is the only public listener.
 systemctl restart "$SERVICE_ENGINE"
 ok "Services restarted"
 
 # ─── 7. Health verification ──────────────────────────────────────────────────
-step "Verifying health"
+step "Verifying health (control, workers, gateway)"
 BACKEND_OK=0
 for i in $(seq 1 45); do
   if curl -fsS --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null | grep -q '"ok":true'; then
-    BACKEND_OK=1; info "backend healthy after ${i}s"; break
+    BACKEND_OK=1; info "control process healthy after ${i}s"; break
   fi
   sleep 1
 done
 if [ "$BACKEND_OK" != 1 ]; then
-  warn "Backend did not report healthy in 45s. Recent logs:"
+  warn "Control process did not report healthy in 45s. Recent logs:"
   journalctl -u "$SERVICE_MAIN" -n 20 --no-pager || true
   if [ "$ROLLBACK_ARMED" = 1 ]; then
     warn "Health check failed — rolling back to the previous install."
     exit 1
   fi
-  fail "Backend health check failed at http://127.0.0.1:${BACKEND_PORT}/api/health"
+  fail "Control process health check failed at http://127.0.0.1:${BACKEND_PORT}/api/health"
 fi
-ok "Backend (:${BACKEND_PORT}) healthy"
+ok "Control process (:${BACKEND_PORT}) healthy"
+
+# Each API worker is checked on its own loopback health endpoint, so a single
+# wedged instance fails the install instead of hiding behind a healthy peer.
+if [ "$WORKER_TOTAL" -gt 1 ]; then
+  if ! check_worker_health "$WORKER_TOTAL"; then
+    if [ "$ROLLBACK_ARMED" = 1 ]; then
+      warn "API worker health check failed — rolling back to the previous install."
+      exit 1
+    fi
+    fail "API worker health check failed (expected $((WORKER_TOTAL - 1)) worker(s))."
+  fi
+  ok "API workers healthy ($((WORKER_TOTAL - 1)) instance(s), loopback only)"
+else
+  ok "API workers: none (API_WORKERS=1)"
+fi
+
+# The gateway only routes /v1 traffic to workers it can probe as healthy.
+if [ -n "$API_WORKER_URLS" ]; then
+  if curl -fsS --max-time 5 "http://127.0.0.1:${LIMITER_PORT}/ready" 2>/dev/null | grep -qi 'worker'; then
+    ok "Gateway reports API worker routing ready"
+  else
+    info "Gateway /ready did not mention workers (non-fatal; routing still health-gated)"
+  fi
+fi
 
 check_http() { # check_http <label> <url> <expected>
   local code
@@ -933,6 +1326,9 @@ check_http "Login page"             "http://localhost:${GATEWAY_PORT}/login" 200
 check_http "Usage-check portal"     "http://localhost:${PUBLIC_PORT}/usage-check" 200 || GATEWAY_FAIL=1
 check_http "Limiter RPC health"     "http://127.0.0.1:${LIMITER_PORT}/health" 200 || GATEWAY_FAIL=1
 check_http "Hybrid engine readiness" "http://127.0.0.1:${LIMITER_PORT}/ready" 200 || GATEWAY_FAIL=1
+if [ "$WORKER_TOTAL" -gt 1 ]; then
+  check_http "API worker target" "http://127.0.0.1:$((BACKEND_PORT + 4))/api/health" 200 || GATEWAY_FAIL=1
+fi
 
 if [ "$GATEWAY_FAIL" != 0 ]; then
   warn "One or more gateway checks failed. Inspect: journalctl -u ${SERVICE_ENGINE} -n 50"
@@ -964,6 +1360,7 @@ cat <<EOF
   Config  ${ENV_FILE}
   Data    ${DATA_DIR}
   Units   ${SERVICE_ENGINE}.service · ${SERVICE_MAIN}.service
+  API     ${WORKER_TOTAL} total Node process(es)$(if [ "$WORKER_TOTAL" -gt 1 ]; then printf ' · workers 127.0.0.1:%s (loopback)' "$((BACKEND_PORT + 4))…$((BACKEND_PORT + 2 + WORKER_TOTAL))"; else printf ' · control only (API_WORKERS=1)'; fi)
 EOF
 
 if [ -n "$ROUTER_PASSWORD" ] && [ ! -f "$DATA_DIR/.9router/db/data.sqlite" ]; then
@@ -979,6 +1376,15 @@ cat <<EOF
     systemctl status  ${SERVICE_ENGINE} ${SERVICE_MAIN}
     systemctl restart ${SERVICE_ENGINE}
     journalctl -u ${SERVICE_ENGINE} -f
+$(if [ "$WORKER_TOTAL" -gt 1 ]; then cat <<WORKERS
+  API workers (${WORKER_TOTAL} - 1 instance(s))
+    systemctl status  ${SERVICE_WORKERS_TARGET}
+    systemctl restart ${SERVICE_WORKERS_TARGET}
+    journalctl -u '${SERVICE_WORKER}@*' -f
+    # Change the count: edit API_WORKERS in ${ENV_FILE}, then re-run --upgrade
+    # (the installer adds/removes instances and stale units for you).
+WORKERS
+else printf '    (API_WORKERS=1 — no worker instances are enabled)\n'; fi)
 
   Upgrade safely (backup + automatic rollback)
     sudo bash ${REPO_DIR}/scripts/install.sh --upgrade
