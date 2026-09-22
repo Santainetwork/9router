@@ -3,12 +3,12 @@
 import { cn } from "@/shared/utils/cn";
 
 const variants = {
-  default: "bg-surface-2 text-text-muted",
-  primary: "bg-brand-500/10 text-brand-600 dark:text-brand-300",
-  success: "bg-green-500/10 text-green-600 dark:text-green-400",
-  warning: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
-  error: "bg-red-500/10 text-red-600 dark:text-red-400",
-  info: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  default: "border border-border-subtle bg-surface-2 text-text-muted",
+  primary: "border border-primary/20 bg-primary/10 text-primary",
+  success: "border border-success/20 bg-success/10 text-success",
+  warning: "border border-warning/20 bg-warning/10 text-warning",
+  error: "border border-danger/20 bg-danger/10 text-danger",
+  info: "border border-info/20 bg-info/10 text-info",
 };
 
 const sizes = {
@@ -36,18 +36,19 @@ export default function Badge({
     >
       {dot && (
         <span
+          aria-hidden="true"
           className={cn(
             "size-1.5 rounded-full",
-            variant === "success" && "bg-green-500",
-            variant === "warning" && "bg-yellow-500",
-            variant === "error" && "bg-red-500",
-            variant === "info" && "bg-blue-500",
-            variant === "primary" && "bg-brand-500",
-            variant === "default" && "bg-gray-500"
+            variant === "success" && "bg-success",
+            variant === "warning" && "bg-warning",
+            variant === "error" && "bg-danger",
+            variant === "info" && "bg-info",
+            variant === "primary" && "bg-primary",
+            variant === "default" && "bg-text-muted"
           )}
         />
       )}
-      {icon && <span className="material-symbols-outlined text-[14px]">{icon}</span>}
+      {icon && <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{icon}</span>}
       {children}
     </span>
   );

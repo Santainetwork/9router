@@ -15,7 +15,8 @@ export default function Tooltip({ text, children, position = "top", color }) {
     <div className="relative inline-flex group/tt">
       {children}
       <div
-        className={`pointer-events-none absolute ${posClass} z-50 w-max max-w-56 rounded px-2 py-1 text-[11px] leading-snug ${bgClass} text-white opacity-0 group-hover/tt:opacity-100 transition-opacity duration-150 whitespace-normal`}
+        role="tooltip"
+        className={`pointer-events-none absolute ${posClass} z-50 w-max max-w-56 rounded px-2 py-1 text-[11px] leading-snug ${bgClass} text-white opacity-0 group-hover/tt:opacity-100 group-focus-within/tt:opacity-100 transition-opacity duration-150 whitespace-normal`}
         style={bgStyle}
       >
         {text}

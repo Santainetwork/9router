@@ -5,7 +5,13 @@ import { Card, Button } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import dynamic from "next/dynamic";
 
-const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+const Editor = dynamic(() => import("@monaco-editor/react"), {
+  ssr: false,
+  // Stable placeholder so the Card does not jump while the chunk loads
+  loading: () => (
+    <div className="h-[400px] w-full motion-safe:animate-pulse bg-bg-subtle border-b border-border" />
+  ),
+});
 
 // 7 steps matching requestLogger files exactly
 const STEPS = [

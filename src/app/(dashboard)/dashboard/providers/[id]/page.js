@@ -61,6 +61,7 @@ export default function ProviderDetailPage() {
   const [bulkUpdatingLimits, setBulkUpdatingLimits] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [modelAliases, setModelAliases] = useState({});
+  const [modelSearch, setModelSearch] = useState("");
   const [customModels, setCustomModels] = useState([]);
   const [headerImgError, setHeaderImgError] = useState(false);
   const [modelTestResults, setModelTestResults] = useState({});
@@ -1322,8 +1323,9 @@ export default function ProviderDetailPage() {
       ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
     ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; });
     const disabledSet = new Set(disabledModelIds);
-    const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
-    const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
+    const matchesModelSearch = (model) => `${providerDisplayAlias}/${model.id} ${model.name || ""}`.toLowerCase().includes(modelSearch.trim().toLowerCase());
+    const displayModels = allModels.filter((m) => !disabledSet.has(m.id) && matchesModelSearch(m));
+    const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id) && matchesModelSearch(m));
     const customModelRows = getProviderCustomModelRows({
       customModels,
       modelAliases,
@@ -1333,9 +1335,10 @@ export default function ProviderDetailPage() {
     });
 
     return (
-      <div className="flex flex-wrap gap-3">
+      <div className="flex max-h-[65vh] min-w-0 flex-wrap gap-3 overflow-y-auto overscroll-contain" role="region" aria-label="Available models" tabIndex={0}>
+        {!displayModels.length && !disabledDisplayModels.length && !customModelRows.some(matchesModelSearch) && <p role="status" className="w-full py-4 text-sm text-text-muted">No models match your search.</p>}
         {/* Custom models first */}
-        {customModelRows.map((model) => (
+        {customModelRows.filter(matchesModelSearch).map((model) => (
           <ModelRow
             key={`${model.source}-${model.fullModel}`}
             model={{ id: model.id, name: model.name }}
@@ -1906,6 +1909,7 @@ export default function ProviderDetailPage() {
 
       {/* Models */}
       <Card>
+        {!isCompatible && <input type="search" aria-label="Search available models" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Search models…" className="mb-4 h-10 w-full min-w-0 rounded-lg border border-border bg-surface px-3 text-sm focus-visible:ring-2 focus-visible:ring-primary sm:max-w-sm" />}
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold">

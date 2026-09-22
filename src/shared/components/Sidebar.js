@@ -48,7 +48,7 @@ const systemItems = [
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
 ];
 
-export default function Sidebar({ onClose }) {
+export default function Sidebar({ onClose, compact = false }) {
   const pathname = usePathname();
   const [mediaOpen, setMediaOpen] = useState(false);
   const [showRemoteModal, setShowRemoteModal] = useState(false);
@@ -133,9 +133,9 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
+      <aside className={cn("flex h-full w-[min(85vw,18rem)] flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl min-h-full lg:w-72", compact && "lg:w-20")}>
         {/* Traffic lights */}
-        <div className="flex items-center gap-2 px-6 pt-5 pb-2">
+        <div className={cn("flex items-center gap-2 px-6 pt-5 pb-2", compact && "lg:hidden")}>
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
           <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
           <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
@@ -145,16 +145,16 @@ export default function Sidebar({ onClose }) {
         <div className="px-6 py-4 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
             <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
-              <span className="material-symbols-outlined text-white text-[20px]">hub</span>
+              <span className="material-symbols-outlined text-white text-[20px]" aria-hidden="true">hub</span>
             </div>
-            <div className="flex flex-col min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight text-text-main truncate max-w-[170px]">
+            <div className={cn("flex flex-col min-w-0", compact && "lg:hidden")}>
+              <p className="text-lg font-semibold tracking-tight text-text-main truncate max-w-[170px]">
                 {appName || APP_CONFIG.name}
-              </h1>
+              </p>
               <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
             </div>
           </Link>
-          {updateInfo && (
+          {updateInfo && !compact && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
               <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
                 ↑ New version available: v{updateInfo.latestVersion}
@@ -187,8 +187,11 @@ export default function Sidebar({ onClose }) {
               key={item.href}
               href={item.href}
               onClick={onClose}
+              aria-current={isActive(item.href) ? "page" : undefined}
+              aria-label={compact ? item.label : undefined}
+              title={compact ? item.label : undefined}
               className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                "flex min-h-10 items-center gap-3 px-3 py-1 rounded-lg transition-[background-color,color] group",
                 isActive(item.href)
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -202,39 +205,43 @@ export default function Sidebar({ onClose }) {
               >
                 {item.icon}
               </span>
-              <span className="text-[13px] font-medium">{item.label}</span>
+              <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>{item.label}</span>
             </Link>
           ))}
 
           {/* System section */}
           <div className="pt-3 mt-2 space-y-0.5">
-            <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+            <p className={cn("px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2", compact && "lg:hidden")}>
               System
             </p>
 
             {/* Media Providers accordion */}
             <button
               onClick={() => setMediaOpen((v) => !v)}
+              aria-expanded={mediaOpen}
+              aria-label={compact ? "Media Providers" : undefined}
+              title={compact ? "Media Providers" : undefined}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                "w-full flex min-h-10 items-center gap-3 px-3 py-1 rounded-lg transition-[background-color,color] group",
                 pathname.startsWith("/dashboard/media-providers")
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
-              <span className="material-symbols-outlined text-[18px]">perm_media</span>
-              <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
-              <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">perm_media</span>
+              <span className={cn("text-[13px] font-medium flex-1 text-left", compact && "lg:sr-only")}>Media Providers</span>
+              <span className={cn("material-symbols-outlined text-[14px] transition-transform", compact && "lg:hidden")} style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
                 expand_more
               </span>
             </button>
             {mediaOpen && (
-              <div className="pl-4">
+              <div className={cn("pl-4", compact && "lg:hidden")}>
                 {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
                   <Link
                     key={kind.id}
                     href={`/dashboard/media-providers/${kind.id}`}
                     onClick={onClose}
+                    aria-current={pathname.startsWith(`/dashboard/media-providers/${kind.id}`) ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
                       pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
@@ -243,13 +250,14 @@ export default function Sidebar({ onClose }) {
                     )}
                   >
                     <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
-                    <span className="text-sm">{kind.label}</span>
+                  <span className={cn("text-sm", compact && "lg:sr-only")}>{kind.label}</span>
                   </Link>
                 ))}
                 <Link
                   key={COMBINED_WEB_ITEM.id}
                   href={COMBINED_WEB_ITEM.href}
                   onClick={onClose}
+                  aria-current={pathname.startsWith(COMBINED_WEB_ITEM.href) ? "page" : undefined}
                   className={cn(
                     "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
                     pathname.startsWith(COMBINED_WEB_ITEM.href)
@@ -258,7 +266,7 @@ export default function Sidebar({ onClose }) {
                   )}
                 >
                   <span className="material-symbols-outlined text-[16px]">{COMBINED_WEB_ITEM.icon}</span>
-                  <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
+                  <span className={cn("text-sm", compact && "lg:sr-only")}>{COMBINED_WEB_ITEM.label}</span>
                 </Link>
               </div>
             )}
@@ -268,6 +276,9 @@ export default function Sidebar({ onClose }) {
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
+                aria-current={isActive(item.href) ? "page" : undefined}
+                aria-label={compact ? item.label : undefined}
+                title={compact ? item.label : undefined}
                 className={cn(
                   "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                   isActive(item.href)
@@ -283,7 +294,7 @@ export default function Sidebar({ onClose }) {
                 >
                   {item.icon}
                 </span>
-                <span className="text-[13px] font-medium">{item.label}</span>
+                <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>{item.label}</span>
               </Link>
             ))}
 
@@ -295,6 +306,9 @@ export default function Sidebar({ onClose }) {
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
+                  aria-current={isActive(item.href) ? "page" : undefined}
+                  aria-label={compact ? item.label : undefined}
+                  title={compact ? item.label : undefined}
                   className={cn(
                     "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                     isActive(item.href)
@@ -310,7 +324,7 @@ export default function Sidebar({ onClose }) {
                   >
                     {item.icon}
                   </span>
-                  <span className="text-[13px] font-medium">{item.label}</span>
+                  <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>{item.label}</span>
                 </Link>
               ) : null;
             })}
@@ -318,6 +332,8 @@ export default function Sidebar({ onClose }) {
             {/* Remote */}
             <button
               onClick={() => setShowRemoteModal(true)}
+              aria-label={compact ? "9Remote" : undefined}
+              title={compact ? "9Remote" : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
                 "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -326,7 +342,7 @@ export default function Sidebar({ onClose }) {
               <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">
                 computer
               </span>
-              <span className="text-[13px] font-medium">9Remote</span>
+              <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>9Remote</span>
               {/* <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
                 New
               </span> */}
@@ -338,6 +354,8 @@ export default function Sidebar({ onClose }) {
               target="_blank"
               rel="noreferrer"
               onClick={onClose}
+              aria-label={compact ? "9English" : undefined}
+              title={compact ? "9English" : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
                 "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -346,13 +364,16 @@ export default function Sidebar({ onClose }) {
               <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">
                 translate
               </span>
-              <span className="text-[13px] font-medium">9English</span>
+              <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>9English</span>
             </a>
 
             {/* Settings */}
             <Link
               href="/dashboard/profile"
               onClick={onClose}
+              aria-current={isActive("/dashboard/profile") ? "page" : undefined}
+              aria-label={compact ? "Settings" : undefined}
+              title={compact ? "Settings" : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
                 isActive("/dashboard/profile")
@@ -368,13 +389,13 @@ export default function Sidebar({ onClose }) {
               >
                 settings
               </span>
-              <span className="text-[13px] font-medium">Settings</span>
+              <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>Settings</span>
             </Link>
           </div>
         </nav>
 
         {/* Footer attribution */}
-        <div className="px-6 py-3 border-t border-border-subtle">
+        <div className={cn("px-6 py-3 border-t border-border-subtle", compact && "lg:hidden")}>
           <p className="text-[10px] text-text-subtle">Modified by SantaiNetwork</p>
         </div>
       </aside>
@@ -427,6 +448,7 @@ export default function Sidebar({ onClose }) {
 
 Sidebar.propTypes = {
   onClose: PropTypes.func,
+  compact: PropTypes.bool,
 };
 
 function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdown, onCancel, countdown, isDisconnected }) {

@@ -5,6 +5,7 @@ import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
 import Drawer from "@/shared/components/Drawer";
 import Pagination from "@/shared/components/Pagination";
+import { TableSkeleton } from "@/shared/components/Loading";
 import { cn } from "@/shared/utils/cn";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 
@@ -117,7 +118,8 @@ export default function RequestDetailsTab() {
     totalItems: 0,
     totalPages: 0
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [providers, setProviders] = useState([]);
@@ -141,8 +143,9 @@ export default function RequestDetailsTab() {
     }
   }, []);
 
-  const fetchDetails = useCallback(async () => {
+  const fetchDetails = useCallback(async (signal) => {
     setLoading(true);
+    setError("");
     try {
       const params = new URLSearchParams({
         page: pagination.page.toString(),
@@ -152,15 +155,16 @@ export default function RequestDetailsTab() {
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
 
-      const res = await fetch(`/api/usage/request-details?${params}`, { cache: "no-store" });
+      const res = await fetch(`/api/usage/request-details?${params}`, { cache: "no-store", signal });
       const data = await res.json();
-
+      if (!res.ok) throw new Error(data.error || "Failed to load request details");
+      if (signal?.aborted) return;
       setDetails(data.details || []);
       setPagination(prev => ({ ...prev, ...data.pagination }));
     } catch (error) {
-      console.error("Failed to fetch request details:", error);
+      if (!signal?.aborted) setError(error.message || "Failed to load request details");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [pagination.page, pagination.pageSize, filters]);
 
@@ -169,7 +173,9 @@ export default function RequestDetailsTab() {
   }, [fetchProviders]);
 
   useEffect(() => {
-    fetchDetails();
+    const controller = new AbortController();
+    fetchDetails(controller.signal);
+    return () => controller.abort();
   }, [fetchDetails]);
 
   const handleViewDetail = (detail) => {
@@ -187,6 +193,12 @@ export default function RequestDetailsTab() {
 
   const handleClearFilters = () => {
     setFilters({ provider: "", startDate: "", endDate: "" });
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  const handleFilterChange = (name, value) => {
+    setFilters(prev => ({ ...prev, [name]: value }));
+    setPagination(prev => ({ ...prev, page: 1 }));
   };
 
   return (
@@ -198,7 +210,7 @@ export default function RequestDetailsTab() {
             <select
               id="provider-filter"
               value={filters.provider}
-              onChange={(e) => setFilters({ ...filters, provider: e.target.value })}
+              onChange={(e) => handleFilterChange("provider", e.target.value)}
               className={cn(
                 "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
                 "text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20",
@@ -221,7 +233,7 @@ export default function RequestDetailsTab() {
               id="start-date-filter"
               type="datetime-local"
               value={filters.startDate}
-              onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+              onChange={(e) => handleFilterChange("startDate", e.target.value)}
               className={cn(
                 "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
                 "w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -235,7 +247,7 @@ export default function RequestDetailsTab() {
               id="end-date-filter"
               type="datetime-local"
               value={filters.endDate}
-              onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+              onChange={(e) => handleFilterChange("endDate", e.target.value)}
               className={cn(
                 "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
                 "w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -257,10 +269,12 @@ export default function RequestDetailsTab() {
         </div>
       </Card>
 
-      <Card padding="none">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px]">
-            <thead>
+      {error && <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}. Try changing the filters or reloading this page.</p>}
+      <Card padding="none" className="min-w-0 overflow-hidden">
+        <div className="max-h-[70vh] overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2" role="region" aria-label="Request details table" tabIndex={0} aria-busy={loading}>
+          {loading ? <TableSkeleton rows={5} columns={9} /> : <table className="w-full min-w-[880px] tabular-nums">
+            <caption className="sr-only">Request details: timestamps, upstream models, providers, tokens and latency</caption>
+            <thead className="sticky top-0 z-10 bg-surface">
               <tr className="border-b border-black/5 dark:border-white/5">
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Timestamp</th>
                 <th className="text-left p-4 text-sm font-semibold text-text-main">Model</th>
@@ -274,19 +288,10 @@ export default function RequestDetailsTab() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {details.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
-                      Loading...
-                    </div>
-                  </td>
-                </tr>
-              ) : details.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    No request details found
+                  <td colSpan={9} className="p-8 text-center text-text-muted">
+                    {error ? "Request details unavailable" : "No request details found"}
                   </td>
                 </tr>
               ) : (
@@ -353,7 +358,7 @@ export default function RequestDetailsTab() {
                 ))
               )}
             </tbody>
-          </table>
+          </table>}
         </div>
 
         {!loading && details.length > 0 && (

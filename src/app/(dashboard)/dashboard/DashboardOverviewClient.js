@@ -30,14 +30,14 @@ function timeAgo(ts) {
 function StatCard({ icon, label, value, sub, href, color = "primary" }) {
   const colorMap = {
     primary: "bg-primary/10 text-primary border-primary/20",
-    blue: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    amber: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-    emerald: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    blue: "bg-info/10 text-info border-info/20",
+    amber: "bg-warning/10 text-warning border-warning/20",
+    emerald: "bg-success/10 text-success border-success/20",
   };
 
   const content = (
-    <div className="h-full rounded-2xl border border-border bg-surface p-5 transition-all hover:border-primary/40 hover:shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <div className="flex h-full min-h-32 flex-col rounded-2xl border border-border bg-surface p-5 transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-sm">
+      <div className="flex items-start justify-between gap-3 flex-auto">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">{label}</p>
           <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-text-main">{value}</p>
@@ -60,10 +60,10 @@ function StatCard({ icon, label, value, sub, href, color = "primary" }) {
 }
 
 const QUICK_ACTIONS = [
-  { href: "/dashboard/api-keys", label: "Key Limits", icon: "tune", badge: "Wildcard" },
-  { href: "/dashboard/providers", label: "Providers", icon: "dns", badge: "Live" },
+  { href: "/dashboard/api-keys", label: "Key Limits", icon: "tune" },
+  { href: "/dashboard/providers", label: "Providers", icon: "dns" },
   { href: "/dashboard/combos", label: "Combos & Vision", icon: "layers" },
-  { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions", badge: "Throttled" },
+  { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions" },
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { href: "/dashboard/usage", label: "Analytics & Logs", icon: "bar_chart" },
   { href: "/dashboard/model-probe", label: "Model Probe", icon: "verified_user" },
@@ -81,6 +81,7 @@ export default function DashboardOverviewClient() {
   const [keys, setKeys] = useState([]);
   const [stats, setStats] = useState(null);
   const [queue, setQueue] = useState(null);
+  const [queueError, setQueueError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -103,6 +104,7 @@ export default function DashboardOverviewClient() {
           setKeys(Array.isArray(d.keys) ? d.keys : []);
         }
         if (sRes?.ok) setStats(await sRes.json());
+        if (!pRes?.ok || !kRes?.ok || !sRes?.ok) setError("Some overview metrics are temporarily unavailable. Reload to try again.");
       } catch (e) {
         if (alive) setError(e.message || "Failed to load overview");
       } finally {
@@ -118,8 +120,14 @@ export default function DashboardOverviewClient() {
     const load = async () => {
       try {
         const res = await fetch("/api/queue", { cache: "no-store" });
-        if (res.ok && alive) setQueue(await res.json());
-      } catch {}
+        if (!res.ok) throw new Error("Queue telemetry unavailable");
+        if (alive) {
+          setQueue(await res.json());
+          setQueueError("");
+        }
+      } catch (e) {
+        if (alive) setQueueError(e.message || "Queue telemetry unavailable");
+      }
     };
     load();
     const id = setInterval(load, 5000);
@@ -142,7 +150,8 @@ export default function DashboardOverviewClient() {
   const recent = stats?.recentRequests || [];
   const totalInFlight = queue?.totalActiveConcurrent ?? 0;
   const totalQueued = queue?.totalQueued ?? 0;
-  const goActive = queue?.engine?.type === "golang";
+  const engineType = queue?.engine?.type;
+  const goActive = engineType === "golang";
   const needsSetup = providerSummary.total === 0 || keySummary.total === 0;
 
   if (loading) {
@@ -161,10 +170,10 @@ export default function DashboardOverviewClient() {
       {/* Top Welcome & Health Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/70 pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-text-main flex items-center gap-2.5">
+          <h2 className="text-2xl font-bold tracking-tight text-text-main flex items-center gap-2.5 text-balance">
             <span className="material-symbols-outlined text-primary text-[26px]">space_dashboard</span>
             Gateway Dashboard
-          </h1>
+          </h2>
           <p className="text-sm text-text-muted mt-1">
             Real-time multi-model router with zero-leak concurrency control and automatic request queuing.
           </p>
@@ -186,10 +195,7 @@ export default function DashboardOverviewClient() {
               {queue.engine.type === "golang" ? "Engine: Go Hybrid (:20129)" : "Engine: JS Fallback"}
             </Link>
           )}
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-xs">
-            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-            Port 20128 Active
-          </div>
+          {queueError ? <span className="inline-flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs font-semibold text-warning">Telemetry unavailable</span> : null}
         </div>
       </div>
 
@@ -198,6 +204,7 @@ export default function DashboardOverviewClient() {
           {error}
         </div>
       ) : null}
+      {queueError ? <p role="status" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">{queueError}. Queue metrics are not assumed healthy.</p> : null}
 
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-xs" aria-labelledby="gateway-topology-title">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -215,7 +222,7 @@ export default function DashboardOverviewClient() {
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           {GATEWAY_NODES.map((node) => (
             <div key={node.port} className="flex items-start gap-3 rounded-xl border border-border/80 bg-surface-2/30 p-3">
-              <span className={cn("mt-1 size-2 shrink-0 rounded-full", goActive || node.port === ":20128" ? "bg-emerald-500" : "bg-amber-500")} aria-hidden="true" />
+              <span className={cn("mt-1 size-2 shrink-0 rounded-full", !engineType ? "bg-surface-3" : goActive || node.port === ":20128" ? "bg-emerald-500" : "bg-amber-500")} aria-hidden="true" />
               <div className="min-w-0">
                 <p className={cn("font-mono text-xs font-bold", node.tone)}>{node.port} · {node.label}</p>
                 <p className="mt-0.5 text-[11px] text-text-muted">{node.detail}</p>
@@ -224,7 +231,7 @@ export default function DashboardOverviewClient() {
           ))}
         </div>
         <p className="mt-3 text-[11px] text-text-muted" role="status">
-          {goActive ? "Go hybrid engine healthy" : "JavaScript limiter fallback active"} · {queue?.engine?.totalBuckets ?? 0} tracked buckets
+          {!engineType ? "Engine status unknown" : goActive ? "Go hybrid engine reported healthy" : "JavaScript limiter fallback reported active"} · {queue?.engine?.totalBuckets ?? 0} tracked buckets
         </p>
       </section>
 
@@ -264,10 +271,10 @@ export default function DashboardOverviewClient() {
         <StatCard
           icon="swap_horiz"
           label="In-Flight / Queue"
-          value={`${totalInFlight} in-flight`}
-          sub={totalQueued > 0 ? `${totalQueued} waiting in queue` : "all queues clear"}
+          value={queue ? `${totalInFlight} in-flight` : "Unavailable"}
+          sub={queue ? (totalQueued > 0 ? `${totalQueued} waiting in queue` : "all queues clear") : "queue telemetry unavailable"}
           href="/dashboard/queue-monitor"
-          color="blue"
+          color={queue ? "blue" : "amber"}
         />
         <StatCard
           icon="payments"
@@ -291,7 +298,7 @@ export default function DashboardOverviewClient() {
             <Link
               key={a.href}
               href={a.href}
-              className="flex items-center justify-between p-3 rounded-xl border border-border/80 bg-surface-2/20 hover:bg-surface-2 hover:border-primary/40 transition-all group"
+              className="flex items-center justify-between p-3 rounded-xl border border-border/80 bg-surface-2/20 hover:bg-surface-2 hover:border-primary/40 transition-[background-color,border-color] group"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <span className="material-symbols-outlined text-[20px] text-primary group-hover:scale-110 transition-transform">
@@ -334,14 +341,17 @@ export default function DashboardOverviewClient() {
             </div>
           ) : (
             <div className="divide-y divide-border/60 flex-1">
-              {recent.slice(0, 6).map((r, i) => (
+              {recent.slice(0, 6).map((r, i) => {
+                const upstreamModel = r.upstreamModel || r.meta?.upstreamModel || r.model || "unknown";
+                const requestedModel = r.requestedModel || r.meta?.requestedModel;
+                return (
                 <div key={i} className="flex items-center justify-between gap-3 py-2.5 text-xs">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-text-main font-mono">
-                      {r.model || "unknown"}
+                      {upstreamModel}
                     </p>
                     <p className="truncate text-[11px] text-text-muted">
-                      {r.provider || "gateway"}{r.requestedModel && r.requestedModel !== r.model ? ` · via ${r.requestedModel}` : ""}
+                      {r.provider || "gateway"}{requestedModel && requestedModel !== upstreamModel ? ` · requested ${requestedModel}` : ""}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
@@ -351,7 +361,8 @@ export default function DashboardOverviewClient() {
                     <p className="text-[10px] text-text-muted">{timeAgo(r.timestamp)}</p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

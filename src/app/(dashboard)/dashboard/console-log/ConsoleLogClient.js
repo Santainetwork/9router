@@ -84,9 +84,7 @@ export default function ConsoleLogClient() {
             <span className="text-text-muted">No console logs yet.</span>
           ) : (
             <div className="space-y-0.5">
-              {logs.map((line, i) => (
-                <div key={i}>{colorLine(line)}</div>
-              ))}
+              {logs.map((line, index) => <div className="[content-visibility:auto] [contain-intrinsic-size:auto_1rem]" key={`${index}-${line}`}>{colorLine(line)}</div>)}
             </div>
           )}
         </div>

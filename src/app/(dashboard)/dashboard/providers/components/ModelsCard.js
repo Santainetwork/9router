@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useId } from "react";
 import PropTypes from "prop-types";
 import { Card, Button, Modal } from "@/shared/components";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { TableSkeleton } from "@/shared/components/Loading";
 
 // ── ModelRow ───────────────────────────────────────────────────
 export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
@@ -13,18 +14,19 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
   const iconColor = testStatus === "ok" ? "#22c55e" : testStatus === "error" ? "#ef4444" : undefined;
 
   return (
-    <div className={`group px-3 py-2 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
+    <div className={`group min-w-0 px-3 py-2 rounded-lg border ${borderColor} hover:bg-surface-2 transition-colors`}>
       <div className="flex items-center gap-2">
-        <span className="material-symbols-outlined text-base" style={iconColor ? { color: iconColor } : undefined}>
+        <span className="material-symbols-outlined text-base" style={iconColor ? { color: iconColor } : undefined} aria-hidden="true">
           {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
-        <div className="flex flex-col gap-1">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
+        <span className="sr-only">{testStatus === "ok" ? "Model test passed" : testStatus === "error" ? "Model test failed" : "Model not tested"}</span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <code className="break-all text-xs text-text-main font-mono bg-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>
           {model.name && <span className="text-[9px] text-text-muted/70 italic pl-1">{model.name}</span>}
         </div>
         {onTest && (
           <div className="relative group/btn">
-            <button onClick={onTest} disabled={isTesting} className={`p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-opacity ${isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+            <button type="button" aria-label={`Test ${fullModel}`} onClick={onTest} disabled={isTesting} className="flex size-8 items-center justify-center hover:bg-surface-2 rounded text-text-muted hover:text-primary focus-visible:ring-2 focus-visible:ring-primary">
               <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
                 {isTesting ? "progress_activity" : "science"}
               </span>
@@ -35,7 +37,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
           </div>
         )}
         <div className="relative group/btn">
-          <button onClick={() => onCopy(fullModel, `model-${model.id}`)} className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary">
+          <button type="button" aria-label={`Copy ${fullModel}`} onClick={() => onCopy(fullModel, `model-${model.id}`)} className="flex size-8 items-center justify-center hover:bg-surface-2 rounded text-text-muted hover:text-primary focus-visible:ring-2 focus-visible:ring-primary">
             <span className="material-symbols-outlined text-sm">{copied === `model-${model.id}` ? "check" : "content_copy"}</span>
           </button>
           <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
@@ -44,7 +46,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
         </div>
         {isFree && <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
         {isCustom && (
-          <button onClick={onDeleteAlias} className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model">
+          <button type="button" aria-label={`Remove ${fullModel}`} onClick={onDeleteAlias} className="flex size-8 shrink-0 items-center justify-center hover:bg-danger/10 rounded text-text-muted hover:text-danger focus-visible:ring-2 focus-visible:ring-primary ml-auto" title="Remove custom model">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         )}
@@ -69,6 +71,7 @@ ModelRow.propTypes = {
 // ── AddCustomModelModal ────────────────────────────────────────
 function AddCustomModelModal({ isOpen, onSave, onClose }) {
   const [modelId, setModelId] = useState("");
+  const inputId = useId();
 
   const handleSave = () => {
     if (!modelId.trim()) return;
@@ -80,9 +83,10 @@ function AddCustomModelModal({ isOpen, onSave, onClose }) {
     <Modal isOpen={isOpen} title="Add Custom Model" onClose={onClose}>
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-xs text-text-muted mb-1 block">Model ID</label>
+          <label htmlFor={inputId} className="text-xs text-text-muted mb-1 block">Model ID</label>
           <input
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+            id={inputId}
+            className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface focus-visible:ring-2 focus-visible:ring-primary"
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
@@ -116,11 +120,15 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [testingModelId, setTestingModelId] = useState(null);
   const [testError, setTestError] = useState("");
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
 
   const fetchData = useCallback(async () => {
+    setLoadError("");
     try {
       const [aliasRes, customRes] = await Promise.all([
         fetch("/api/models/alias"),
@@ -128,9 +136,11 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
       ]);
       const aliasData = await aliasRes.json();
       const customData = await customRes.json();
+      if (!aliasRes.ok || !customRes.ok) throw new Error("Could not load model configuration. Reload to try again.");
       if (aliasRes.ok) setModelAliases(aliasData.aliases || {});
       if (customRes.ok) setCustomModels(customData.models || []);
-    } catch (e) { console.log("ModelsCard fetch error:", e); }
+    } catch (e) { setLoadError(e.message); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -213,17 +223,23 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
       && !builtInModels.some((b) => b.id === m.id)
   );
 
-  const displayModels = builtInModels;
+  const query = search.trim().toLowerCase();
+  const matchesSearch = (model) => `${providerAlias}/${model.id} ${model.name || ""}`.toLowerCase().includes(query);
+  const displayModels = builtInModels.filter(matchesSearch);
+  const visibleCustomModels = myCustomModels.filter(matchesSearch);
 
   return (
     <>
-      <Card>
-        <div className="flex items-center justify-between mb-4">
+      <Card className="min-w-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
+          <input type="search" aria-label="Search models" placeholder="Search models…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-10 w-full min-w-0 rounded-lg border border-border bg-surface px-3 text-sm text-text-main sm:max-w-xs focus-visible:ring-2 focus-visible:ring-primary" />
         </div>
+        {loadError && <p role="alert" className="mb-3 text-sm text-danger">{loadError}</p>}
         {testError && <p className="text-xs text-red-500 mb-3 break-words">{testError}</p>}
 
-        <div className="flex flex-wrap gap-3">
+        {loading ? <TableSkeleton rows={3} columns={2} /> : <div className="grid max-h-[60vh] grid-cols-1 gap-3 overflow-y-auto overscroll-contain md:grid-cols-2" role="region" aria-label="Available models" tabIndex={0}>
+          {!displayModels.length && !visibleCustomModels.length && <p role="status" className="py-6 text-sm text-text-muted">No models match your search.</p>}
           {displayModels.map((model) => {
             const fullModel = `${providerAlias}/${model.id}`;
             const existingAlias = Object.entries(modelAliases).find(([, m]) => m === fullModel)?.[0];
@@ -245,7 +261,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
             );
           })}
 
-          {myCustomModels.map((model) => (
+          {visibleCustomModels.map((model) => (
             <ModelRow
               key={`${model.id}-${model.type}`}
               model={{ id: model.id, name: model.name }}
@@ -268,7 +284,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
             <span className="material-symbols-outlined text-sm">add</span>
             Add Model
           </button>
-        </div>
+        </div>}
       </Card>
 
       <AddCustomModelModal

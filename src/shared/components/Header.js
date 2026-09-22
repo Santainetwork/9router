@@ -15,8 +15,44 @@ import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
 import { translate } from "@/i18n/runtime";
 
+const PAGE_INFO = {
+  "/dashboard": ["Overview", "Operations console overview", "dashboard"],
+  "/dashboard/endpoint": ["Endpoint & Key", "API endpoint configuration", "api"],
+  "/dashboard/api-keys": ["Key Access Control", "Manage API key access policies", "tune"],
+  "/dashboard/providers": ["Providers", "Manage your AI provider connections", "dns"],
+  "/dashboard/basic-chat": ["Basic Chat", "Test models and compare responses", "chat"],
+  "/dashboard/footer": ["Response Footer", "Configure response metadata", "subtitles"],
+  "/dashboard/rpm-tester": ["Rate & Concurrency Tester", "Test gateway throughput and concurrency", "speed"],
+  "/dashboard/model-probe": ["Model Identity Probe", "Verify upstream model identity", "verified_user"],
+  "/dashboard/combos": ["Combo & Vision Adapter", "Configure model combos and vision adapters", "layers"],
+  "/dashboard/usage": ["Usage & Analytics", "Monitor API usage, tokens, and requests", "bar_chart"],
+  "/dashboard/leaderboard": ["Leaderboard", "Compare API key and provider usage", "leaderboard"],
+  "/dashboard/quota": ["Quota Tracker", "Track provider quota limits", "data_usage"],
+  "/dashboard/custom-credits": ["Custom Credits", "Track custom provider balances", "account_balance_wallet"],
+  "/dashboard/queue-monitor": ["Request Queue", "Monitor live concurrency and queued requests", "pending_actions"],
+  "/dashboard/error-response": ["Custom Error Response", "Configure gateway error responses", "warning"],
+  "/dashboard/token-saver": ["Token Saver", "Configure prompt and output compression", "savings"],
+  "/dashboard/cli-tools": ["CLI Tools", "Configure CLI tools", "terminal"],
+  "/dashboard/proxy-pools": ["Proxy Pools", "Manage proxy pool configurations", "lan"],
+  "/dashboard/skills": ["Agent Skills", "Connect reusable skills to AI agents", "extension"],
+  "/dashboard/console-log": ["Console Log", "View live server console output", "monitor"],
+  "/dashboard/translator": ["Translator", "Debug translation flow between formats", "translate"],
+  "/dashboard/profile": ["Settings", "Manage gateway preferences", "settings"],
+};
+
 const getPageInfo = (pathname) => {
   if (!pathname) return { title: "", description: "", breadcrumbs: [] };
+
+  const exact = PAGE_INFO[pathname];
+  if (exact) return {
+    title: exact[0],
+    description: exact[1],
+    icon: exact[2],
+    breadcrumbs: pathname === "/dashboard" ? [] : [
+      { label: "Overview", href: "/dashboard" },
+      { label: exact[0] },
+    ],
+  };
 
   // Media provider detail: /dashboard/media-providers/[kind]/[id]
   const mediaDetailMatch = pathname.match(/\/media-providers\/([^/]+)\/([^/]+)$/);
@@ -171,15 +207,15 @@ const getPageInfo = (pathname) => {
     };
   if (pathname === "/dashboard")
     return {
-      title: "Endpoint",
-      description: "API endpoint configuration",
-      icon: "api",
+      title: "Overview",
+      description: "Operations console overview",
+      icon: "dashboard",
       breadcrumbs: [],
     };
   return { title: "", description: "", breadcrumbs: [] };
 };
 
-export default function Header({ onMenuClick, showMenuButton = true }) {
+export default function Header({ onMenuClick, showMenuButton = true, menuButtonRef, onCompactToggle, sidebarCompact = false }) {
   const pathname = usePathname();
   const [displayName, setDisplayName] = useState("");
   const [loginMethod, setLoginMethod] = useState("");
@@ -232,18 +268,22 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
           <button
+            ref={menuButtonRef}
             onClick={onMenuClick}
             className="text-text-main hover:text-primary transition-colors"
+            aria-label="Open navigation"
           >
             <span className="material-symbols-outlined">menu</span>
           </button>
         )}
       </div>
 
+      {onCompactToggle && <button type="button" onClick={onCompactToggle} className="hidden lg:inline-flex rounded-lg p-2 text-text-muted hover:bg-surface-2 hover:text-text-main" aria-label={sidebarCompact ? "Expand sidebar" : "Compact sidebar"} title={sidebarCompact ? "Expand sidebar" : "Compact sidebar"}><span className="material-symbols-outlined text-[18px]">{sidebarCompact ? "left_panel_open" : "left_panel_close"}</span></button>}
+
       {/* Page title with breadcrumbs */}
       <div className="flex flex-col min-w-0 flex-1">
         {breadcrumbs.length > 0 ? (
-          <div className="flex items-center gap-2">
+          <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2">
             {breadcrumbs.map((crumb, index) => (
               <div
                 key={`${crumb.label}-${crumb.href || "current"}`}
@@ -279,7 +319,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
                 )}
               </div>
             ))}
-          </div>
+          </nav>
         ) : title ? (
           <div>
             <div className="flex items-center gap-2">
@@ -370,4 +410,7 @@ function HeaderSearch() {
 Header.propTypes = {
   onMenuClick: PropTypes.func,
   showMenuButton: PropTypes.bool,
+  menuButtonRef: PropTypes.shape({ current: PropTypes.any }),
+  onCompactToggle: PropTypes.func,
+  sidebarCompact: PropTypes.bool,
 };

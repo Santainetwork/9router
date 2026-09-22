@@ -18,6 +18,7 @@ export function Spinner({ size = "md", className }) {
         sizes[size],
         className
       )}
+      aria-hidden="true"
     >
       progress_activity
     </span>
@@ -25,11 +26,11 @@ export function Spinner({ size = "md", className }) {
 }
 
 // Full page loading
-export function PageLoading({ message = "Loading..." }) {
+export function PageLoading({ message = "Loading…" }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg">
       <Spinner size="xl" />
-      <p className="mt-4 text-text-muted">{message}</p>
+      <p className="mt-4 text-text-muted" role="status" aria-live="polite">{message}</p>
     </div>
   );
 }
@@ -39,12 +40,21 @@ export function Skeleton({ className, ...props }) {
   return (
     <div
       className={cn(
-        "animate-pulse rounded-[10px] bg-surface-2",
+        "motion-safe:animate-pulse rounded-[10px] bg-surface-2",
         className
       )}
+      aria-hidden="true"
       {...props}
     />
   );
+}
+
+export function TableSkeleton({ rows = 5, columns = 4, className }) {
+  return <div className={cn("w-full overflow-hidden rounded-[14px] border border-border-subtle bg-surface", className)} aria-busy="true" aria-label="Loading table">
+    <span className="sr-only" role="status">Loading table…</span>
+    <div className="grid gap-4 border-b border-border-subtle p-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{Array.from({ length: columns }, (_, index) => <Skeleton key={`heading-${index}`} className="h-3 w-2/3" />)}</div>
+    {Array.from({ length: rows }, (_, row) => <div key={row} className="grid gap-4 border-b border-border-subtle p-4 last:border-0" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{Array.from({ length: columns }, (_, column) => <Skeleton key={column} className="h-4 w-full" />)}</div>)}
+  </div>;
 }
 
 // Card skeleton

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, Fragment } from "react";
 import PropTypes from "prop-types";
 import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
@@ -31,7 +31,7 @@ SortIcon.propTypes = {
 /**
  * Render 3 token or cost cells based on viewMode
  */
-function ValueCells({ item, viewMode, isSummary = false }) {
+const ValueCells = memo(function ValueCells({ item, viewMode, isSummary = false }) {
   if (viewMode === "tokens") {
     return (
       <>
@@ -66,7 +66,7 @@ function ValueCells({ item, viewMode, isSummary = false }) {
       </td>
     </>
   );
-}
+});
 
 ValueCells.propTypes = {
   item: PropTypes.object.isRequired,
@@ -106,20 +106,22 @@ export default function UsageTable({
   renderSummaryCells,
   emptyMessage,
 }) {
-  const [expanded, setExpanded] = useState(new Set());
+  const [expanded, setExpanded] = useState(null);
 
   // Load expanded state from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      if (saved) setExpanded(new Set(JSON.parse(saved)));
+      setExpanded(new Set(saved ? JSON.parse(saved) : []));
     } catch (e) {
       console.error(`Failed to load ${storageKey}:`, e);
+      setExpanded(new Set());
     }
   }, [storageKey]);
 
   // Save expanded state to localStorage
   useEffect(() => {
+    if (expanded === null) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify([...expanded]));
     } catch (e) {
@@ -129,7 +131,7 @@ export default function UsageTable({
 
   const toggleGroup = useCallback((groupKey) => {
     setExpanded((prev) => {
-      const next = new Set(prev);
+      const next = new Set(prev || []);
       next.has(groupKey) ? next.delete(groupKey) : next.add(groupKey);
       return next;
     });
@@ -166,21 +168,21 @@ export default function UsageTable({
               {columns.map((col) => (
                 <th
                   key={col.field}
-                  className={`px-6 py-3 cursor-pointer hover:bg-bg-subtle/50 ${col.align === "right" ? "text-right" : ""}`}
-                  onClick={() => onToggleSort(tableType, col.field)}
+                  className={`px-6 py-3 ${col.align === "right" ? "text-right" : ""}`}
                 >
-                  {col.label}{" "}
-                  <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
+                  <button type="button" className="rounded hover:text-text-main focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onToggleSort(tableType, col.field)}>
+                    {col.label}{" "}<SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
+                  </button>
                 </th>
               ))}
               {valueColumns.map((col) => (
                 <th
                   key={col.field}
-                  className="px-6 py-3 text-right cursor-pointer hover:bg-bg-subtle/50"
-                  onClick={() => onToggleSort(tableType, col.field)}
+                  className="px-6 py-3 text-right"
                 >
-                  {col.label}{" "}
-                  <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
+                  <button type="button" className="rounded hover:text-text-main focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onToggleSort(tableType, col.field)}>
+                    {col.label}{" "}<SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
+                  </button>
                 </th>
               ))}
             </tr>
@@ -190,14 +192,13 @@ export default function UsageTable({
               <Fragment key={group.groupKey}>
                 {/* Group summary row */}
                 <tr
-                  className="group-summary cursor-pointer hover:bg-bg-subtle/50 transition-colors"
-                  onClick={() => toggleGroup(group.groupKey)}
+                  className="group-summary hover:bg-bg-subtle/50 transition-colors"
                 >
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2">
-                      <span className={`material-symbols-outlined text-[18px] text-text-muted transition-transform ${expanded.has(group.groupKey) ? "rotate-90" : ""}`}>
-                        chevron_right
-                      </span>
+                      <button type="button" aria-label={`${expanded?.has(group.groupKey) ? "Collapse" : "Expand"} ${group.groupKey}`} aria-expanded={expanded?.has(group.groupKey) ?? false} onClick={() => toggleGroup(group.groupKey)} className="rounded focus-visible:ring-2 focus-visible:ring-primary">
+                        <span aria-hidden="true" className={`material-symbols-outlined text-[18px] text-text-muted transition-transform ${expanded?.has(group.groupKey) ? "rotate-90" : ""}`}>chevron_right</span>
+                      </button>
                       <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>
                         {group.groupKey}
                       </span>
@@ -207,7 +208,7 @@ export default function UsageTable({
                   <ValueCells item={group.summary} viewMode={viewMode} isSummary />
                 </tr>
                 {/* Detail rows */}
-                {expanded.has(group.groupKey) && group.items.map((item) => (
+                {expanded?.has(group.groupKey) && group.items.map((item) => (
                   <tr
                     key={`detail-${item.key}`}
                     className="group-detail hover:bg-bg-subtle/20 transition-colors"

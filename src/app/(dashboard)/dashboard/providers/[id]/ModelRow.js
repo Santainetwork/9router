@@ -21,11 +21,13 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         <span
           className="material-symbols-outlined shrink-0 text-base"
           style={iconColor ? { color: iconColor } : undefined}
+          aria-hidden="true"
         >
           {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
+        <span className="sr-only">{testStatus === "ok" ? "Model test passed" : testStatus === "error" ? "Model test failed" : "Model not tested"}</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">{displayModel}</code>
+          <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-text-main" title={displayModel}>{displayModel}</code>
           <span className="flex min-w-0 items-center text-[9px] gap-1 pl-1">
             {model.name && <span className="truncate text-[9px] italic text-text-muted/70">{model.name}</span>}
             <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
@@ -34,9 +36,11 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         {onTest && (
           <div className="relative shrink-0 group/btn">
             <button
+              type="button"
+              aria-label={`Test ${displayModel}`}
               onClick={onTest}
               disabled={isTesting}
-              className={`rounded p-0.5 text-text-muted transition-opacity hover:bg-sidebar hover:text-primary ${isTesting ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"}`}
+              className="flex size-8 items-center justify-center rounded text-text-muted hover:bg-surface-2 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary"
             >
               <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
                 {isTesting ? "progress_activity" : "science"}
@@ -49,8 +53,10 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         )}
         <div className="relative shrink-0 group/btn">
           <button
+            type="button"
+            aria-label={`Copy ${displayModel}`}
             onClick={() => onCopy(displayModel, `model-${model.id}`)}
-            className="rounded p-0.5 text-text-muted hover:bg-sidebar hover:text-primary"
+            className="flex size-8 items-center justify-center rounded text-text-muted hover:bg-surface-2 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary"
           >
             <span className="material-symbols-outlined text-sm">
               {copied === `model-${model.id}` ? "check" : "content_copy"}
@@ -62,16 +68,20 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         </div>
         {isCustom ? (
           <button
+            type="button"
+            aria-label={`Remove ${displayModel}`}
             onClick={onDeleteAlias}
-            className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
+            className="ml-auto flex size-8 shrink-0 items-center justify-center rounded text-text-muted hover:bg-danger/10 hover:text-danger focus-visible:ring-2 focus-visible:ring-primary"
             title="Remove custom model"
           >
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         ) : onDisable ? (
           <button
+            type="button"
+            aria-label={`Disable ${displayModel}`}
             onClick={onDisable}
-            className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
+            className="ml-auto flex size-8 shrink-0 items-center justify-center rounded text-text-muted hover:bg-danger/10 hover:text-danger focus-visible:ring-2 focus-visible:ring-primary"
             title="Disable this model"
           >
             <span className="material-symbols-outlined text-sm">close</span>
