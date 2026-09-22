@@ -59,16 +59,15 @@ function isFreshDb(adapter) {
 // end of runMigrationOnce) — a different lineage that must never be read back as
 // a cursor: SCHEMA_VERSION and latestVersion() are independent numbers.
 // Pre-cursor builds kept the cursor in schemaVersion, so that legacy value is
-// converted once — clamped to the newest known migration, since anything above
-// it cannot be a cursor — and stamped under migrationVersion before the readiness
-// marker can overwrite schemaVersion. Without the stamp a legacy DB would lose
-// its cursor and future migrations would be silently skipped.
+// converted once. A value above the newest known migration is a readiness marker,
+// not a cursor, so replay the idempotent chain instead of skipping future work.
 function resolveMigrationCursor(adapter) {
   const stored = getMetaSync(adapter, "migrationVersion", null);
   if (stored !== null) return parseInt(stored, 10) || 0;
 
   const target = latestVersion();
-  const legacy = Math.min(parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0, target);
+  const parsed = parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
+  const legacy = parsed >= 0 && parsed <= target ? parsed : 0;
   setMetaSync(adapter, "migrationVersion", legacy);
   return legacy;
 }
@@ -78,6 +77,11 @@ function runVersionedMigrations(adapter) {
   adapter.exec(buildCreateTableSql("_meta", TABLES._meta, adapter.driver));
 
   const current = resolveMigrationCursor(adapter);
+
+  // A previous boot may have published readiness before failing later work.
+  // Resolve any legacy cursor first, then clear the stale readiness marker.
+  adapter.run("DELETE FROM _meta WHERE key = ?", ["schemaVersion"]);
+
   const target = latestVersion();
   if (current >= target) return { applied: 0, from: current, to: current };
 

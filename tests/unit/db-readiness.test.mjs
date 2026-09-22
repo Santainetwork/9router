@@ -272,6 +272,45 @@ test("postgres-neutral: adapter initialization timeout is not ready", async () =
   assert.ok(Number.isFinite(result.latencyMs));
 });
 
+// ─── Readiness marker cleared before work ────────────────────────────────
+
+test("sqlite single-process: a readiness marker is dropped before a schema sync that throws", async () => {
+  const { runMigrationOnce } = await import("../../src/lib/db/migrate.js");
+  const db = await getAdapter();
+  assert.equal((await checkDatabaseReady()).ready, true, "premise: the DB starts ready");
+
+  // Migrations are once-per-adapter. Reopen the same database to model a later
+  // boot, then replace the active adapter with a failing proxy for this probe.
+  db.close?.();
+  resetAdapterState();
+  const reopened = await getAdapter();
+
+  // Same adapter, but the additive column diff now fails the way a broken disk
+  // or dropped permission would, after migrations but before the marker.
+  const failing = new Proxy(reopened, {
+    get(target, prop, receiver) {
+      if (prop === "all") {
+        return (sql, params) => {
+          if (String(sql).includes("table_info(providerConnections)")) throw new Error("disk I/O error");
+          return target.all(sql, params);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+  global._dbAdapter.instance = failing;
+
+  await assert.rejects(runMigrationOnce(failing), /disk I\/O error/);
+
+  // The marker was invalidated before the sync ran, so the failed boot reads as
+  // not-ready instead of leaving a stale "ready" behind for other processes.
+  const result = await checkDatabaseReady();
+  assert.equal(result.ready, false);
+  assert.equal(result.reason, "schema_missing");
+});
+
 // ─── Driver retry ────────────────────────────────────────────────────────
 
 test("driver: rejected initialization clears initPromise so a retry recovers", async () => {
