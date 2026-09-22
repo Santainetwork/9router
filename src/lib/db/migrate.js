@@ -54,11 +54,30 @@ function isFreshDb(adapter) {
 }
 
 // ─── Versioned migrations runner (skip-version safe) ─────────────────────
+// The migration cursor lives in its own key, `_meta.migrationVersion`.
+// `_meta.schemaVersion` is the readiness marker (SCHEMA_VERSION, written at the
+// end of runMigrationOnce) — a different lineage that must never be read back as
+// a cursor: SCHEMA_VERSION and latestVersion() are independent numbers.
+// Pre-cursor builds kept the cursor in schemaVersion, so that legacy value is
+// converted once — clamped to the newest known migration, since anything above
+// it cannot be a cursor — and stamped under migrationVersion before the readiness
+// marker can overwrite schemaVersion. Without the stamp a legacy DB would lose
+// its cursor and future migrations would be silently skipped.
+function resolveMigrationCursor(adapter) {
+  const stored = getMetaSync(adapter, "migrationVersion", null);
+  if (stored !== null) return parseInt(stored, 10) || 0;
+
+  const target = latestVersion();
+  const legacy = Math.min(parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0, target);
+  setMetaSync(adapter, "migrationVersion", legacy);
+  return legacy;
+}
+
 function runVersionedMigrations(adapter) {
-  // Bootstrap _meta first so we can read schemaVersion
+  // Bootstrap _meta first so we can read the cursor
   adapter.exec(buildCreateTableSql("_meta", TABLES._meta, adapter.driver));
 
-  const current = parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
+  const current = resolveMigrationCursor(adapter);
   const target = latestVersion();
   if (current >= target) return { applied: 0, from: current, to: current };
 
@@ -67,7 +86,7 @@ function runVersionedMigrations(adapter) {
   for (const m of pending) {
     adapter.transaction(() => {
       m.up(adapter);
-      setMetaSync(adapter, "schemaVersion", m.version);
+      setMetaSync(adapter, "migrationVersion", m.version);
     });
     lastApplied = m.version;
     console.log(`[DB][migrate] applied #${m.version} ${m.name}`);
@@ -282,6 +301,8 @@ export async function runMigrationOnce(adapter) {
       });
     } catch (err) {
       if (err instanceof MigrationAborted) {
+        // No readiness marker: the DB is half-populated, so /api/ready must stay
+        // false until a later boot retries the import (legacy JSON is kept).
         console.error(`[DB][migrate] aborted: ${err.message} | legacy JSON kept | backup: ${backupDir}`);
         return;
       }
@@ -291,8 +312,15 @@ export async function runMigrationOnce(adapter) {
     try { fs.writeFileSync(MIGRATED_MARKER, new Date().toISOString()); } catch {}
     pruneOldBackups();
     console.log(`[DB][migrate] JSON → SQLite in ${Date.now() - t0}ms | legacy JSON kept at DATA_DIR | backup: ${backupDir}`);
-    return;
+    // No early return: fall through to publish the readiness marker.
   }
+
+  // Readiness barrier: publish the schema version this build requires, only now
+  // that every migration, additive sync and legacy import above succeeded. API
+  // workers report ready on GET /api/ready only after the control process wrote
+  // it (see src/lib/db/readiness.js). Any abort above returned or threw first, so
+  // a partially migrated/imported DB never looks ready.
+  setMetaSync(adapter, "schemaVersion", SCHEMA_VERSION);
 
   // Track app version for informational purposes only. App version bumps no
   // longer trigger a DB backup — only real schema changes (SCHEMA_VERSION) do.

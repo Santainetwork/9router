@@ -25,12 +25,18 @@ afterEach(() => {
 });
 
 describe("Schema migrations", () => {
-  it("fresh DB → applies migrations & stamps schemaVersion", async () => {
+  it("fresh DB → applies migrations, stamps the cursor and the schema marker", async () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const { latestVersion } = await import("@/lib/db/migrations/index.js");
+    const { SCHEMA_VERSION } = await import("@/lib/db/schema.js");
     const db = await getAdapter();
-    const row = db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`);
-    expect(parseInt(row.value, 10)).toBe(latestVersion());
+
+    // migrationVersion is the migration-chain cursor. schemaVersion is the
+    // readiness marker (SCHEMA_VERSION) — a separate key and a separate lineage.
+    const cursor = db.get(`SELECT value FROM _meta WHERE key='migrationVersion'`);
+    expect(parseInt(cursor.value, 10)).toBe(latestVersion());
+    const marker = db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`);
+    expect(parseInt(marker.value, 10)).toBe(SCHEMA_VERSION);
 
     const tables = db.all(`SELECT name FROM sqlite_master WHERE type='table'`).map(t => t.name);
     expect(tables).toEqual(expect.arrayContaining([
@@ -39,12 +45,13 @@ describe("Schema migrations", () => {
     ]));
   });
 
-  it("existing DB at older schemaVersion → re-applies pending migrations on restart", async () => {
+  it("existing DB with an older migration cursor → re-applies pending migrations on restart", async () => {
     // 1st boot
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
     db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, ['{"foo":"bar"}']);
-    db.run(`UPDATE _meta SET value = '0' WHERE key = 'schemaVersion'`);
+    // Rewind the cursor only — the readiness marker is a different key.
+    db.run(`UPDATE _meta SET value = '0' WHERE key = 'migrationVersion'`);
     db.close?.();
 
     // 2nd boot: full reset to simulate process restart
@@ -53,11 +60,43 @@ describe("Schema migrations", () => {
     const { getAdapter: getAdapter2 } = await import("@/lib/db/driver.js");
     const { latestVersion } = await import("@/lib/db/migrations/index.js");
     const db2 = await getAdapter2();
-    const row = db2.get(`SELECT value FROM _meta WHERE key='schemaVersion'`);
+    const row = db2.get(`SELECT value FROM _meta WHERE key='migrationVersion'`);
     expect(parseInt(row.value, 10)).toBe(latestVersion());
 
     const settings = db2.get(`SELECT data FROM settings WHERE id=1`);
     expect(JSON.parse(settings.data)).toEqual({ foo: "bar" });
+  });
+
+  it("legacy cursor parked in schemaVersion → converted, and the marker is never read as a cursor", async () => {
+    const { latestVersion } = await import("@/lib/db/migrations/index.js");
+    const { SCHEMA_VERSION } = await import("@/lib/db/schema.js");
+
+    // Both shapes a legacy DB can be in: cursor at the newest migration, and the
+    // value later overwritten by the readiness marker (SCHEMA_VERSION > latestVersion()).
+    for (const legacyValue of [String(latestVersion()), String(SCHEMA_VERSION)]) {
+      // driver.js binds its state to global._dbAdapter at import time, so each
+      // boot needs a fresh module instance.
+      delete global._dbAdapter;
+      vi.resetModules();
+      const { getAdapter } = await import("@/lib/db/driver.js");
+      const db = await getAdapter();
+      db.run(`DELETE FROM _meta WHERE key = 'migrationVersion'`);
+      db.run(`UPDATE _meta SET value = ? WHERE key = 'schemaVersion'`, [legacyValue]);
+      db.close?.();
+
+      delete global._dbAdapter;
+      vi.resetModules();
+      const { getAdapter: getAdapter2 } = await import("@/lib/db/driver.js");
+      const db2 = await getAdapter2();
+
+      // The legacy value is converted once into the cursor key...
+      expect(parseInt(db2.get(`SELECT value FROM _meta WHERE key='migrationVersion'`).value, 10))
+        .toBe(latestVersion());
+      // ...so a migration appended later is still applied instead of skipped.
+      expect(parseInt(db2.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value, 10))
+        .toBe(SCHEMA_VERSION);
+      db2.close?.();
+    }
   });
 
   it("fresh DB + legacy db.json → imports data automatically", async () => {

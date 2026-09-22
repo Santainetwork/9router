@@ -38,6 +38,11 @@ export async function resolve(specifier, context, nextResolve) {
   if (specifier.startsWith("@/")) {
     return nextResolve(new URL(`src/${specifier.slice(2)}`, ROOT).href, context);
   }
+  // Next's exports map has no "./server" entry, so plain node cannot resolve
+  // the bare specifier that app routes use.
+  if (specifier === "next/server") {
+    return nextResolve(new URL("node_modules/next/server.js", ROOT).href, context);
+  }
   if (specifier === "open-sse") {
     return nextResolve(new URL("open-sse/index.js", ROOT).href, context);
   }

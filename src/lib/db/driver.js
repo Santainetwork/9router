@@ -74,6 +74,24 @@ async function trySqlJs() {
   }
 }
 
+// Migrations run only on the control process (see isApiWorker). getAdapter()
+// clears a rejected initPromise so a readiness probe can retry, which means a
+// failed migration is retried too: close the adapter first or every retry leaks
+// the sqlite handle plus its -wal/-shm sidecars.
+async function migrateUnlessWorker(adapter, loadMigration) {
+  if (isApiWorker()) return;
+  try {
+    // loadMigration() is inside the try too: a failed dynamic import (broken
+    // build, missing module) throws before migration even starts and would
+    // otherwise leak the already-open sqlite handle on every retry.
+    const { runMigrationOnce } = await loadMigration();
+    await runMigrationOnce(adapter);
+  } catch (e) {
+    try { adapter.close?.(); } catch {}
+    throw e;
+  }
+}
+
 export async function initAdapter(deps = {}) {
   const dbType = getDatabaseType();
   const loadMigration = deps.loadMigration || (() => import("./migrate.js"));
@@ -88,10 +106,7 @@ export async function initAdapter(deps = {}) {
       console.log(`[DB] Driver: ${adapter.driver} | target: ${target}`);
       state.logged = true;
     }
-    if (!isApiWorker()) {
-      const { runMigrationOnce } = await loadMigration();
-      await runMigrationOnce(adapter);
-    }
+    await migrateUnlessWorker(adapter, loadMigration);
     return adapter;
   }
 
@@ -110,16 +125,21 @@ export async function initAdapter(deps = {}) {
     state.logged = true;
   }
 
-  if (!isApiWorker()) {
-    const { runMigrationOnce } = await loadMigration();
-    await runMigrationOnce(adapter);
-  }
+  await migrateUnlessWorker(adapter, loadMigration);
   return adapter;
 }
 
-export async function getAdapter() {
+// deps is forwarded to initAdapter() for tests and readiness probes.
+export async function getAdapter(deps) {
   if (state.instance) return state.instance;
-  if (!state.initPromise) state.initPromise = initAdapter().then((a) => { state.instance = a; return a; });
+  if (!state.initPromise) {
+    // Clear a rejected initPromise: a transient init failure (DB still starting,
+    // worker racing the control process) must not poison the process forever.
+    state.initPromise = initAdapter(deps).then(
+      (a) => { state.instance = a; return a; },
+      (e) => { state.initPromise = null; throw e; },
+    );
+  }
   return state.initPromise;
 }
 
