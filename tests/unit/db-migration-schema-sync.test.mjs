@@ -1,0 +1,43 @@
+import test, { after } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-schema-sync-"));
+const originalDataDir = process.env.DATA_DIR;
+process.env.DATA_DIR = tempDir;
+
+const { TABLES, SCHEMA_VERSION } = await import("../../src/lib/db/schema.js");
+const { runMigrationOnce } = await import("../../src/lib/db/migrate.js");
+
+after(() => {
+  if (originalDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = originalDataDir;
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("postgres schema sync treats lowercase information_schema column names as existing", async () => {
+  const alters = [];
+  const adapter = {
+    driver: "postgres",
+    exec(sql) {
+      if (/^ALTER TABLE/i.test(sql)) alters.push(sql);
+    },
+    all(_sql, [tableName]) {
+      return Object.keys(TABLES[tableName].columns).map((name) => ({ name: name.toLowerCase() }));
+    },
+    get(sql, params = []) {
+      if (/SELECT COUNT\(\*\)/i.test(sql)) return { c: 1 };
+      if (params[0] === "migrationVersion") return { value: "1" };
+      if (params[0] === "backupSchemaVersion") return { value: String(SCHEMA_VERSION) };
+      return undefined;
+    },
+    run() {},
+    transaction(fn) { return fn(); },
+  };
+
+  await runMigrationOnce(adapter);
+
+  assert.deepEqual(alters, []);
+});

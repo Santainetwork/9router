@@ -108,9 +108,12 @@ function syncSchemaFromTables(adapter) {
     const existing = adapter.driver === "postgres"
       ? adapter.all("SELECT column_name AS name FROM information_schema.columns WHERE lower(table_name) = lower(?)", [tableName])
       : adapter.all(`PRAGMA table_info(${tableName})`);
-    const existingNames = new Set(existing.map((r) => r.name));
+    // PostgreSQL folds unquoted camelCase identifiers to lowercase in
+    // information_schema, and SQL identifiers are case-insensitive anyway, so
+    // compare normalized names or every column looks missing on an existing DB.
+    const existingNames = new Set(existing.map((r) => String(r.name).toLowerCase()));
     for (const [colName, colDef] of Object.entries(def.columns)) {
-      if (!existingNames.has(colName)) {
+      if (!existingNames.has(colName.toLowerCase())) {
         // SQLite ADD COLUMN restrictions: no PRIMARY KEY / UNIQUE w/o NULL ok.
         // We strip PRIMARY KEY / UNIQUE since those are only valid at create time.
         let safeDef = colDef
