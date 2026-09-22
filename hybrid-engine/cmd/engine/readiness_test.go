@@ -9,21 +9,29 @@ import (
 
 func TestReadyHandlerReportsUpstreamReadiness(t *testing.T) {
 	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/health" {
-			t.Fatalf("readiness probe path = %q, want /api/health", r.URL.Path)
+		if r.URL.Path != "/api/ready" {
+			t.Fatalf("readiness probe path = %q, want /api/ready", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ready":true}`))
 	}))
 	defer healthy.Close()
+
+	unready := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"ready":false,"reason":"schema_missing"}`))
+	}))
+	defer unready.Close()
 
 	tests := []struct {
 		name       string
 		upstream   string
 		wantStatus int
 	}{
-		{name: "upstream healthy", upstream: healthy.URL, wantStatus: http.StatusOK},
+		{name: "upstream ready", upstream: healthy.URL, wantStatus: http.StatusOK},
 		{name: "upstream unavailable", upstream: "http://127.0.0.1:1", wantStatus: http.StatusServiceUnavailable},
+		{name: "upstream reports 503", upstream: unready.URL, wantStatus: http.StatusServiceUnavailable},
 	}
 
 	for _, tt := range tests {

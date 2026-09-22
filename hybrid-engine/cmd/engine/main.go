@@ -114,7 +114,7 @@ func readyHandler(upstream string) http.HandlerFunc {
 			return
 		}
 
-		probeURL := strings.TrimRight(upstream, "/") + "/api/health"
+		probeURL := strings.TrimRight(upstream, "/") + "/api/ready"
 		resp, err := client.Get(probeURL)
 		if err != nil {
 			http.Error(w, "upstream not ready", http.StatusServiceUnavailable)

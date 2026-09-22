@@ -287,6 +287,38 @@ describe("dashboard guard local-only access", () => {
   });
 });
 
+describe("dashboard guard readiness locality", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  it("allows trusted loopback /api/ready without auth", async () => {
+    const response = await proxy(localRequest("/api/ready", { host: "localhost:20127" }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("returns 404 for remote /api/ready", async () => {
+    const response = await proxy(request("/api/ready", { host: "router.example.com" }));
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 for remote /api/ready even with a valid CLI token", async () => {
+    const response = await proxy(request("/api/ready", {
+      host: "router.example.com",
+      "x-9r-cli-token": "cli-token",
+    }));
+
+    expect(response.status).toBe(404);
+  });
+});
+
 describe("dashboard guard helpers", () => {
   it("extracts bearer API keys before x-api-key", () => {
     const apiRequest = request("/v1/chat/completions", {
