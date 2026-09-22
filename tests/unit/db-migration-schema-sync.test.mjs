@@ -41,3 +41,37 @@ test("postgres schema sync treats lowercase information_schema column names as e
 
   assert.deepEqual(alters, []);
 });
+
+test("postgres schema sync fails closed when a missing column cannot be added", async () => {
+  const meta = new Map([
+    ["migrationVersion", "1"],
+    ["backupSchemaVersion", String(SCHEMA_VERSION)],
+    ["schemaVersion", String(SCHEMA_VERSION)],
+  ]);
+  let firstTable = true;
+  const adapter = {
+    driver: "postgres",
+    exec(sql) {
+      if (/^ALTER TABLE/i.test(sql)) throw new Error("permission denied");
+    },
+    all(_sql, [tableName]) {
+      const names = Object.keys(TABLES[tableName].columns).map((name) => name.toLowerCase());
+      if (firstTable) {
+        firstTable = false;
+        names.pop();
+      }
+      return names.map((name) => ({ name }));
+    },
+    get(_sql, [key] = []) {
+      return meta.has(key) ? { value: meta.get(key) } : undefined;
+    },
+    run(sql, [key, value] = []) {
+      if (/^DELETE FROM _meta/i.test(sql)) meta.delete(key);
+      else if (/^INSERT INTO _meta/i.test(sql)) meta.set(key, String(value));
+    },
+    transaction(fn) { return fn(); },
+  };
+
+  await assert.rejects(runMigrationOnce(adapter), /permission denied/);
+  assert.equal(meta.has("schemaVersion"), false, "failed sync must not republish readiness");
+});

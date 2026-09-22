@@ -123,12 +123,8 @@ function syncSchemaFromTables(adapter) {
         if (adapter.driver === "postgres") {
           safeDef = safeDef.replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, "SERIAL");
         }
-        try {
-          adapter.exec(`ALTER TABLE ${tableName} ADD COLUMN ${colName} ${safeDef}`);
-          console.log(`[DB][sync] +column ${tableName}.${colName}`);
-        } catch (e) {
-          console.warn(`[DB][sync] add column ${tableName}.${colName} failed: ${e.message}`);
-        }
+        adapter.exec(`ALTER TABLE ${tableName} ADD COLUMN ${colName} ${safeDef}`);
+        console.log(`[DB][sync] +column ${tableName}.${colName}`);
       }
     }
 
