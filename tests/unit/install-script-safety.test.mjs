@@ -440,4 +440,3 @@ test("final readiness checks use /api/ready while public liveness keeps /api/hea
   assert.match(final, /\/api\/ready/, "final control/worker checks must use /api/ready");
   assert.match(SRC, /"http:\/\/localhost:\$\{GATEWAY_PORT\}\/api\/health"/, "public gateway liveness smoke must remain /api/health");
 });
-
