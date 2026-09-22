@@ -88,6 +88,10 @@ const LOCAL_ONLY_PATHS = [
   "/api/headroom/proxy",
 ];
 
+// Readiness probe. Loopback-only and 404 (not 403/401) when remote, so the
+// endpoint's existence never leaks and the public gateway can deny it by status.
+const READINESS_PATH = "/api/ready";
+
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 // Accepts a Host header, a URL hostname or a raw socket address. Splitting on the first
@@ -207,6 +211,14 @@ export async function proxy(request) {
   }
 
   const { pathname } = request.nextUrl;
+
+  // Readiness is strictly internal: allow only a trusted loopback peer, and
+  // return 404 (never a hint of existence) for anything else, including a
+  // remote caller with a valid CLI token.
+  if (pathname === READINESS_PATH || pathname.startsWith(`${READINESS_PATH}/`)) {
+    if (isLocalRequest(request)) return NextResponse.next();
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {

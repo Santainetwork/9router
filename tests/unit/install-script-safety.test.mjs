@@ -418,3 +418,25 @@ test("health checks cover every public surface and can trigger rollback", () => 
   }
   assert.match(SRC, /Health check failed — rolling back/, "an unhealthy upgrade must roll back");
 });
+
+test("control readiness waits on /api/ready, not liveness", () => {
+  assert.match(SRC, /step "Waiting for control process readiness"/, "must have a control readiness step");
+  const control = SRC.slice(SRC.indexOf("Waiting for control process readiness"), SRC.indexOf("Waiting for API worker readiness"));
+  assert.match(control, /\/api\/ready/, "control readiness loop must probe /api/ready");
+  assert.match(control, /"ready":true/, "control readiness must require the ready payload");
+  assert.doesNotMatch(control, /\/api\/health/, "control readiness must not treat liveness as ready");
+});
+
+test("worker readiness waits on /api/ready", () => {
+  const worker = SRC.slice(SRC.indexOf("check_worker_health()"), SRC.indexOf("resolve_install_mode()"));
+  assert.match(worker, /\/api\/ready/, "worker health probe must use /api/ready");
+  assert.match(worker, /"ready":true/, "worker readiness must require the ready payload");
+  assert.doesNotMatch(worker, /\/api\/health/, "worker readiness must not probe liveness");
+});
+
+test("final readiness checks use /api/ready while public liveness keeps /api/health", () => {
+  assert.match(SRC, /Hybrid engine readiness/, "must keep the engine readiness check");
+  const final = SRC.slice(SRC.indexOf("Verifying health (control, workers, gateway)"));
+  assert.match(final, /\/api\/ready/, "final control/worker checks must use /api/ready");
+  assert.match(SRC, /"http:\/\/localhost:\$\{GATEWAY_PORT\}\/api\/health"/, "public gateway liveness smoke must remain /api/health");
+});

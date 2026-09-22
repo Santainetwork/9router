@@ -81,7 +81,7 @@ func TestAPIWorkersRoundRobin(t *testing.T) {
 	for i := range workers {
 		i := i
 		workers[i] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/api/health" {
+			if r.URL.Path == "/api/ready" {
 				w.WriteHeader(http.StatusOK)
 				return
 			}
@@ -111,7 +111,7 @@ func TestAPIWorkersRoundRobinSkipsUnhealthyWorkers(t *testing.T) {
 	for i := range workers {
 		i := i
 		workers[i] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/api/health" {
+			if r.URL.Path == "/api/ready" {
 				if i == 1 {
 					http.Error(w, "down", http.StatusServiceUnavailable)
 					return
@@ -182,7 +182,7 @@ func TestDashboardNeverRoutedToAPIWorker(t *testing.T) {
 
 func TestAPIWorkerRoutesAllSupportedAPIPrefixes(t *testing.T) {
 	worker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/health" {
+		if r.URL.Path == "/api/ready" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -873,12 +873,49 @@ func TestNewServerRejectsInvalidWorkerURL(t *testing.T) {
 	}
 }
 
+func TestGatewayDeniesReadinessWithoutUpstream(t *testing.T) {
+	var upstreamCalls int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&upstreamCalls, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	for _, allowAll := range []bool{true, false} {
+		name := "public"
+		if allowAll {
+			name = "master"
+		}
+		t.Run(name, func(t *testing.T) {
+			proxySrv, err := NewServer(Config{
+				UpstreamURL:   upstream.URL,
+				AllowAllPaths: allowAll,
+			})
+			if err != nil {
+				t.Fatalf("failed to create proxy: %v", err)
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/api/ready", nil)
+			rr := httptest.NewRecorder()
+			proxySrv.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("expected 404 for /api/ready in %s mode, got %d", name, rr.Code)
+			}
+		})
+	}
+
+	if calls := atomic.LoadInt32(&upstreamCalls); calls != 0 {
+		t.Fatalf("upstream server was contacted %d times for /api/ready, expected 0", calls)
+	}
+}
+
 func TestWorkerHealthURLResolvesPath(t *testing.T) {
 	u, err := parseWorkerURL("http://127.0.0.1:20131")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := workerHealthURL(u); got != "http://127.0.0.1:20131/api/health" {
+	if got := workerHealthURL(u); got != "http://127.0.0.1:20131/api/ready" {
 		t.Fatalf("workerHealthURL = %q", got)
 	}
 }

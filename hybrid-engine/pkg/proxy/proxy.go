@@ -316,11 +316,11 @@ func (s *Server) checkAPIWorkers() {
 	}
 }
 
-// workerHealthURL builds the health probe URL from a validated worker origin,
-// always resolving the path to /api/health.
+// workerHealthURL builds the readiness probe URL from a validated worker origin,
+// always resolving the path to /api/ready.
 func workerHealthURL(u *url.URL) string {
 	health := *u
-	health.Path = "/api/health"
+	health.Path = "/api/ready"
 	health.RawPath = ""
 	health.RawQuery = ""
 	health.Fragment = ""
@@ -362,6 +362,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reqPath := r.URL.Path
 	if reqPath == "" {
 		reqPath = "/"
+	}
+
+	// Readiness is internal-only. Both the master gateway and the public proxy
+	// deny it up front, before any static serving, gating, or upstream forward.
+	if reqPath == "/api/ready" || strings.HasPrefix(reqPath, "/api/ready/") {
+		http.Error(w, "404 Not Found", http.StatusNotFound)
+		return
 	}
 
 	// 1. Serve self-contained usage-check page locally

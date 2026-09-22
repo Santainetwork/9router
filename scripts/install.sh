@@ -469,13 +469,13 @@ check_worker_health() { # check_worker_health <count> -> 0 when every worker is 
     ok=0
     local tries
     for tries in $(seq 1 45); do
-      if curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+      if curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/ready" 2>/dev/null | grep -q '"ready":true'; then
         ok=1; info "API worker ${i} healthy on 127.0.0.1:${port}"; break
       fi
       sleep 1
     done
     if [ "$ok" != 1 ]; then
-      warn "API worker ${i} did not report healthy at http://127.0.0.1:${port}/api/health"
+      warn "API worker ${i} did not report ready at http://127.0.0.1:${port}/api/ready"
       journalctl -u "${SERVICE_WORKER}@${i}" -n 20 --no-pager || true
       return 1
     fi
@@ -591,10 +591,10 @@ if [ -n "$RESTORE_FROM" ]; then
   restore_worker_topology
   systemctl restart "$SERVICE_ENGINE" 2>/dev/null || true
   sleep 3
-  if curl -fsS --max-time 5 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null | grep -q '"ok":true'; then
-    ok "Restore complete and backend healthy"
+  if curl -fsS --max-time 5 "http://127.0.0.1:${BACKEND_PORT}/api/ready" 2>/dev/null | grep -q '"ready":true'; then
+    ok "Restore complete and backend ready"
   else
-    warn "Restore applied, but the backend is not reporting healthy yet."
+    warn "Restore applied, but the backend is not reporting ready yet."
     warn "Inspect: journalctl -u $SERVICE_MAIN -n 50"
   fi
   printf '\n%sRestore finished.%s\n' "$C_GREEN$C_BOLD" "$C_RESET"
@@ -1229,18 +1229,18 @@ systemctl stop "$SERVICE_MAIN" 2>/dev/null || true
 disable_stale_workers "$WORKER_TOTAL"
 
 systemctl enable "$SERVICE_MAIN" "$SERVICE_ENGINE" >/dev/null 2>&1 || true
-# 6a. Control process alone must serve /api/health before anything else starts.
+# 6a. Control process alone must serve /api/ready before anything else starts.
 systemctl restart "$SERVICE_MAIN"
 step "Waiting for control process readiness"
 BACKEND_OK=0
 for i in $(seq 1 45); do
-  if curl -fsS --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+  if curl -fsS --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/ready" 2>/dev/null | grep -q '"ready":true'; then
     BACKEND_OK=1; info "control process ready after ${i}s"; break
   fi
   sleep 1
 done
 if [ "$BACKEND_OK" != 1 ]; then
-  fail "Control process did not become ready at http://127.0.0.1:${BACKEND_PORT}/api/health"
+  fail "Control process did not become ready at http://127.0.0.1:${BACKEND_PORT}/api/ready"
 fi
 
 # 6b. Now enable exactly the instances API_WORKERS asks for and start the target.
@@ -1274,21 +1274,21 @@ ok "Services restarted"
 step "Verifying health (control, workers, gateway)"
 BACKEND_OK=0
 for i in $(seq 1 45); do
-  if curl -fsS --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null | grep -q '"ok":true'; then
-    BACKEND_OK=1; info "control process healthy after ${i}s"; break
+  if curl -fsS --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/ready" 2>/dev/null | grep -q '"ready":true'; then
+    BACKEND_OK=1; info "control process ready after ${i}s"; break
   fi
   sleep 1
 done
 if [ "$BACKEND_OK" != 1 ]; then
-  warn "Control process did not report healthy in 45s. Recent logs:"
+  warn "Control process did not report ready in 45s. Recent logs:"
   journalctl -u "$SERVICE_MAIN" -n 20 --no-pager || true
   if [ "$ROLLBACK_ARMED" = 1 ]; then
     warn "Health check failed — rolling back to the previous install."
     exit 1
   fi
-  fail "Control process health check failed at http://127.0.0.1:${BACKEND_PORT}/api/health"
+  fail "Control process health check failed at http://127.0.0.1:${BACKEND_PORT}/api/ready"
 fi
-ok "Control process (:${BACKEND_PORT}) healthy"
+ok "Control process (:${BACKEND_PORT}) ready"
 
 # Each API worker is checked on its own loopback health endpoint, so a single
 # wedged instance fails the install instead of hiding behind a healthy peer.
@@ -1327,7 +1327,7 @@ check_http "Usage-check portal"     "http://localhost:${PUBLIC_PORT}/usage-check
 check_http "Limiter RPC health"     "http://127.0.0.1:${LIMITER_PORT}/health" 200 || GATEWAY_FAIL=1
 check_http "Hybrid engine readiness" "http://127.0.0.1:${LIMITER_PORT}/ready" 200 || GATEWAY_FAIL=1
 if [ "$WORKER_TOTAL" -gt 1 ]; then
-  check_http "API worker target" "http://127.0.0.1:$((BACKEND_PORT + 4))/api/health" 200 || GATEWAY_FAIL=1
+  check_http "API worker target" "http://127.0.0.1:$((BACKEND_PORT + 4))/api/ready" 200 || GATEWAY_FAIL=1
 fi
 
 if [ "$GATEWAY_FAIL" != 0 ]; then
