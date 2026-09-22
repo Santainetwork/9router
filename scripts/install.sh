@@ -1075,6 +1075,7 @@ EnvironmentFile=${ENV_FILE}
 Environment=HOME=${DATA_DIR}
 ExecStart=/usr/bin/env node ${RELEASE_DIR}/custom-server.js --no-browser --log --skip-update
 Restart=on-failure
+SuccessExitStatus=143
 RestartSec=5
 KillMode=control-group
 TimeoutStopSec=300
@@ -1142,6 +1143,7 @@ Environment=HOME=${DATA_DIR}
 Environment=NODE_OPTIONS=--max-old-space-size=512
 ExecStart=/usr/bin/env node ${RELEASE_DIR}/custom-server.js --no-browser --log --skip-update
 Restart=on-failure
+SuccessExitStatus=143
 RestartSec=5
 KillMode=control-group
 # Matches the control process so long SSE streams finish instead of being cut.

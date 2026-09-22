@@ -274,6 +274,24 @@ test("generated systemd units are complete and current", () => {
   assert.match(SRC, /Restart=always/);
 });
 
+test("generated Node units treat a drained SIGTERM exit as successful", () => {
+  const engine = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'),
+  );
+  const main = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'),
+    SRC.indexOf('# Drop-in keeps port/host overrides'),
+  );
+  const worker = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service"'),
+  );
+  assert.match(main, /^SuccessExitStatus=143$/m, "control SIGTERM drain must not leave a failed unit");
+  assert.match(worker, /^SuccessExitStatus=143$/m, "worker SIGTERM drain must not leave a failed unit");
+  assert.doesNotMatch(engine, /^SuccessExitStatus=/m, "native Go shutdown must keep its own exit semantics");
+});
+
 test("engine staging skips self-copy during an in-place upgrade", () => {
   const stage = SRC.slice(SRC.indexOf('step "Staging install directory"'), SRC.indexOf('step "Preparing directories"'));
   assert.match(stage, /\[ "\$REPO_DIR" != "\$INSTALL_DIR" \]/, "in-place source/install path must skip same-file cp");
