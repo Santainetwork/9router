@@ -4,6 +4,7 @@ import { PROVIDER_MODELS, getModelTargetFormat } from "../../open-sse/config/pro
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { OpenCodeExecutor } from "../../open-sse/executors/opencode.js";
+import { OPENCODE_FINGERPRINT_TOOLS } from "../../open-sse/utils/opencodeFingerprint.js";
 import "../translator/registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 
@@ -215,13 +216,12 @@ describe("OpenCode Free Muse Spark thinking", () => {
     const types = out.input.map((item) => item.type);
     expect(types).toEqual(["message", "function_call", "function_call_output", "message"]);
     // Tools flattened and empty properties added
-    expect(out.tools).toEqual([
-      {
-        type: "function",
-        name: "shell",
-        description: "Run shell command",
-        parameters: { type: "object", properties: {} },
-      },
-    ]);
+    expect(out.tools.map((tool) => tool.name)).toEqual(["shell", ...OPENCODE_FINGERPRINT_TOOLS]);
+    expect(out.tools[0]).toEqual({
+      type: "function",
+      name: "shell",
+      description: "Run shell command",
+      parameters: { type: "object", properties: {} },
+    });
   });
 });

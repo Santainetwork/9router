@@ -3,6 +3,15 @@ import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.j
 
 describe("getCapabilitiesForModel", () => {
 
+  it("keeps GLM-5.2 effort and disable support in the exact capability override", () => {
+    expect(getCapabilitiesForModel("glm-cn", "glm-5.2")).toMatchObject({
+      thinkingEffortSupported: true,
+      thinkingCanDisable: true,
+      contextWindow: 1000000,
+      maxOutput: 131072,
+    });
+  });
+
   it("reports DeepSeek V4.1-Flash ids as vision-capable without dropping their thinking/context", () => {
     const v41 = { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 };
     expect(getCapabilitiesForModel(undefined, "deepseek-v4.1-flash")).toMatchObject(v41);
