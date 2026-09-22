@@ -14,8 +14,22 @@ const ROOT = new URL("../../../", import.meta.url);
 
 const VIRTUALS = {
   "@/lib/localDb": `
+    export async function getSettings() { return globalThis.__TEST_SETTINGS__ ?? null; }
+    export async function validateApiKey() { return globalThis.__TEST_API_KEY_VALID__ ?? false; }
     export async function getApiKeyLimits() { return globalThis.__TEST_LIMITS__ ?? null; }
     export async function getApiKeyTokenUsage() { return globalThis.__TEST_TOKEN_USAGE__ ?? 0; }
+  `,
+  "@/shared/utils/machineId": `
+    export async function getConsistentMachineId() { return globalThis.__TEST_MACHINE_ID__ ?? "test-machine-id"; }
+  `,
+  "@/lib/auth/dashboardSession": `
+    export async function verifyDashboardAuthToken() { return globalThis.__TEST_DASHBOARD_AUTH__ ?? false; }
+  `,
+  "@/lib/auth/trustedPeer": `
+    export function hasTrustedPeerHeaders(request) {
+      const token = process.env.NINEROUTER_PEER_TOKEN;
+      return Boolean(token) && request.headers.get("x-9r-peer-token") === token;
+    }
   `,
   "open-sse/services/rateLimiter.js": `
     export class RateLimitTimeoutError extends Error {
