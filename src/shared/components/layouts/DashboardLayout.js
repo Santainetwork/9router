@@ -159,7 +159,7 @@ export default function DashboardLayout({ children }) {
           try { globalThis.localStorage?.setItem("dashboard-sidebar-compact", String(next)); } catch {}
           return next;
         })} sidebarCompact={sidebarCompact} />
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "px-4 py-5 sm:p-6 lg:p-10"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
+        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "px-3 py-4 sm:p-5 lg:p-6"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
           <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>{children}</div>
         </div>
       </main>

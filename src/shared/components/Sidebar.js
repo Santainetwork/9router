@@ -133,7 +133,7 @@ export default function Sidebar({ onClose, compact = false }) {
 
   return (
     <>
-      <aside className={cn("flex h-full w-[min(85vw,18rem)] flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl min-h-full", compact ? "lg:w-20" : "lg:w-72")}>
+      <aside className={cn("flex h-full w-[min(85vw,18rem)] flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl min-h-full transition-[width] duration-200", compact ? "lg:w-16" : "lg:w-64")}>
         {/* Traffic lights */}
         <div className={cn("flex items-center gap-2 px-6 pt-5 pb-2", compact && "lg:hidden")}>
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
@@ -142,8 +142,8 @@ export default function Sidebar({ onClose, compact = false }) {
         </div>
 
         {/* Logo */}
-        <div className="px-6 py-4 flex flex-col gap-2">
-          <Link href="/dashboard" className="flex items-center gap-3">
+        <div className={cn("px-4 py-3 flex flex-col gap-2", compact && "lg:px-2")}>
+          <Link href="/dashboard" className={cn("flex items-center gap-3", compact && "lg:justify-center lg:gap-0 lg:px-0")}>
             <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
               <span className="material-symbols-outlined text-white text-[20px]" aria-hidden="true">hub</span>
             </div>
@@ -181,7 +181,7 @@ export default function Sidebar({ onClose, compact = false }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav className={cn("flex-1 px-3 py-1 space-y-0.5 overflow-y-auto custom-scrollbar", compact && "lg:px-2")}>
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -191,7 +191,8 @@ export default function Sidebar({ onClose, compact = false }) {
               aria-label={compact ? item.label : undefined}
               title={compact ? item.label : undefined}
               className={cn(
-                "flex min-h-10 items-center gap-3 px-3 py-1 rounded-lg transition-[background-color,color] group",
+                "flex min-h-9 items-center gap-3 px-3 py-1 rounded-lg transition-[background-color,color] group",
+                compact && "lg:justify-center lg:gap-0 lg:px-0",
                 isActive(item.href)
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -222,7 +223,8 @@ export default function Sidebar({ onClose, compact = false }) {
               aria-label={compact ? "Media Providers" : undefined}
               title={compact ? "Media Providers" : undefined}
               className={cn(
-                "w-full flex min-h-10 items-center gap-3 px-3 py-1 rounded-lg transition-[background-color,color] group",
+                "w-full flex min-h-9 items-center gap-3 px-3 py-1 rounded-lg transition-[background-color,color] group",
+                compact && "lg:justify-center lg:gap-0 lg:px-0",
                 pathname.startsWith("/dashboard/media-providers")
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -231,7 +233,7 @@ export default function Sidebar({ onClose, compact = false }) {
               <span className="material-symbols-outlined text-[18px]" aria-hidden="true">perm_media</span>
               <span className={cn("text-[13px] font-medium flex-1 text-left", compact && "lg:sr-only")}>Media Providers</span>
               {MEDIA_PROVIDER_KINDS.some((k) => VISIBLE_MEDIA_KINDS.includes(k.id) && k.isNew) && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-400">NEW</span>
+                <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-400", compact && "lg:hidden")}>NEW</span>
               )}
               <span className={cn("material-symbols-outlined text-[14px] transition-transform", compact && "lg:hidden")} style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
                 expand_more
@@ -255,7 +257,7 @@ export default function Sidebar({ onClose, compact = false }) {
                     <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
                     <span className={cn("text-sm", compact && "lg:sr-only")}>{kind.label}</span>
                     {kind.isNew && (
-                      <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-400">NEW</span>
+                      <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-400", compact && "lg:hidden")}>NEW</span>
                     )}
                   </Link>
                 ))}
@@ -286,7 +288,8 @@ export default function Sidebar({ onClose, compact = false }) {
                 aria-label={compact ? item.label : undefined}
                 title={compact ? item.label : undefined}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                  "flex min-h-9 items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                  compact && "lg:justify-center lg:gap-0 lg:px-0",
                   isActive(item.href)
                     ? "bg-primary/10 text-primary"
                     : "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -316,7 +319,8 @@ export default function Sidebar({ onClose, compact = false }) {
                   aria-label={compact ? item.label : undefined}
                   title={compact ? item.label : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                    "flex min-h-9 items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                    compact && "lg:justify-center lg:gap-0 lg:px-0",
                     isActive(item.href)
                       ? "bg-primary/10 text-primary"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -341,7 +345,8 @@ export default function Sidebar({ onClose, compact = false }) {
               aria-label={compact ? "9Remote" : undefined}
               title={compact ? "9Remote" : undefined}
               className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
+                "flex min-h-9 items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
+                compact && "lg:justify-center lg:gap-0 lg:px-0",
                 "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
@@ -349,7 +354,7 @@ export default function Sidebar({ onClose, compact = false }) {
                 computer
               </span>
               <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>9Remote</span>
-              <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-400">NEW</span>
+              <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-400", compact && "lg:hidden")}>NEW</span>
             </button>
 
             {/* 9English */}
@@ -361,7 +366,8 @@ export default function Sidebar({ onClose, compact = false }) {
               aria-label={compact ? "9English" : undefined}
               title={compact ? "9English" : undefined}
               className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
+                "flex min-h-9 items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
+                compact && "lg:justify-center lg:gap-0 lg:px-0",
                 "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
@@ -379,7 +385,8 @@ export default function Sidebar({ onClose, compact = false }) {
               aria-label={compact ? "Settings" : undefined}
               title={compact ? "Settings" : undefined}
               className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                "flex min-h-9 items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                compact && "lg:justify-center lg:gap-0 lg:px-0",
                 isActive("/dashboard/profile")
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
