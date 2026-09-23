@@ -10,6 +10,7 @@ import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLin
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { wrapOpenAIStreamWithFooter, rewriteStreamModel, logProviderFooter } from "./responseFooter.js";
+import { estimateInputTokens } from "../../utils/usageTracking.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -24,7 +25,7 @@ const CODEX_SOURCE_TO_TARGET = {
 /**
  * Determine which SSE transform stream to use based on provider/format.
  */
-function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, model, connectionId, body, onStreamComplete, apiKey, credentials }) {
+function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey, credentials }) {
   const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
   const isResponsesProvider = PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
@@ -32,14 +33,14 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
 
   if (needsCodexTranslation) {
     const codexTarget = CODEX_SOURCE_TO_TARGET[sourceFormat] || FORMATS.OPENAI;
-    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, customToolNames, credentials);
+    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey, customToolNames, credentials);
   }
 
   if (needsTranslation(targetFormat, sourceFormat)) {
-    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, customToolNames, credentials);
+    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey, customToolNames, credentials);
   }
 
-  return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, body, onStreamComplete, apiKey);
+  return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey);
 }
 
 /**
@@ -81,7 +82,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     };
   }
 
-  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, model, connectionId, body, onStreamComplete, apiKey, credentials });
+  const estimatedInputTokens = estimateInputTokens(body);
+  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey, credentials });
 
   // Terminal bytes when the stream aborts after HTTP 200 was already sent, so the
   // client sees a real error instead of a silently truncated stream.
@@ -118,8 +120,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     provider, model, connectionId,
     latency: { ttft: 0, total: Date.now() - requestStartTime },
     tokens: { prompt_tokens: 0, completion_tokens: 0 },
-    request: extractRequestConfig(body, stream),
-    providerRequest: finalBody || translatedBody || null,
+    request: extractRequestConfig(body, stream, { includeContent: false }),
+    providerRequest: null,
     providerResponse: "[Streaming - raw response not captured]",
     response: { content: "[Streaming in progress...]", thinking: null, type: "streaming" },
     pxpipe,
@@ -153,13 +155,15 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
   const streamDetailId = `${Date.now()}-${__streamDetailCounter.toString(36).padStart(8, '0')}-${provider || 'unknown'}`;
 
   // Snapshot request config immediately so the giant body/translatedBody/finalBody object trees can be freed by GC
-  const requestConfigSnapshot = extractRequestConfig(body, stream);
-  const providerRequestSnapshot = finalBody || translatedBody || null;
+  const requestConfigSnapshot = extractRequestConfig(body, stream, { includeContent: false });
+  const apiVersion = clientRawRequest?.apiVersion || "unknown";
+  const endpoint = clientRawRequest?.endpoint || null;
 
   // Sever references so V8 garbage collector can immediately free the large message trees during streaming
   body = null;
   translatedBody = null;
   finalBody = null;
+  clientRawRequest = null;
 
   const onStreamComplete = (contentObj, usage, ttftAt) => {
     const latency = {
@@ -184,11 +188,12 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
       latency,
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
       request: requestConfigSnapshot,
-      providerRequest: providerRequestSnapshot,
+      providerRequest: null,
       providerResponse: safeContent,
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
       pxpipe,
-      apiVersion: clientRawRequest?.apiVersion || "unknown",
+      apiVersion,
+      endpoint,
       status: "success",
       upstreamModel,
       requestedModel
@@ -197,7 +202,7 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
     });
 
     // Persist stream usage to DB (no console line; the "📊 done" line below is authoritative)
-    saveUsageStats({ provider, model, requestedModel, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", silent: true, upstreamModel });
+    saveUsageStats({ provider, model, requestedModel, tokens: usage, connectionId, apiKey, endpoint, label: "STREAM USAGE", silent: true, upstreamModel });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency }));
   };
 

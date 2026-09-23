@@ -13,10 +13,18 @@ const OPTIONAL_PARAMS = [
   "user", "parallel_tool_calls"
 ];
 
-export function extractRequestConfig(body, stream) {
-  const config = { messages: body.messages || [], model: body.model, stream };
+export function extractRequestConfig(body, stream, { includeContent = true } = {}) {
+  const config = { model: body.model, stream };
+  if (includeContent) config.messages = body.messages || [];
   for (const param of OPTIONAL_PARAMS) {
-    if (body[param] !== undefined) config[param] = body[param];
+    if (!includeContent && param === "tools") continue;
+    if (body[param] !== undefined && (includeContent || body[param] === null || typeof body[param] !== "object")) {
+      config[param] = body[param];
+    }
+  }
+  if (!includeContent) {
+    config.messageCount = body.messages?.length || body.input?.length || body.contents?.length || body.request?.contents?.length || 0;
+    config.toolCount = body.tools?.length || 0;
   }
   return config;
 }
