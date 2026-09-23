@@ -274,6 +274,18 @@ test("generated systemd units are complete and current", () => {
   assert.match(SRC, /Restart=always/);
 });
 
+test("generated systemd heredocs never execute comment text as shell commands", () => {
+  const generatedUnits = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service"'),
+    SRC.indexOf('ok "API worker units installed'),
+  );
+  assert.doesNotMatch(
+    generatedUnits,
+    /`[^`]+`/,
+    "unquoted heredocs expand backticks, so comments inside generated units must not contain command substitutions",
+  );
+});
+
 test("generated Node units treat a drained SIGTERM exit as successful", () => {
   const engine = SRC.slice(
     SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service"'),
