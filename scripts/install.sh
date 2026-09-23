@@ -191,7 +191,9 @@ unit_installed() { # unit base name (no .service)
   [ -f "${SYSTEMD_UNIT_DIR}/$1.service" ] && return 0
   # Test/sandbox escape hatch: never consult the host's unit list.
   [ "${SKIP_SYSTEMD_UNIT_PROBE:-0}" = 1 ] && return 1
-  systemctl list-unit-files --no-legend --no-pager 2>/dev/null | grep -q "^$1\.service"
+  local unit_files
+  unit_files="$(systemctl list-unit-files --no-legend --no-pager 2>/dev/null || true)"
+  grep -q "^$1\.service" <<<"$unit_files"
 }
 
 existing_install_detected() {
@@ -640,17 +642,11 @@ if [ "$DO_UNINSTALL" = 1 ]; then
     warn "Purging: no backup will be retained."
   fi
 
-  # Put back any legacy npm-global unit this installer displaced.
-  if [ -f "$STATE_DIR/legacy-9router.unit" ]; then
-    info "Restoring pre-install ${SERVICE_MAIN}.service from $STATE_DIR"
-    cp -a "$STATE_DIR/legacy-9router.unit" "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service" || true
-  fi
-
   # Instance symlinks live under the target's .wants directory, not beside the
   # template. Tear them down before removing the templates and target.
   stop_all_worker_instances
-  for unit in "$SERVICE_ENGINE" "$SERVICE_MAIN" "$SERVICE_WORKERS_TARGET" 9router-public-proxy 9router-rl; do
-    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+  for unit in "$SERVICE_ENGINE" "$SERVICE_MAIN" 9router-public-proxy 9router-rl; do
+    if unit_installed "$unit"; then
       systemctl disable --now "$unit" 2>/dev/null || true
       rm -f "${SYSTEMD_UNIT_DIR}/${unit}.service"
       ok "removed $unit"
@@ -660,6 +656,14 @@ if [ "$DO_UNINSTALL" = 1 ]; then
         "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service"
   rm -rf "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKERS_TARGET}.wants"
   rm -rf "$WORKER_ENV_DIR"
+
+  # Put back any legacy npm-global unit this installer displaced. This runs
+  # after the removal loop: restoring first would let the loop delete it again.
+  if [ -f "$STATE_DIR/legacy-9router.unit" ]; then
+    info "Restoring pre-install ${SERVICE_MAIN}.service from $STATE_DIR"
+    cp -a "$STATE_DIR/legacy-9router.unit" "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service" || true
+  fi
+
   rm -rf "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service.d"
   systemctl daemon-reload
   if [ "$DO_PURGE" = 1 ]; then
@@ -1205,7 +1209,7 @@ ok "API worker units installed (${WORKER_TOTAL} total Node processes)"
 # Never silently delete a unit we did not create: back it up, then retire it.
 retire_legacy_unit() { # retire_legacy_unit <unit>
   local unit="$1" f="${SYSTEMD_UNIT_DIR}/$1.service"
-  if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\.service"; then
+  if unit_installed "$unit"; then
     [ -n "$BACKUP_DIR" ] && { mkdir -p "$BACKUP_DIR/retired" && cp -a "$f" "$BACKUP_DIR/retired/" 2>/dev/null || true; }
     systemctl disable --now "$unit" 2>/dev/null || true
     rm -f "$f"

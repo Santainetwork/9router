@@ -125,6 +125,32 @@ test("uninstall supports a non-destructive preview", () => {
   }
 });
 
+test("uninstall restores a displaced legacy main unit after removing managed units", () => {
+  const sb = sandbox();
+  try {
+    const bin = path.join(sb.dir, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(path.join(bin, "systemctl"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    mkdirSync(sb.env.SYSTEMD_UNIT_DIR, { recursive: true });
+    mkdirSync(sb.env.STATE_DIR, { recursive: true });
+    writeFileSync(path.join(sb.env.SYSTEMD_UNIT_DIR, "9router.service"), "managed\n");
+    writeFileSync(path.join(sb.env.STATE_DIR, "legacy-9router.unit"), "legacy\n");
+
+    const r = runInstaller(["--uninstall", "--yes"], {
+      ...sb.env,
+      PATH: `${bin}:${sb.env.PATH}`,
+      WORKER_ENV_DIR: path.join(sb.dir, "worker-env"),
+    });
+
+    assert.equal(r.code, 0, r.out);
+    const restored = path.join(sb.env.SYSTEMD_UNIT_DIR, "9router.service");
+    assert.ok(existsSync(restored), "legacy main unit must remain installed");
+    assert.equal(readFileSync(restored, "utf8"), "legacy\n");
+  } finally {
+    sb.cleanup();
+  }
+});
+
 test("--restore-backup requires a path and rejects a missing directory", () => {
   const sb = sandbox();
   try {
@@ -339,6 +365,14 @@ test("secrets survive an upgrade", () => {
   for (const key of ["JWT_SECRET", "MACHINE_ID_SALT", "API_KEY_SECRET", "DATABASE_URL"]) {
     assert.ok(SRC.includes(`preserve_secret ${key}`), `must preserve ${key} across upgrades`);
   }
+});
+
+test("systemd unit discovery does not use grep -q behind pipefail", () => {
+  assert.doesNotMatch(
+    SRC,
+    /systemctl list-unit-files[^\n]*\|\s*grep -q/,
+    "grep -q exits early and can turn a successful systemctl producer into SIGPIPE status 141 under pipefail",
+  );
 });
 
 test("legacy units are backed up before removal, never silently deleted", () => {
