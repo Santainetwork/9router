@@ -1144,7 +1144,7 @@ User=root
 EnvironmentFile=${ENV_FILE}
 EnvironmentFile=-${WORKER_ENV_DIR}/%i.env
 Environment=HOME=${DATA_DIR}
-Environment=NODE_OPTIONS=--max-old-space-size=1024
+Environment=NODE_OPTIONS=--max-old-space-size=512
 ExecStart=/usr/bin/env node ${RELEASE_DIR}/custom-server.js --no-browser --log --skip-update
 Restart=on-failure
 SuccessExitStatus=143
