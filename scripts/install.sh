@@ -1010,7 +1010,7 @@ WORKER_ROLE=control
 # Pinned to the installed topology; regenerate with install.sh --upgrade.
 API_WORKER_URLS=${API_WORKER_URLS}
 API_WORKER_ARGS=${API_WORKER_ARGS}
-NODE_OPTIONS=--max-old-space-size=512
+NODE_OPTIONS=--max-old-space-size=1024
 API_WORKERS=${WORKER_TOTAL}
 EOF
 chmod 600 "$ENV_FILE"
@@ -1107,7 +1107,7 @@ Environment=PORT=${BACKEND_PORT}
 Environment=HOSTNAME=127.0.0.1
 Environment=ENABLE_GO_HYBRID=true
 Environment=GO_ENGINE_URL=http://127.0.0.1:${LIMITER_PORT}
-Environment=NODE_OPTIONS=--max-old-space-size=512
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 ReadWritePaths=${DATA_DIR} ${RELEASE_DIR}
 TimeoutStopSec=300
 EOF
@@ -1144,7 +1144,7 @@ User=root
 EnvironmentFile=${ENV_FILE}
 EnvironmentFile=-${WORKER_ENV_DIR}/%i.env
 Environment=HOME=${DATA_DIR}
-Environment=NODE_OPTIONS=--max-old-space-size=512
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 ExecStart=/usr/bin/env node ${RELEASE_DIR}/custom-server.js --no-browser --log --skip-update
 Restart=on-failure
 SuccessExitStatus=143
