@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import vm from "node:vm";
+import { register } from "node:module";
+
+register(new URL("./helpers/alias-loader.mjs", import.meta.url));
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
@@ -79,4 +82,38 @@ test("stream completion captures scalar client metadata before clearing the raw 
   assert.match(source, /const apiVersion = clientRawRequest\?\.apiVersion/);
   assert.match(source, /const endpoint = clientRawRequest\?\.endpoint/);
   assert.match(source, /clientRawRequest = null/);
+});
+
+test("legacy positional stream factory snapshots input tokens before streaming", async () => {
+  const [{ createPassthroughStreamWithLogger }, { estimateInputTokens }] = await Promise.all([
+    import("../../open-sse/utils/stream.js"),
+    import("../../open-sse/utils/usageTracking.js"),
+  ]);
+  const body = { model: "test-model", messages: [{ role: "user", content: "x".repeat(4000) }] };
+  const expectedInput = estimateInputTokens(body) + 2000;
+  const transform = createPassthroughStreamWithLogger("openai", null, "test-model", null, body);
+
+  body.messages[0].content = "changed after stream construction";
+  const writer = transform.writable.getWriter();
+  const reader = transform.readable.getReader();
+  const write = writer.write(new TextEncoder().encode(
+    'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+  ));
+
+  let output = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    output += new TextDecoder().decode(value);
+    if (output.includes("[DONE]")) break;
+  }
+  await write;
+  await writer.close().catch(() => {});
+
+  const finish = output
+    .split("\n")
+    .filter((line) => line.startsWith("data: {") && line.includes("finish_reason"))
+    .map((line) => JSON.parse(line.slice(6)))
+    .find((chunk) => chunk.choices?.[0]?.finish_reason === "stop");
+  assert.equal(finish?.usage?.prompt_tokens, expectedInput);
 });
