@@ -49,7 +49,7 @@ function fmtUptime(sec) {
   return `${m}m ${sec % 60}s`;
 }
 
-export default function SystemHealthPanel() {
+export default function SystemHealthPanel({ workerTopology }) {
   const [data, setData] = useState(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [error, setError] = useState("");
@@ -95,6 +95,11 @@ export default function SystemHealthPanel() {
   const proc = data?.process;
   const db = data?.database;
   const goActive = engine?.type === "golang";
+  const topology = workerTopology || {
+    totalProcesses: 1,
+    apiWorkers: 0,
+    mode: "single-process",
+  };
 
   return (
     <Card>
@@ -171,6 +176,10 @@ export default function SystemHealthPanel() {
             <Row label="RSS" value={proc ? `${proc.rssMb} MB` : null} />
             <Row label="Heap used" value={proc ? `${proc.heapUsedMb} / ${proc.heapTotalMb} MB` : null} />
             <Row label="Node" value={proc?.node} />
+            <Row label="Node processes" value={topology.totalProcesses} />
+            <Row label="API workers" value={topology.apiWorkers} />
+            <Row label="Topology" value={topology.mode} />
+            <p className="pt-2 text-[10px] text-text-muted">Configured at startup</p>
           </div>
 
           {/* Database */}

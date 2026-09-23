@@ -27,6 +27,61 @@ function loadUtil(relPath) {
 
 const { getEngineConfig } = loadUtil("src/shared/utils/engineConfig.js");
 
+function loadWorkerTopology() {
+  const src = readFileSync(join(root, "src/shared/utils/systemHealth.js"), "utf8")
+    .replace(/^import .*;\n/gm, "")
+    .replace(/^export /gm, "");
+  const module = { exports: {} };
+  vm.runInNewContext(
+    `${src}\nmodule.exports = { getWorkerTopology: typeof getWorkerTopology === "function" ? getWorkerTopology : undefined };`,
+    { module, exports: module.exports, process, URL, console, Number, String },
+  );
+  return module.exports.getWorkerTopology;
+}
+
+test("worker topology defaults to one control process", () => {
+  const getWorkerTopology = loadWorkerTopology();
+  assert.equal(typeof getWorkerTopology, "function");
+  assert.deepEqual(
+    { ...getWorkerTopology({}) },
+    { role: "control", totalProcesses: 1, apiWorkers: 0, mode: "single-process" },
+  );
+});
+
+test("worker topology reports PostgreSQL multicore totals and sanitized role", () => {
+  const getWorkerTopology = loadWorkerTopology();
+  assert.equal(typeof getWorkerTopology, "function");
+  assert.deepEqual(
+    { ...getWorkerTopology({ API_WORKERS: "4", DATABASE_URL: "postgresql://user:secret@db/app", WORKER_ROLE: "api" }) },
+    { role: "api", totalProcesses: 4, apiWorkers: 3, mode: "postgres-multicore" },
+  );
+  assert.equal(getWorkerTopology({ API_WORKERS: "2", DB_TYPE: "POSTGRES", NINEROUTER_WORKER_ROLE: "api" }).role, "api");
+  assert.equal(getWorkerTopology({ WORKER_ROLE: "invalid" }).role, "control");
+});
+
+test("worker topology fails closed for SQLite and invalid process counts", () => {
+  const getWorkerTopology = loadWorkerTopology();
+  assert.equal(typeof getWorkerTopology, "function");
+  const fallback = { role: "control", totalProcesses: 1, apiWorkers: 0, mode: "single-process" };
+  assert.deepEqual({ ...getWorkerTopology({ API_WORKERS: "4" }) }, fallback);
+  for (const API_WORKERS of ["0", "-1", "9", "1.5", "abc", ""]) {
+    assert.deepEqual({ ...getWorkerTopology({ API_WORKERS, DB_TYPE: "postgres" }) }, fallback);
+  }
+});
+
+test("worker topology returns only non-secret metadata", () => {
+  const getWorkerTopology = loadWorkerTopology();
+  assert.equal(typeof getWorkerTopology, "function");
+  const topology = getWorkerTopology({
+    API_WORKERS: "2",
+    DB_TYPE: "postgres",
+    DATABASE_URL: "postgres://user:password@private/db",
+    API_WORKER_URLS: "http://private:20131",
+  });
+  assert.deepEqual(Object.keys(topology), ["role", "totalProcesses", "apiWorkers", "mode"]);
+  assert.doesNotMatch(JSON.stringify(topology), /password|private|postgres:\/\//i);
+});
+
 test("engineConfig exposes gateway, limiter and public proxy ports", () => {
   const cfg = getEngineConfig({ ENABLE_GO_HYBRID: "true" });
   assert.equal(cfg.enabled, true);
@@ -87,6 +142,7 @@ test("system health collector reports engine, backend, limiter and database", ()
   // Postgres password must be masked in the reported target.
   assert.match(src, /getDatabaseType\(\)[\s\S]*replace\(/);
   assert.match(src, /publicProxy:\s*\{[\s\S]*configured:\s*cfg\.publicProxyEnabled/);
+  assert.doesNotMatch(src, /out\.workerTopology|workerTopology:\s*getWorkerTopology/);
 });
 
 test("system health panel is mounted on the admin dashboard profile page", () => {
@@ -97,4 +153,25 @@ test("system health panel is mounted on the admin dashboard profile page", () =>
   assert.match(panel, /status === 401/);
   const barrel = readFileSync(join(root, "src/shared/components/index.js"), "utf8");
   assert.match(barrel, /SystemHealthPanel/);
+});
+
+test("protected settings exposes read-only worker topology without changing public health", () => {
+  const settingsRoute = readFileSync(join(root, "src/app/api/settings/route.js"), "utf8");
+  assert.match(settingsRoute, /getWorkerTopology/);
+  assert.match(settingsRoute, /workerTopology:\s*getWorkerTopology\(\)/);
+  assert.match(settingsRoute, /delete body\.workerTopology/);
+
+  const healthRoute = readFileSync(join(root, "src/app/api/health/route.js"), "utf8");
+  assert.doesNotMatch(healthRoute, /workerTopology/);
+});
+
+test("profile passes startup topology to the existing backend health card", () => {
+  const profile = readFileSync(join(root, "src/app/(dashboard)/dashboard/profile/page.js"), "utf8");
+  assert.match(profile, /<SystemHealthPanel workerTopology=\{settings\.workerTopology\}\s*\/>/);
+
+  const panel = readFileSync(join(root, "src/shared/components/SystemHealthPanel.js"), "utf8");
+  assert.match(panel, /function SystemHealthPanel\(\{ workerTopology \}\)/);
+  for (const label of ["Node processes", "API workers", "Topology", "Configured at startup"]) {
+    assert.match(panel, new RegExp(label));
+  }
 });

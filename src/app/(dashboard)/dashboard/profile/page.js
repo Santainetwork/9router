@@ -1013,7 +1013,7 @@ export default function ProfilePage() {
         </Card>
 
         {/* System Health */}
-        <SystemHealthPanel />
+        <SystemHealthPanel workerTopology={settings.workerTopology} />
 
         {/* Branding & Gateway Name */}
         <Card>

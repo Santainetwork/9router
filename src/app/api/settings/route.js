@@ -4,6 +4,7 @@ import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
 import { footerSettingsPatch } from "@/shared/utils/footerSettings.js";
+import { getWorkerTopology } from "@/shared/utils/systemHealth.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,7 +29,8 @@ export async function GET() {
       ...safeSettings, 
       enableRequestLogs,
       enableTranslator,
-      hasPassword: !!password
+      hasPassword: !!password,
+      workerTopology: getWorkerTopology()
     }, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error getting settings:", error);
@@ -42,6 +44,7 @@ export async function PATCH(request) {
 
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
+    delete body.workerTopology;
 
     if (Object.prototype.hasOwnProperty.call(body, "appName")) {
       body.appName = String(body.appName ?? "").trim().slice(0, 50) || "SantaiNetwork";
@@ -126,7 +129,7 @@ export async function PATCH(request) {
         .catch((error) => console.warn("[AutoPing] settings update failed:", error.message));
     }
 
-    const { password, oidcClientSecret, ...safeSettings } = settings;
+    const { password, oidcClientSecret, workerTopology, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {

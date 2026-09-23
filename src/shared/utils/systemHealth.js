@@ -12,6 +12,25 @@ const UPSTREAM_URL =
 
 const LIMITER_SCOPE = "apikey";
 
+export function getWorkerTopology(env = process.env) {
+  const requested = env.API_WORKERS || "1";
+  const parsed = Number(requested);
+  const postgres =
+    String(env.DB_TYPE || "").toLowerCase() === "postgres" ||
+    /^(postgres|postgresql):\/\//i.test(env.DATABASE_URL || "");
+  const validTotal = /^[1-8]$/.test(requested) && Number.isSafeInteger(parsed);
+  const totalProcesses = validTotal && (parsed === 1 || postgres) ? parsed : 1;
+  const requestedRole = String(env.WORKER_ROLE || env.NINEROUTER_WORKER_ROLE || "control").toLowerCase();
+  const role = totalProcesses > 1 && requestedRole === "api" ? "api" : "control";
+
+  return {
+    role,
+    totalProcesses,
+    apiWorkers: totalProcesses - 1,
+    mode: totalProcesses > 1 ? "postgres-multicore" : "single-process",
+  };
+}
+
 export function getDatabaseInfo() {
   const type = getDatabaseType();
   let target = "";
