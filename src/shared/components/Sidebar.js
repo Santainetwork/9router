@@ -133,7 +133,7 @@ export default function Sidebar({ onClose, compact = false }) {
 
   return (
     <>
-      <aside className={cn("flex h-full w-[min(85vw,18rem)] flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl min-h-full lg:w-72", compact && "lg:w-20")}>
+      <aside className={cn("flex h-full w-[min(85vw,18rem)] flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl min-h-full", compact ? "lg:w-20" : "lg:w-72")}>
         {/* Traffic lights */}
         <div className={cn("flex items-center gap-2 px-6 pt-5 pb-2", compact && "lg:hidden")}>
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
