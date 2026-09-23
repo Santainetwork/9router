@@ -61,6 +61,7 @@ export async function GET() {
       };
 
       await state.send();
+      if (state.closed) return;
 
       statsEmitter.on("update", state.send);
       statsEmitter.on("pending", state.sendPending);

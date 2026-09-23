@@ -521,6 +521,7 @@ function installWithStubs(installDir, extraEnv = {}, extraArgs = []) {
   const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-stubs-"));
   const docker = path.join(tempDir, "docker");
   writeFileSync(docker, `#!/bin/sh
+if [ -n "$STUB_DOCKER_LOG" ]; then echo "$@" >> "$STUB_DOCKER_LOG"; fi
 if [ "$1" = "--version" ]; then echo "Docker version 24.0.0, build test"; exit 0; fi
 if [ "$1" = "compose" ] && [ "$2" = "version" ]; then echo "Docker Compose version v2.0.0"; exit 0; fi
 if [ "$1" = "info" ]; then exit 0; fi
@@ -533,6 +534,7 @@ for a in "$@"; do case "$a" in -w) ;; *\\%\\{http_code\\}*) echo 200; exit 0 ;; 
 echo 200
 `);
   chmodSync(curl, 0o755);
+  const dockerLogPath = path.join(tempDir, "docker-args.log");
   const result = spawnSync("bash", [DOCKER_INSTALL_SH, "--yes", "--dir", installDir, ...extraArgs], {
     encoding: "utf8",
     env: {
@@ -540,11 +542,13 @@ echo 200
       PATH: `${tempDir}:${process.env.PATH}`,
       NO_COLOR: "1",
       INSTALL_DIR: installDir,
+      STUB_DOCKER_LOG: dockerLogPath,
       ...extraEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30_000,
   });
+  try { result.dockerLog = readFileSync(dockerLogPath, "utf8"); } catch { result.dockerLog = ""; }
   rmSync(tempDir, { recursive: true, force: true });
   return result;
 }
@@ -615,7 +619,7 @@ test("installer --postgres writes a secure bundled PostgreSQL multicore environm
   }
 });
 
-test("installer --postgres upgrade preserves the bundled profile", () => {
+test("installer bare upgrade preserves the bundled PostgreSQL profile", () => {
   const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-postgres-upgrade-"));
   try {
     writeFileSync(path.join(tempDir, ".env"), [
@@ -627,9 +631,12 @@ test("installer --postgres upgrade preserves the bundled profile", () => {
       "WORKER_ROLE=control",
       "",
     ].join("\n"));
-    const result = installWithStubs(tempDir, {}, ["--postgres", "--upgrade"]);
+    const result = installWithStubs(tempDir, {}, ["--upgrade"]);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.match(readFileSync(path.join(tempDir, ".env"), "utf8"), /^POSTGRES_PASSWORD=keep-postgres-secret$/m);
+    const env = readFileSync(path.join(tempDir, ".env"), "utf8");
+    assert.match(env, /^POSTGRES_PASSWORD=keep-postgres-secret$/m);
+    assert.match(env, /^BUNDLED_DATABASE_URL=postgres:\/\/9router:keep-postgres-secret@postgres:5432\/9router$/m);
+    assert.match(result.dockerLog, /compose --profile postgres up -d --build/);
     assert.match(result.stdout, /Docker container started/);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });

@@ -24,7 +24,7 @@ if (!global._statsEmitter) {
 if (!global._pendingTimers) global._pendingTimers = {};
 if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
-if (!global._connectionListCache) global._connectionListCache = { items: [], ts: 0 };
+if (!global._connectionListCache) global._connectionListCache = { items: [], ts: 0, promise: null };
 if (!global._nodePrefixMapCache) global._nodePrefixMapCache = { map: {}, ts: 0 };
 if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null };
 
@@ -123,14 +123,21 @@ async function getConnectionMapCached() {
 
 async function getConnectionListCached() {
   if (Date.now() - connectionListCache.ts < CONN_CACHE_TTL_MS) return connectionListCache.items;
-  const { getProviderConnections } = await import("./connectionsRepo.js");
-  connectionListCache.items = await getProviderConnections();
-  connectionListCache.ts = Date.now();
-  return connectionListCache.items;
+  if (!connectionListCache.promise) {
+    connectionListCache.promise = import("./connectionsRepo.js")
+      .then(({ getProviderConnections }) => getProviderConnections())
+      .then((items) => {
+        connectionListCache.items = items;
+        connectionListCache.ts = Date.now();
+        return items;
+      })
+      .finally(() => { connectionListCache.promise = null; });
+  }
+  return connectionListCache.promise;
 }
 
 export async function getNodePrefixMapCached() {
-  if (nodePrefixCache.map && Object.keys(nodePrefixCache.map).length > 0 && (Date.now() - nodePrefixCache.ts < CONN_CACHE_TTL_MS)) {
+  if (nodePrefixCache.map && Date.now() - nodePrefixCache.ts < CONN_CACHE_TTL_MS) {
     return nodePrefixCache.map;
   }
   try {
@@ -312,6 +319,7 @@ export async function getActiveRequests() {
         const accountName = connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
         const match = modelKey.match(/^(.*) \((.*)\)$/);
         activeRequests.push({
+          connectionId,
           model: match ? match[1] : modelKey,
           provider: match ? match[2] : "unknown",
           account: accountName, count,

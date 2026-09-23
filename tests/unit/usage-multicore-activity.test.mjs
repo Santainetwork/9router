@@ -18,6 +18,7 @@ test("shared Go provider buckets become Usage active requests", () => {
   ];
 
   assert.deepEqual(mapSharedProviderActivity(buckets, connections), [{
+    connectionId: "conn-1",
     model: "In-flight",
     provider: "antigravity",
     account: "Primary AG",
@@ -32,11 +33,11 @@ test("shared activity drops unknown and malformed buckets", () => {
   ], [{ id: "conn-1", provider: "antigravity" }]), []);
 });
 
-test("local activity keeps model detail and shared activity fills worker-only providers", () => {
-  const local = [{ model: "model-a", provider: "antigravity", account: "Primary AG", count: 1 }];
+test("local model detail and shared aggregate activity are both preserved", () => {
+  const local = [{ connectionId: "conn-1", model: "model-a", provider: "antigravity", account: "Primary AG", count: 1 }];
   const shared = [
-    { model: "In-flight", provider: "antigravity", account: "Primary AG", count: 2 },
-    { model: "In-flight", provider: "openrouter", account: "Backup OR", count: 3 },
+    { connectionId: "conn-1", model: "In-flight", provider: "antigravity", account: "Primary AG", count: 2 },
+    { connectionId: "conn-2", model: "In-flight", provider: "openrouter", account: "Backup OR", count: 3 },
   ];
-  assert.deepEqual(mergeActiveRequests(local, shared), [local[0], shared[1]]);
+  assert.deepEqual(mergeActiveRequests(local, shared), [local[0], ...shared]);
 });

@@ -9,6 +9,7 @@ export function mapSharedProviderActivity(buckets = [], connections = []) {
     const connection = bucket?.scope === "provider" ? byKey.get(bucket.key) : null;
     if (!connection || count <= 0) return [];
     return [{
+      connectionId: connection.id,
       model: "In-flight",
       provider: connection.provider || "unknown",
       account: connection.name || connection.email || connection.provider || connection.id,
@@ -18,6 +19,5 @@ export function mapSharedProviderActivity(buckets = [], connections = []) {
 }
 
 export function mergeActiveRequests(local = [], shared = []) {
-  const localConnections = new Set(local.map((request) => `${request.provider}\u0000${request.account}`));
-  return [...local, ...shared.filter((request) => !localConnections.has(`${request.provider}\u0000${request.account}`))];
+  return [...local, ...shared];
 }

@@ -339,6 +339,12 @@ EXISTING_BUNDLED_WORKERS="$(read_env_val "BUNDLED_API_WORKERS" "$ENV_FILE")"
 EXISTING_WORKER_ROLE="$(read_env_val "WORKER_ROLE" "$ENV_FILE")"
 EXISTING_API_WORKERS="$(read_env_val "API_WORKERS" "$ENV_FILE")"
 
+# A plain `--upgrade` must preserve a previously selected bundled profile.
+if [ -n "$EXISTING_BUNDLED_DB" ] && [ -n "$EXISTING_PG_PASSWORD" ]; then
+  USE_POSTGRES=1
+  USE_BUNDLED_POSTGRES=1
+fi
+
 JWT_SECRET="${EXISTING_JWT:-$(generate_token)}"
 MACHINE_ID_SALT="${EXISTING_SALT:-$(generate_token | head -c 16)}"
 API_KEY_SECRET="${EXISTING_AKS:-$(generate_token)}"
