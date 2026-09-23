@@ -7,10 +7,11 @@
   
   **Universal Multi-Provider Bridge for Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw and more.**
 
-  [![Version](https://img.shields.io/badge/version-v0.5.75--custom-emerald.svg)](package.json)
+  [![Version](https://img.shields.io/badge/version-v0.5.86--custom-emerald.svg)](package.json)
   [![SantaiNetwork](https://img.shields.io/badge/maintained%20by-SantaiNetwork-blue.svg)](https://santainetwork.id)
-  [![Tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen.svg)](tests/)
-  [![Status](https://img.shields.io/badge/production-ready-success.svg)](#-deployment--maintenance)
+  [![Tests](https://img.shields.io/badge/node%20verify-246%20passed%2C%202%20skipped-brightgreen.svg)](tests/)
+  [![Status](https://img.shields.io/badge/single--process-stable-success.svg)](#-deployment--maintenance)
+  [![Multicore](https://img.shields.io/badge/PostgreSQL%20multicore-experimental-orange.svg)](#-deployment--maintenance)
 
 [🚀 SantaiNetwork Enhancements](#-santainetwork-custom-enhancements) • [⚡ Endpoints & Ports](#-endpoints--ports-architecture) • [💡 Core Features](#-key-features) • [🛠️ Deployment](#-deployment--maintenance) • [📖 Setup](#-setup-guide)
 
@@ -33,10 +34,13 @@ This repository contains the hardened, production-grade custom distribution of *
 
 ### 2. 🗄️ Dual-Database Engine: SQLite or PostgreSQL
 - **Configurable Database Backend**: Seamless choice between embedded SQLite (default) or external enterprise PostgreSQL.
+- **Multi-worker status: experimental**: PostgreSQL can run one control process plus API workers, but this mode has not completed a production soak. Keep `API_WORKERS=1` for the conservative production default. SQLite always requires `API_WORKERS=1`.
 - **Zero Schema Disruption**: Switch database engine via simple environment variable:
   - `DATABASE_URL=postgres://user:password@host:5432/9router` or `DB_TYPE=postgres`
   - Unset `DATABASE_URL` continues using high-speed local SQLite (`/var/lib/9router/...`).
 - **Automated Dialect Translation**: Intelligent query parameter converter (`?` to `$1, $2, ...`) and DDL normalization (`SERIAL PRIMARY KEY`, `NOW()`) supporting all core tables.
+
+> **Multicore rollout safety:** Enable `API_WORKERS>1` only with PostgreSQL, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. Do not enable API workers with SQLite.
 
 ### 3. 🏷️ Upstream Model & Prefix Attribution
 - **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
@@ -1404,12 +1408,14 @@ Model: cc/claude-opus-4-7
 
 This gateway runs in production using Next.js standalone output with a custom HTTP server managing clean SIGTERM drains and zero stream interruptions:
 
+> **Current stability boundary:** Single-process mode (`API_WORKERS=1`) is the production-safe baseline. PostgreSQL multi-worker mode is available but experimental until sustained production canary and soak results are recorded.
+
 #### 1. Verification & Quality Assurance
-Run the complete regression test suite before deploying any changes:
+Run the maintained Node verification suite before deploying any changes:
 ```bash
 npm run verify
 ```
-*Validates 81 provider models, OAuth URLs byte-for-byte baseline parity, and runs all 50 unit tests (concurrency limits, watchdog auto-decay, nosaver endpoints, Neobrutalism tokens, model prefixing, etc.).*
+*Validates the provider registry and OAuth URL baselines, then runs the Node-native `*.test.mjs` suite. The current v0.5.86 run reports 246 passed and 2 skipped. Historical `*.test.js` Vitest files are not invoked by this command.*
 
 #### 2. Standalone Build & Zero-Downtime Release
 ```bash
