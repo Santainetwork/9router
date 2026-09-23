@@ -6,7 +6,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
-import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
+import { buildRequestDetail, extractRequestConfig, boundedProviderRequest, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { wrapOpenAIStreamWithFooter, rewriteStreamModel, logProviderFooter } from "./responseFooter.js";
@@ -121,7 +121,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     latency: { ttft: 0, total: Date.now() - requestStartTime },
     tokens: { prompt_tokens: 0, completion_tokens: 0 },
     request: extractRequestConfig(body, stream, { includeContent: false }),
-    providerRequest: null,
+    providerRequest: boundedProviderRequest(finalBody || translatedBody),
     providerResponse: "[Streaming - raw response not captured]",
     response: { content: "[Streaming in progress...]", thinking: null, type: "streaming" },
     pxpipe,
@@ -156,6 +156,7 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
 
   // Snapshot request config immediately so the giant body/translatedBody/finalBody object trees can be freed by GC
   const requestConfigSnapshot = extractRequestConfig(body, stream, { includeContent: false });
+  const providerRequestSnapshot = boundedProviderRequest(finalBody || translatedBody);
   const apiVersion = clientRawRequest?.apiVersion || "unknown";
   const endpoint = clientRawRequest?.endpoint || null;
 
@@ -188,7 +189,7 @@ export function buildOnStreamComplete({ provider, model, requestedModel, connect
       latency,
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
       request: requestConfigSnapshot,
-      providerRequest: null,
+      providerRequest: providerRequestSnapshot,
       providerResponse: safeContent,
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
       pxpipe,

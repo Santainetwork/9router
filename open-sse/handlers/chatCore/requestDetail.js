@@ -13,20 +13,61 @@ const OPTIONAL_PARAMS = [
   "user", "parallel_tool_calls"
 ];
 
+// Bounded previews for streaming snapshots. A live stream can hold a 400k+ token
+// request, so retaining `messages`/`tools` verbatim keeps that whole tree alive for
+// the life of the stream. These keep the request debuggable without pinning it.
+const PREVIEW_MESSAGES = 5;
+const PREVIEW_CHARS = 240;
+const PREVIEW_TOOLS = 20;
+
+function boundedMessagePreview(messages) {
+  if (!Array.isArray(messages)) return undefined;
+  return messages.slice(0, PREVIEW_MESSAGES).map((msg) => {
+    const content = msg?.content;
+    const entry = { role: msg?.role };
+    if (typeof content === "string") {
+      entry.chars = content.length;
+      entry.preview = content.slice(0, PREVIEW_CHARS);
+    } else if (Array.isArray(content)) {
+      entry.blocks = content.length;
+      if (typeof content[0]?.text === "string") entry.preview = content[0].text.slice(0, PREVIEW_CHARS);
+    }
+    return entry;
+  });
+}
+
 export function extractRequestConfig(body, stream, { includeContent = true } = {}) {
   const config = { model: body.model, stream };
   if (includeContent) config.messages = body.messages || [];
   for (const param of OPTIONAL_PARAMS) {
-    if (!includeContent && param === "tools") continue;
+    if (param === "tools") continue;
     if (body[param] !== undefined && (includeContent || body[param] === null || typeof body[param] !== "object")) {
       config[param] = body[param];
     }
   }
-  if (!includeContent) {
+  const tools = body.tools;
+  if (includeContent) {
+    if (tools !== undefined) config.tools = tools;
+  } else {
     config.messageCount = body.messages?.length || body.input?.length || body.contents?.length || body.request?.contents?.length || 0;
-    config.toolCount = body.tools?.length || 0;
+    config.toolCount = tools?.length || 0;
+    if (Array.isArray(tools) && tools.length > 0) {
+      config.toolNames = tools.slice(0, PREVIEW_TOOLS).map((tool) => tool?.function?.name || tool?.name).filter(Boolean);
+    }
+    const preview = boundedMessagePreview(body.messages || body.input || body.contents || body.request?.contents);
+    if (preview) config.messagePreview = preview;
   }
   return config;
+}
+
+/**
+ * Bounded stand-in for the outbound provider body saved with a streaming request.
+ * Same shape as extractRequestConfig's bounded form, so the dashboard keeps showing
+ * model, counts and tool names instead of losing the record entirely.
+ */
+export function boundedProviderRequest(body) {
+  if (!body || typeof body !== "object") return null;
+  return extractRequestConfig(body, body.stream ?? true, { includeContent: false });
 }
 
 export function extractUsageFromResponse(responseBody) {
