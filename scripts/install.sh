@@ -1010,7 +1010,7 @@ WORKER_ROLE=control
 # Pinned to the installed topology; regenerate with install.sh --upgrade.
 API_WORKER_URLS=${API_WORKER_URLS}
 API_WORKER_ARGS=${API_WORKER_ARGS}
-NODE_OPTIONS=--max-old-space-size=1024
+NODE_OPTIONS=--max-old-space-size=512
 API_WORKERS=${WORKER_TOTAL}
 EOF
 chmod 600 "$ENV_FILE"
@@ -1107,7 +1107,7 @@ Environment=PORT=${BACKEND_PORT}
 Environment=HOSTNAME=127.0.0.1
 Environment=ENABLE_GO_HYBRID=true
 Environment=GO_ENGINE_URL=http://127.0.0.1:${LIMITER_PORT}
-Environment=NODE_OPTIONS=--max-old-space-size=1024
+Environment=NODE_OPTIONS=--max-old-space-size=512
 ReadWritePaths=${DATA_DIR} ${RELEASE_DIR}
 TimeoutStopSec=300
 EOF

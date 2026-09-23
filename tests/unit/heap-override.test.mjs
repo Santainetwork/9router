@@ -9,9 +9,10 @@ const root = join(here, "..", "..");
 
 const read = (path) => readFileSync(join(root, path), "utf8");
 
-test("native installer gives control and API workers a 1024 MiB heap", () => {
+test("native installer keeps control at 512 MiB and gives API workers 1024 MiB", () => {
   const source = read("scripts/install.sh");
-  const matches = source.match(/NODE_OPTIONS=--max-old-space-size=1024/g) || [];
-  assert.equal(matches.length, 3);
-  assert.doesNotMatch(source, /NODE_OPTIONS=--max-old-space-size=512/);
+  const control = source.match(/NODE_OPTIONS=--max-old-space-size=512/g) || [];
+  const workers = source.match(/Environment=NODE_OPTIONS=--max-old-space-size=1024/g) || [];
+  assert.equal(control.length, 2);
+  assert.equal(workers.length, 1);
 });
