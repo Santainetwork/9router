@@ -50,7 +50,14 @@ export async function resolve(specifier, context, nextResolve) {
     return { url: `virtual:${specifier}`, shortCircuit: true };
   }
   if (specifier.startsWith("@/")) {
-    return nextResolve(new URL(`src/${specifier.slice(2)}`, ROOT).href, context);
+    try {
+      return await nextResolve(new URL(`src/${specifier.slice(2)}`, ROOT).href, context);
+    } catch (error) {
+      if (!specifier.split("/").at(-1).includes(".")) {
+        return nextResolve(new URL(`src/${specifier.slice(2)}.js`, ROOT).href, context);
+      }
+      throw error;
+    }
   }
   // Next's exports map has no "./server" entry, so plain node cannot resolve
   // the bare specifier that app routes use.

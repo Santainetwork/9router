@@ -92,17 +92,18 @@ graph LR
 
 Only the control process may start the collector. `isApiWorkerRole()` is the ownership gate. API workers keep their existing local console patch because journald must still receive their output, but they never spawn collectors.
 
-The collector starts from Node instrumentation after `initConsoleLogCapture()`. It is skipped during build/export phases, API-worker role, non-Linux platforms, and when `journalctl` is unavailable.
+The collector starts from Node instrumentation after `initConsoleLogCapture()`. It is skipped during build/export phases, API-worker role, non-Linux platforms, and when systemd is unavailable.
 
 ### Dynamic discovery
 
-No explicit `API_WORKERS` loop is needed. The follower subscribes to the systemd wildcard:
+No `API_WORKERS`-derived active-worker list is needed. `journalctl` resolves a unit glob only when the follower starts, so a wildcard would miss workers introduced later. The follower therefore subscribes up front to every supported instance, 1 through `WORKER_MAX=8`:
 
 ```text
-journalctl --follow --output=json --unit=9router-worker@*.service
+journalctl --follow --output=json \
+  --unit=9router-worker@1.service ... --unit=9router-worker@8.service
 ```
 
-New instances matching the template are included by journald. Worker index comes from `_SYSTEMD_UNIT` using the strict pattern:
+This bounded explicit subscription captures instances that start after the follower. Worker index still comes from `_SYSTEMD_UNIT` using the strict pattern:
 
 ```text
 ^9router-worker@([1-8])\.service$

@@ -1,7 +1,13 @@
 import { EventEmitter } from "events";
-import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config.js";
+import { stripVTControlCharacters } from "node:util";
+import { CONSOLE_LOG_CONFIG } from "@/shared/constants/consoleLog.js";
 
 const consoleLevels = ["log", "info", "warn", "error", "debug"];
+
+// Matches WORKER_MAX in scripts/systemd-worker-topology.sh and the collector's
+// `^9router-worker@([1-8])\.service$` unit pattern.
+export const MAX_WORKER_INDEX = 8;
+export const MAX_LOG_LINE_CHARS = 4000;
 
 if (!global._consoleLogBufferState) {
   global._consoleLogBufferState = {
@@ -45,11 +51,8 @@ function toLogLine(level, args) {
   return args.map(formatArg).join(" ");
 }
 
-// Strip ANSI escape codes so terminal colors don't bleed into UI
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-
 function stripAnsi(str) {
-  return str.replace(ANSI_RE, "");
+  return stripVTControlCharacters(str).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
 }
 
 function formatArg(arg) {
@@ -80,13 +83,34 @@ function appendLine(line) {
   }
 }
 
+export function appendConsoleLogLine({ source, index, message }) {
+  let label;
+  if (source === "control") {
+    label = "[CONTROL]";
+  } else if (source === "worker" && Number.isInteger(index) && index >= 1 && index <= MAX_WORKER_INDEX) {
+    label = `[WORKER-${index}]`;
+  } else {
+    return false;
+  }
+
+  const lines = String(message ?? "").split(/\r?\n/);
+  for (let text of lines) {
+    text = stripAnsi(text);
+    if (text.startsWith(`${label} `) || text === label) {
+      text = text.slice(label.length).trimStart();
+    }
+    appendLine(`${label}${text ? ` ${text}` : ""}`.slice(0, MAX_LOG_LINE_CHARS));
+  }
+  return true;
+}
+
 export function initConsoleLogCapture() {
   if (state.patched) return;
 
   for (const level of consoleLevels) {
     state.originals[level] = console[level];
     console[level] = (...args) => {
-      appendLine(toLogLine(level, args));
+      appendConsoleLogLine({ source: "control", message: toLogLine(level, args) });
       state.originals[level](...args);
     };
   }
@@ -100,6 +124,11 @@ export function getConsoleLogs() {
 
 export function clearConsoleLogs() {
   state.logs = [];
+  state.pendingLines = [];
+  if (state.flushTimer) {
+    clearTimeout(state.flushTimer);
+    state.flushTimer = null;
+  }
   state.emitter.emit("clear");
 }
 
