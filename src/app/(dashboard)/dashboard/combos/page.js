@@ -918,6 +918,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                   onClick={(event) => { event.stopPropagation(); onCopy(combo.name, `combo-${combo.id}`); }}
                   className="p-1 rounded-md text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0 cursor-pointer"
                   title="Copy combo name"
+                  aria-label={`Copy ${combo.name}`}
                 >
                   <span className="material-symbols-outlined text-[15px]">
                     {copied === `combo-${combo.id}` ? "check" : "content_copy"}
@@ -1038,6 +1039,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             value={current}
             onChange={(e) => onSetStrategy({ fallbackStrategy: e.target.value })}
             selectClassName="py-1 px-2 text-xs h-8"
+            aria-label={`Strategy for ${combo.name}`}
           />
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -1047,6 +1049,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             onClick={onEdit}
             className="h-8 px-2 text-xs"
             title="Edit combo models"
+            aria-label={`Edit ${combo.name}`}
           >
             <span className="material-symbols-outlined text-[16px]">edit</span>
           </Button>
@@ -1056,6 +1059,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             onClick={onDelete}
             className="h-8 px-2 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10"
             title="Delete combo"
+            aria-label={`Delete ${combo.name}`}
           >
             <span className="material-symbols-outlined text-[16px]">delete</span>
           </Button>
