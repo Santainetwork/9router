@@ -22,12 +22,13 @@ Tampilkan jumlah proses Node dan API worker yang dikonfigurasi pada halaman Sett
    - `apiWorkers`: jumlah instance API worker terkonfigurasi.
    - `mode`: `single-process` atau `postgres-multicore`.
 2. Metadata berasal dari env proses yang sudah divalidasi saat startup: `API_WORKERS`, `WORKER_ROLE`/`NINEROUTER_WORKER_ROLE`, `DB_TYPE`, dan `DATABASE_URL` hanya untuk menentukan tipe DB.
-3. Jangan mengembalikan `DATABASE_URL`, `API_WORKER_URLS`, port worker, PID worker lain, atau credential.
-4. `PATCH /api/settings` tidak menerima atau menyimpan `workerTopology`.
-5. Halaman Profile/Settings meneruskan metadata tersebut ke `SystemHealthPanel`.
-6. `SystemHealthPanel` menampilkan `Node processes`, `API workers`, dan `Topology` pada kartu Next Backend.
-7. Label menjelaskan bahwa angka adalah konfigurasi startup, bukan health count real-time.
-8. Tidak menambah probing worker baru. Go gateway tetap menjadi pemilik health-check/routing worker.
+3. Metadata hanya ditambahkan ke `GET /api/settings`; akses mengikuti kebijakan autentikasi Settings yang sudah ada.
+4. Jangan mengembalikan `DATABASE_URL`, `API_WORKER_URLS`, port worker, PID worker lain, atau credential.
+5. `PATCH /api/settings` tidak menerima atau menyimpan `workerTopology`.
+6. Halaman Profile/Settings meneruskan metadata tersebut ke `SystemHealthPanel`.
+7. `SystemHealthPanel` menampilkan `Node processes`, `API workers`, dan `Topology` pada kartu Next Backend.
+8. Label menjelaskan bahwa angka adalah konfigurasi startup, bukan health count real-time.
+9. Tidak menambah probing worker baru. Go gateway tetap menjadi pemilik health-check/routing worker.
 
 ## Validasi
 
