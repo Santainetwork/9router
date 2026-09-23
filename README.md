@@ -9,7 +9,7 @@
 
   [![Version](https://img.shields.io/badge/version-v0.5.86--custom-emerald.svg)](package.json)
   [![SantaiNetwork](https://img.shields.io/badge/maintained%20by-SantaiNetwork-blue.svg)](https://santainetwork.id)
-  [![Tests](https://img.shields.io/badge/node%20verify-246%20passed%2C%202%20skipped-brightgreen.svg)](tests/)
+  [![Tests](https://img.shields.io/badge/node%20verify-253%20passed%2C%202%20skipped-brightgreen.svg)](tests/)
   [![Status](https://img.shields.io/badge/single--process-stable-success.svg)](#-deployment--maintenance)
   [![Multicore](https://img.shields.io/badge/PostgreSQL%20multicore-experimental-orange.svg)](#-deployment--maintenance)
 
@@ -1415,7 +1415,7 @@ Run the maintained Node verification suite before deploying any changes:
 ```bash
 npm run verify
 ```
-*Validates the provider registry and OAuth URL baselines, then runs the Node-native `*.test.mjs` suite. The current v0.5.86 run reports 246 passed and 2 skipped. Historical `*.test.js` Vitest files are not invoked by this command.*
+*Validates the provider registry and OAuth URL baselines, then runs the Node-native `*.test.mjs` suite. The current v0.5.86 run reports 253 passed and 2 skipped. Historical `*.test.js` Vitest files are not invoked by this command.*
 
 #### 2. Standalone Build & Zero-Downtime Release
 ```bash
