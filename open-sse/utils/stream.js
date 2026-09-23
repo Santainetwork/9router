@@ -85,20 +85,50 @@ export function createSSEStream(options = {}) {
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   let finalized = false;
+  let completionNotified = false;
   const estimatedUsage = (contentLength, format) => formatUsage(
     estimatedInputTokens,
     estimateOutputTokens(contentLength),
     format,
   );
 
+  // Some OpenAI-compatible streams report only prompt_tokens. That object is
+  // "valid" overall, so the all-or-nothing estimator below used to preserve a
+  // zero completion count even when text was streamed. Fill only the missing
+  // output side; never replace a non-zero provider value.
+  const fillMissingOutputUsage = (current, contentLength, format) => {
+    const estimatedOutput = estimateOutputTokens(contentLength);
+    if (!current || estimatedOutput <= 0) return current;
+    const isClaude = format === FORMATS.CLAUDE;
+    const key = isClaude ? "output_tokens" : "completion_tokens";
+    if (Number(current[key]) > 0) return current;
+    const result = { ...current, [key]: estimatedOutput, estimated: true };
+    const input = Number(result[isClaude ? "input_tokens" : "prompt_tokens"]) || 0;
+    if (!isClaude) result.total_tokens = input + estimatedOutput;
+    return result;
+  };
+
+  const notifyComplete = (contentObj, currentUsage) => {
+    if (completionNotified || !onStreamComplete) return;
+    completionNotified = true;
+    onStreamComplete(contentObj, currentUsage, ttftAt);
+  };
+
   // Usage/logging tail, callable from transform() as well as flush(): a client that
   // closes right after the terminal event cancels the reader, and flush() never runs.
-  const finalizeStream = () => {
+  const finalizeStream = (aborted = false) => {
     if (finalized) return;
     finalized = true;
 
     const isPassthrough = mode === STREAM_MODE.PASSTHROUGH;
     let finalUsage = isPassthrough ? usage : state?.usage;
+
+    finalUsage = fillMissingOutputUsage(
+      finalUsage,
+      totalContentLength,
+      isPassthrough ? FORMATS.OPENAI : sourceFormat,
+    );
+    if (isPassthrough) usage = finalUsage; else state.usage = finalUsage;
 
     if (!hasValidUsage(finalUsage) && totalContentLength > 0) {
       finalUsage = estimatedUsage(totalContentLength, isPassthrough ? FORMATS.OPENAI : sourceFormat);
@@ -111,12 +141,12 @@ export function createSSEStream(options = {}) {
       appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
     }
 
-    if (onStreamComplete) {
-      onStreamComplete({
-        content: accumulatedContent,
-        thinking: accumulatedThinking
-      }, finalUsage, ttftAt);
-    }
+    notifyComplete({
+      content: accumulatedContent,
+      providerContent,
+      thinking: accumulatedThinking,
+      ...(aborted ? { aborted: true } : {}),
+    }, finalUsage);
   };
 
   return new TransformStream({
@@ -206,6 +236,12 @@ export function createSSEStream(options = {}) {
               if (reasoning && typeof reasoning === "string") {
                 totalContentLength += reasoning.length;
                 accumulatedThinking += reasoning;
+              }
+              if (Array.isArray(delta?.tool_calls)) {
+                for (const toolCall of delta.tool_calls) {
+                  totalContentLength += String(toolCall?.function?.name || "").length;
+                  totalContentLength += String(toolCall?.function?.arguments || "").length;
+                }
               }
 
               const extracted = extractUsage(parsed);
@@ -314,6 +350,12 @@ export function createSSEStream(options = {}) {
           totalContentLength += parsed.choices[0].delta.reasoning_content.length;
           accumulatedThinking += parsed.choices[0].delta.reasoning_content;
         }
+        if (Array.isArray(parsed.choices?.[0]?.delta?.tool_calls)) {
+          for (const toolCall of parsed.choices[0].delta.tool_calls) {
+            totalContentLength += String(toolCall?.function?.name || "").length;
+            totalContentLength += String(toolCall?.function?.arguments || "").length;
+          }
+        }
         
         // Gemini format
         if (parsed.candidates?.[0]?.content?.parts) {
@@ -419,14 +461,6 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
 
-          if (onStreamComplete) {
-            onStreamComplete({
-              content: accumulatedContent,
-              providerContent,
-              thinking: accumulatedThinking
-            }, usage, ttftAt);
-          }
-
           finalizeStream();
           return;
         }
@@ -514,14 +548,6 @@ export function createSSEStream(options = {}) {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
         }
         
-        if (onStreamComplete) {
-          onStreamComplete({
-            content: accumulatedContent,
-            providerContent,
-            thinking: accumulatedThinking
-          }, state?.usage, ttftAt);
-        }
-
         finalizeStream();
       } catch (error) {
         console.log("Error in flush:", error);
@@ -530,18 +556,9 @@ export function createSSEStream(options = {}) {
     },
     cancel(reason) {
       try {
-        if (onStreamComplete) {
-          onStreamComplete({
-            content: accumulatedContent,
-            providerContent,
-            thinking: accumulatedThinking,
-            aborted: true,
-          }, state?.usage, ttftAt);
-        }
+        finalizeStream(true);
       } catch (err) {
         console.log("Error in stream cancel:", err);
-      } finally {
-        finalizeStream();
       }
     }
   });
