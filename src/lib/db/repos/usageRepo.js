@@ -10,7 +10,6 @@ function maskApiKey(key) {
 }
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
-const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
 const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
 
@@ -22,7 +21,6 @@ if (!global._statsEmitter) {
   global._statsEmitter.setMaxListeners(50);
 }
 if (!global._pendingTimers) global._pendingTimers = {};
-if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
 if (!global._connectionListCache) global._connectionListCache = { items: [], ts: 0, promise: null };
 if (!global._nodePrefixMapCache) global._nodePrefixMapCache = { map: {}, ts: 0 };
@@ -31,7 +29,6 @@ if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update:
 const pendingRequests = global._pendingRequests;
 const lastErrorProvider = global._lastErrorProvider;
 const pendingTimers = global._pendingTimers;
-const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
 const connectionListCache = global._connectionListCache;
 const nodePrefixCache = global._nodePrefixMapCache;
@@ -101,13 +98,6 @@ function aggregateEntryToDay(day, entry) {
   addToCounter(day.byEndpoint, epKey, { ...vals, meta: { endpoint, rawModel: entry.model, provider: entry.provider } });
 }
 
-function pushToRing(entry) {
-  recentRing.items.push(entry);
-  if (recentRing.items.length > RING_CAP) {
-    recentRing.items = recentRing.items.slice(-RING_CAP);
-  }
-}
-
 async function getConnectionMapCached() {
   if (Date.now() - connCache.ts < CONN_CACHE_TTL_MS) return connCache.map;
   try {
@@ -154,21 +144,6 @@ export async function getNodePrefixMapCached() {
     nodePrefixCache.ts = Date.now();
   } catch {}
   return nodePrefixCache.map;
-}
-
-async function ensureRingInitialized() {
-  if (recentRing.initialized) return;
-  recentRing.initialized = true;
-  try {
-    await getNodePrefixMapCached();
-    const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
-    recentRing.items = rows.reverse().map((r) => ({
-      timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
-      apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
-      tokens: parseJson(r.tokens, {}), meta: parseJson(r.meta, {}),
-    }));
-  } catch {}
 }
 
 async function calculateCost(provider, model, tokens, meta = {}) {
@@ -265,6 +240,38 @@ export function formatModelWithProviderPrefix(rawModel, provider = "", meta = {}
   return candidate;
 }
 
+function getRecentRequestsFromDb(db) {
+  // Indexed by idx_uh_ts; insertion id order breaks when a slower request from
+  // an API worker commits after a newer one (Recent Requests showed old rows).
+  const rows = db.all(`SELECT timestamp, provider, model, tokens, meta, status FROM usageHistory ORDER BY timestamp DESC LIMIT 100`);
+  const seen = new Set();
+  return rows
+    .map((r) => {
+      const tokens = parseJson(r.tokens, {}) || {};
+      const meta = parseJson(r.meta, {}) || {};
+      return {
+        timestamp: r.timestamp,
+        model: formatModelWithProviderPrefix(r.model, r.provider, meta),
+        provider: r.provider || "",
+        promptTokens: tokens.prompt_tokens || tokens.input_tokens || 0,
+        completionTokens: tokens.completion_tokens || tokens.output_tokens || 0,
+        cachedTokens: tokens.cached_tokens || tokens.cache_read_input_tokens || 0,
+        status: r.status || "ok",
+        requestedModel: meta.requestedModel || undefined,
+        upstreamModel: meta.upstreamModel || undefined,
+      };
+    })
+    .filter((entry) => {
+      if (entry.promptTokens === 0 && entry.completionTokens === 0) return false;
+      const minute = entry.timestamp ? entry.timestamp.slice(0, 16) : "";
+      const key = `${entry.model}|${entry.provider}|${entry.promptTokens}|${entry.completionTokens}|${minute}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 20);
+}
+
 export function trackPendingRequest(model, provider, connectionId, started, error = false) {
   const modelKey = provider ? `${model} (${provider})` : model;
   const timerKey = `${connectionId}|${modelKey}`;
@@ -310,6 +317,7 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
 }
 
 export async function getActiveRequests() {
+  const db = await getAdapter();
   const activeRequests = [];
   const connectionMap = await getConnectionMapCached();
 
@@ -328,33 +336,8 @@ export async function getActiveRequests() {
     }
   }
 
-  await ensureRingInitialized();
   await getNodePrefixMapCached();
-  const seen = new Set();
-  const recentRequests = [...recentRing.items]
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .map((e) => {
-      const t = e.tokens || {};
-      const ringMeta = e.meta || {};
-      const ringDisplay = formatModelWithProviderPrefix(e.model, e.provider, ringMeta);
-      return {
-        timestamp: e.timestamp, model: ringDisplay, provider: e.provider || "",
-        promptTokens: t.prompt_tokens || t.input_tokens || 0,
-        completionTokens: t.completion_tokens || t.output_tokens || 0,
-        status: e.status || "ok",
-        requestedModel: ringMeta.requestedModel || undefined,
-        upstreamModel: ringMeta.upstreamModel || undefined,
-      };
-    })
-    .filter((e) => {
-      if (e.promptTokens === 0 && e.completionTokens === 0) return false;
-      const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
-      const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 20);
+  const recentRequests = getRecentRequestsFromDb(db);
 
   const errorProvider = (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "";
   return { activeRequests, recentRequests, errorProvider };
@@ -454,11 +437,6 @@ export async function saveRequestUsage(entry) {
     });
 
     if (inserted) {
-      // Ensure ring entry has .meta so ringMeta.requestedModel display works (mirrors DB init path)
-      if (!entry.meta) {
-        entry.meta = { requestedModel: entry.requestedModel, upstreamModel: entry.upstreamModel };
-      }
-      pushToRing(entry);
       scheduleStatsEvent("update", 250);
     }
   } catch (e) {
@@ -535,36 +513,7 @@ export async function getUsageStats(period = "all") {
   const apiKeyMap = {};
   for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
 
-  // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, meta, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
-  const seen = new Set();
-  const recentRequests = recentRows
-    .map((r) => {
-      const t = parseJson(r.tokens, {}) || {};
-      const meta = parseJson(r.meta, {}) || {};
-      const displayModel = formatModelWithProviderPrefix(r.model, r.provider, meta);
-      
-      return {
-        timestamp: r.timestamp, 
-        model: displayModel, 
-        provider: r.provider || "",
-        promptTokens: t.prompt_tokens || t.input_tokens || 0,
-        completionTokens: t.completion_tokens || t.output_tokens || 0,
-        cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
-        status: r.status || "ok",
-        requestedModel: meta.requestedModel || undefined,
-        upstreamModel: meta.upstreamModel || undefined,
-      };
-    })
-    .filter((e) => {
-      if (e.promptTokens === 0 && e.completionTokens === 0) return false;
-      const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
-      const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 20);
+  const recentRequests = getRecentRequestsFromDb(db);
 
   const stats = {
     totalRequests: 0,
