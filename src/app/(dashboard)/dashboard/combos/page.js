@@ -202,7 +202,8 @@ export default function CombosPage() {
   }, [combos]);
 
   const selectedCombos = combos.filter((c) => selectedIds.includes(c.id));
-  const allSelected = combos.length > 0 && selectedIds.length === combos.length;
+  const visibleIds = filteredCombos.map((combo) => combo.id);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
   const someSelected = selectedIds.length > 0;
 
   const toggleSelect = (id) => {
@@ -212,7 +213,10 @@ export default function CombosPage() {
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? [] : combos.map((c) => c.id));
+    setSelectedIds((prev) => {
+      if (allSelected) return prev.filter((id) => !visibleIds.includes(id));
+      return [...new Set([...prev, ...visibleIds])];
+    });
   };
 
   const clearSelection = () => setSelectedIds([]);
@@ -730,7 +734,7 @@ export default function CombosPage() {
               <span>
                 {someSelected
                   ? `${selectedIds.length} selected`
-                  : `Select all (${combos.length})`}
+                  : `Select all (${filteredCombos.length})`}
               </span>
             </label>
 
@@ -774,10 +778,10 @@ export default function CombosPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {(() => {
               const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
-              return combos.map((combo) => (
+              return filteredCombos.map((combo) => (
                 <ComboCard
                   key={combo.id}
                   combo={combo}
@@ -880,126 +884,185 @@ function StrategyBadge({ strategy }) {
 
 function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
   const comboCaps = aggregateComboCapabilities(combo.models, comboByName);
+  const models = combo.models || [];
+  const visibleModels = expanded ? models : models.slice(0, 4);
 
   return (
-    <Card padding="sm" className={`group ${selected ? "ring-1 ring-primary/40 bg-primary/[0.03]" : ""}`}>
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
-          <label className="flex shrink-0 items-center pt-1 sm:pt-0 cursor-pointer" title="Select combo">
+    <div className={`flex flex-col justify-between rounded-2xl border bg-card p-4 shadow-sm hover:border-primary/40 hover:shadow-md transition-all duration-200 group ${selected ? "border-primary/40 ring-1 ring-primary/40 bg-primary/[0.03]" : "border-border"}`}>
+      <div>
+        {/* Card Header */}
+        <div className="flex items-start justify-between gap-2.5 pb-3 border-b border-border/60">
+          <div className="flex items-center gap-2.5 min-w-0">
             <input
               type="checkbox"
               checked={selected}
               onChange={onToggleSelect}
-              onClick={(e) => e.stopPropagation()}
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              onClick={(event) => event.stopPropagation()}
               aria-label={`Select ${combo.name}`}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
             />
-          </label>
-          <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-primary text-[18px]">layers</span>
+            <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 shadow-sm">
+              <span className="material-symbols-outlined text-[20px]">layers</span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <code className="truncate font-mono text-sm font-bold text-text-main" title={combo.name}>
+                  {combo.name}
+                </code>
+                <button
+                  onClick={(event) => { event.stopPropagation(); onCopy(combo.name, `combo-${combo.id}`); }}
+                  className="p-1 rounded-md text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0 cursor-pointer"
+                  title="Copy combo name"
+                >
+                  <span className="material-symbols-outlined text-[15px]">
+                    {copied === `combo-${combo.id}` ? "check" : "content_copy"}
+                  </span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[11px] text-text-muted font-medium">
+                  {models.length} {models.length === 1 ? "model" : "models"}
+                </span>
+                {comboCaps && (
+                  <span className="text-[10px] text-text-muted">
+                    ctx {fmtK(comboCaps.contextWindow)} · max {fmtK(comboCaps.maxOutput)}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <code className="block truncate font-mono text-sm font-medium">{combo.name}</code>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-              {combo.models.length === 0 ? (
-                <span className="text-xs text-text-muted italic">No models</span>
-              ) : (
-                combo.models.slice(0, 3).map((model, index) => (
-                  <code key={index} className="inline-flex items-center gap-1 rounded bg-black/5 px-1.5 py-0.5 font-mono text-xs text-text-muted dark:bg-white/5">
-                    <span>{model}</span>
-                    <CapacityBadges caps={
-                      comboByName[model]
-                        ? aggregateComboCapabilities(comboByName[model], comboByName)
-                        : getCaps?.(model)
-                    } />
-                  </code>
-                ))
-              )}
-              {combo.models.length > 3 && (
-                <span className="text-[10px] text-text-muted">+{combo.models.length - 3} more</span>
+          <div className="shrink-0">
+            <StrategyBadge strategy={current} />
+          </div>
+        </div>
+
+        {/* Models list */}
+        <div className="py-3 flex flex-col gap-2">
+          {models.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center text-text-muted/70 bg-surface-2/40 rounded-xl border border-dashed border-border/60">
+              <span className="material-symbols-outlined text-[22px] mb-1">playlist_remove</span>
+              <span className="text-xs italic">No models configured</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {visibleModels.map((model, index) => {
+                const parts = model.split("/");
+                const hasPrefix = parts.length > 1;
+                const prefix = hasPrefix ? parts[0] : null;
+                const modelName = hasPrefix ? parts.slice(1).join("/") : model;
+
+                return (
+                  <div
+                    key={`${model}-${index}`}
+                    className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-surface-2/60 border border-border/40 text-xs font-mono group/item hover:bg-surface-2 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="size-4 rounded bg-surface-3 flex items-center justify-center text-[10px] text-text-muted font-bold shrink-0 font-sans">
+                        {index + 1}
+                      </span>
+                      {prefix && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-text-muted uppercase font-sans font-bold shrink-0">
+                          {prefix}
+                        </span>
+                      )}
+                      <span className="truncate text-text-main font-medium" title={model}>
+                        {modelName}
+                      </span>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-1">
+                      <CapacityBadges
+                        caps={
+                          comboByName[model]
+                            ? aggregateComboCapabilities(comboByName[model], comboByName)
+                            : getCaps?.(model)
+                        }
+                        size={14}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {models.length > 4 && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded(!expanded)}
+                  className="w-full text-center py-1 text-[11px] font-semibold text-primary hover:underline transition-all cursor-pointer"
+                >
+                  {expanded ? "▲ Collapse models" : `▼ +${models.length - 4} more models`}
+                </button>
               )}
             </div>
-            {comboCaps && (
-              <div className="mt-1 flex items-center gap-2 text-[10px] text-text-muted">
-                <span>ctx {fmtK(comboCaps.contextWindow)}</span>
-                <span className="opacity-40">·</span>
-                <span>max {fmtK(comboCaps.maxOutput)}</span>
-              </div>
-            )}
-            {/* Fusion: judge picker (Auto = first model) */}
-            {isFusion && (
-              <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-medium text-text-muted">Judge</span>
-                <button
-                  onClick={() => setShowJudgeSelect(true)}
-                  className="inline-flex max-w-full items-center gap-1 rounded border border-dashed border-primary/40 px-1.5 py-0.5 font-mono text-[11px] text-primary hover:border-primary hover:bg-primary/5 transition-colors"
-                  title="Pick the model that fuses panel answers"
-                >
-                  <span className="material-symbols-outlined text-[13px]">gavel</span>
-                  <span className="truncate">{judge || `Auto — ${combo.models[0] || "first model"}`}</span>
-                </button>
+          )}
+
+          {/* Fusion Judge Configuration */}
+          {isFusion && (
+            <div className="mt-1 p-2.5 rounded-xl bg-purple-500/5 border border-purple-500/20 text-xs space-y-1.5">
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-semibold text-[11px]">
+                  <span className="material-symbols-outlined text-[14px]">gavel</span>
+                  <span>Fusion Judge</span>
+                </div>
                 {judge && (
                   <button
                     onClick={() => onSetStrategy({ judgeModel: "" })}
-                    className="p-0.5 rounded text-text-muted hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                    title="Reset judge to Auto"
+                    className="text-[10px] font-medium text-text-muted hover:text-red-500 transition-colors cursor-pointer"
+                    title="Reset judge to auto-first model"
                   >
-                    <span className="material-symbols-outlined text-[13px]">close</span>
+                    Reset Auto
                   </button>
                 )}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0">
-          {/* Strategy selector — always visible */}
-          <div className="w-full sm:w-[200px]">
-            <Select
-              options={STRATEGY_OPTIONS}
-              value={current}
-              onChange={(e) => onSetStrategy({ fallbackStrategy: e.target.value })}
-              selectClassName="py-1.5 text-xs"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-1 sm:flex">
-            <button
-              onClick={(e) => { e.stopPropagation(); onCopy(combo.name, `combo-${combo.id}`); }}
-              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-              title="Copy combo name"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                {copied === `combo-${combo.id}` ? "check" : "content_copy"}
-              </span>
-              <span className="text-[10px] leading-tight">Copy</span>
-            </button>
-            <button
-              onClick={onEdit}
-              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-              title="Edit"
-            >
-              <span className="material-symbols-outlined text-[18px]">edit</span>
-              <span className="text-[10px] leading-tight">Edit</span>
-            </button>
-            <button
-              onClick={onDelete}
-              className="flex flex-col items-center rounded px-2 py-1 text-red-500 transition-colors hover:bg-red-500/10"
-              title="Delete"
-            >
-              <span className="material-symbols-outlined text-[18px]">delete</span>
-              <span className="text-[10px] leading-tight">Delete</span>
-            </button>
-          </div>
+              <button
+                onClick={() => setShowJudgeSelect(true)}
+                className="w-full text-left px-2.5 py-1.5 rounded-lg bg-surface-1 border border-dashed border-purple-500/30 text-purple-600 dark:text-purple-300 font-mono text-[11px] truncate hover:border-purple-500 hover:bg-purple-500/5 transition-colors block cursor-pointer"
+                title="Select judge model"
+              >
+                {judge || `Auto — ${models[0] || "first model"}`}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Judge model picker (single-select; combo members make natural judges too) */}
+      {/* Card Footer: Strategy select & action buttons */}
+      <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-2 mt-auto">
+        <div className="flex-1 min-w-0 max-w-[190px]">
+          <Select
+            options={STRATEGY_OPTIONS}
+            value={current}
+            onChange={(e) => onSetStrategy({ fallbackStrategy: e.target.value })}
+            selectClassName="py-1 px-2 text-xs h-8"
+          />
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEdit}
+            className="h-8 px-2 text-xs"
+            title="Edit combo models"
+          >
+            <span className="material-symbols-outlined text-[16px]">edit</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            className="h-8 px-2 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10"
+            title="Delete combo"
+          >
+            <span className="material-symbols-outlined text-[16px]">delete</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Judge model picker */}
       {showJudgeSelect && (
         <ModelSelectModal
           isOpen={showJudgeSelect}
@@ -1011,7 +1074,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
           closeOnSelect={true}
         />
       )}
-    </Card>
+    </div>
   );
 }
 
