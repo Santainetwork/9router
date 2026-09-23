@@ -45,12 +45,22 @@ function TimeAgo({ timestamp }) {
   return <>{timeAgo(timestamp)}</>;
 }
 
-const RecentRequests = memo(function RecentRequests({ requests = [] }) {
+const RecentRequests = memo(function RecentRequests({ requests = [], activeRequests = [] }) {
+  const activeCount = activeRequests.reduce((total, request) => total + (Number(request.count) || 1), 0);
   return (
     <Card className="flex min-w-0 flex-col overflow-hidden" padding="sm" style={{ height: 480 }}>
       {/* Header */}
-      <div className="px-1 py-2 border-b border-border shrink-0">
+      <div className="flex items-center justify-between gap-3 px-1 py-2 border-b border-border shrink-0">
         <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Recent Requests</span>
+        {activeCount > 0 && (
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary" role="status" aria-live="polite">
+            <span className="relative flex h-2 w-2" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-75 motion-safe:animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            </span>
+            {activeCount} Active Requests
+          </span>
+        )}
       </div>
 
       {!requests.length ? (
@@ -497,7 +507,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             lastProvider={stats.recentRequests?.[0]?.provider || ""}
             errorProvider={stats.errorProvider || ""}
           />
-          <RecentRequests requests={stats.recentRequests || []} />
+          <RecentRequests requests={stats.recentRequests || []} activeRequests={stats.activeRequests || []} />
         </div>
       )}
 

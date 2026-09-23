@@ -219,6 +219,61 @@ test("docker-compose.yml configures gateway and public proxy ports and persisten
   assert.ok(graceSeconds * 1000 > drainMs, "Docker grace must exceed the application drain timeout");
 });
 
+test("bundled PostgreSQL profile wires app readiness and multicore defaults", () => {
+  const compose = readFileSync(COMPOSE_YML, "utf8");
+  const app = extractServiceBlock(compose, "9router");
+  const postgres = extractServiceBlock(compose, "postgres");
+
+  assert.match(app, /DATABASE_URL=.*BUNDLED_DATABASE_URL/);
+  assert.match(app, /API_WORKERS=.*BUNDLED_API_WORKERS/);
+  assert.match(app, /depends_on:[\s\S]*postgres:[\s\S]*condition:\s*service_healthy/);
+  assert.match(postgres, /healthcheck:[\s\S]*pg_isready/);
+
+  const rendered = execFileSync("docker", ["compose", "--profile", "postgres", "config", "--format", "json"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      DATABASE_URL: "",
+      API_WORKERS: "",
+      POSTGRES_PASSWORD: "test-secret",
+      BUNDLED_DATABASE_URL: "postgres://9router:test-secret@postgres:5432/9router",
+      BUNDLED_API_WORKERS: "3",
+    },
+  });
+  const config = JSON.parse(rendered);
+  assert.equal(config.services["9router"].environment.DATABASE_URL, "postgres://9router:test-secret@postgres:5432/9router");
+  assert.equal(config.services["9router"].environment.API_WORKERS, "3");
+  assert.equal(config.services["9router"].depends_on.postgres.condition, "service_healthy");
+});
+
+test("Docker installer --postgres creates an internal database URL and multicore env", () => {
+  assert.match(SCRIPT_SRC, /--postgres/);
+  assert.match(SCRIPT_SRC, /POSTGRES_PASSWORD/);
+  assert.match(SCRIPT_SRC, /postgres:\/\/9router:\$\{POSTGRES_PASSWORD\}@postgres:5432\/9router/);
+  assert.match(SCRIPT_SRC, /API_WORKERS=.*3/);
+  assert.match(SCRIPT_SRC, /DB_TYPE=postgres/);
+  assert.match(SCRIPT_SRC, /USE_BUNDLED_POSTGRES/);
+});
+
+test("Docker installer enables the postgres profile only for its bundled database", () => {
+  const bundled = spawnSync("bash", [DOCKER_INSTALL_SH, "--dry-run", "--yes", "--postgres", "--dir", path.join(tmpdir(), "9r-pg-profile")], {
+    encoding: "utf8",
+    env: { ...process.env, NO_COLOR: "1", DATABASE_URL: "", API_WORKERS: "" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(bundled.status, 0, `${bundled.stdout}\n${bundled.stderr}`);
+  assert.match(bundled.stdout, /docker compose --profile postgres up -d --build/);
+
+  const external = spawnSync("bash", [DOCKER_INSTALL_SH, "--dry-run", "--yes", "--database-url", "postgres://u:p@db.example/app", "--dir", path.join(tmpdir(), "9r-pg-external")], {
+    encoding: "utf8",
+    env: { ...process.env, NO_COLOR: "1", API_WORKERS: "3" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert.equal(external.status, 0, `${external.stdout}\n${external.stderr}`);
+  assert.doesNotMatch(external.stdout, /--profile postgres/);
+});
+
 test("direct Docker launcher preserves the application drain window", () => {
   const source = readFileSync(START_SH, "utf8");
   const drainMs = Number(readFileSync(CUSTOM_SERVER_JS, "utf8").match(/NINEROUTER_DRAIN_TIMEOUT_MS \|\| (\d+)/)?.[1]);
@@ -462,7 +517,7 @@ function publishedPorts(serviceBlock) {
   return [...portsMatch[1].matchAll(/-\s*["']?([^"'\n]+)["']?/g)].map((m) => m[1].trim());
 }
 
-function installWithStubs(installDir, extraEnv = {}) {
+function installWithStubs(installDir, extraEnv = {}, extraArgs = []) {
   const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-stubs-"));
   const docker = path.join(tempDir, "docker");
   writeFileSync(docker, `#!/bin/sh
@@ -478,7 +533,7 @@ for a in "$@"; do case "$a" in -w) ;; *\\%\\{http_code\\}*) echo 200; exit 0 ;; 
 echo 200
 `);
   chmodSync(curl, 0o755);
-  const result = spawnSync("bash", [DOCKER_INSTALL_SH, "--yes", "--dir", installDir], {
+  const result = spawnSync("bash", [DOCKER_INSTALL_SH, "--yes", "--dir", installDir, ...extraArgs], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -497,8 +552,8 @@ echo 200
 test("docker-compose.yml propagates WORKER_ROLE and API_WORKERS with single-process defaults", () => {
   const appBlock = extractServiceBlock(COMPOSE_SRC, "9router");
   assert.match(appBlock, /WORKER_ROLE=\$\{WORKER_ROLE:-control\}/);
-  assert.match(appBlock, /API_WORKERS=\$\{API_WORKERS:-1\}/);
-  assert.match(appBlock, /DATABASE_URL=\$\{DATABASE_URL:-\}/, "SQLite stays the default database");
+  assert.match(appBlock, /API_WORKERS=\$\{API_WORKERS:-\$\{BUNDLED_API_WORKERS:-1\}\}/);
+  assert.match(appBlock, /DATABASE_URL=\$\{DATABASE_URL:-\$\{BUNDLED_DATABASE_URL:-\}\}/, "SQLite stays the default database");
 });
 
 test("docker-compose.yml publishes only gateway and public proxy ports", () => {
@@ -537,6 +592,45 @@ test("installer emits WORKER_ROLE/API_WORKERS defaults into generated .env", () 
     const env = readFileSync(path.join(tempDir, ".env"), "utf8");
     assert.match(env, /^WORKER_ROLE=control$/m);
     assert.match(env, /^API_WORKERS=1$/m);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("installer --postgres writes a secure bundled PostgreSQL multicore environment", () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-postgres-"));
+  try {
+    const result = installWithStubs(tempDir, { DATABASE_URL: "", API_WORKERS: "" }, ["--postgres"]);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const env = readFileSync(path.join(tempDir, ".env"), "utf8");
+    const password = env.match(/^POSTGRES_PASSWORD=(.+)$/m)?.[1];
+    assert.match(password || "", /^[a-f0-9]{64}$/);
+    assert.match(env, new RegExp(`^DATABASE_URL=postgres://9router:${password}@postgres:5432/9router$`, "m"));
+    assert.match(env, /^BUNDLED_DATABASE_URL=postgres:\/\/9router:.+@postgres:5432\/9router$/m);
+    assert.match(env, /^DB_TYPE=postgres$/m);
+    assert.match(env, /^API_WORKERS=3$/m);
+    assert.match(env, /^BUNDLED_API_WORKERS=3$/m);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("installer --postgres upgrade preserves the bundled profile", () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "9r-install-postgres-upgrade-"));
+  try {
+    writeFileSync(path.join(tempDir, ".env"), [
+      "POSTGRES_PASSWORD=keep-postgres-secret",
+      "DATABASE_URL=postgres://9router:keep-postgres-secret@postgres:5432/9router",
+      "BUNDLED_DATABASE_URL=postgres://9router:keep-postgres-secret@postgres:5432/9router",
+      "BUNDLED_API_WORKERS=3",
+      "API_WORKERS=3",
+      "WORKER_ROLE=control",
+      "",
+    ].join("\n"));
+    const result = installWithStubs(tempDir, {}, ["--postgres", "--upgrade"]);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(readFileSync(path.join(tempDir, ".env"), "utf8"), /^POSTGRES_PASSWORD=keep-postgres-secret$/m);
+    assert.match(result.stdout, /Docker container started/);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

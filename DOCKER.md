@@ -31,7 +31,10 @@ Run the automated installer inside the repository or on your server:
 ./install-docker.sh --password "YourStrongPassword" --yes
 
 # With external PostgreSQL database
-./install-docker.sh --database-url "postgres://user:pass@db.example.com:5432/9router" --yes
+API_WORKERS=3 ./install-docker.sh --database-url "postgres://user:pass@db.example.com:5432/9router" --yes
+
+# Bundled PostgreSQL + multicore (1 control + 2 API workers)
+./install-docker.sh --postgres --yes
 ```
 
 ---
@@ -104,6 +107,25 @@ docker run --rm -p 20128:20128 \
 The Dockerfile uses the official Alpine and npm registries by default. Regional mirrors can be supplied when needed.
 
 App listens on port `20128`. Open: http://localhost:20128
+
+### PostgreSQL multicore profile
+
+SQLite remains single-process. For the bundled PostgreSQL database and three
+Node processes, use the installer above or configure `.env` then start the
+profile:
+
+```env
+POSTGRES_PASSWORD=replace_with_a_long_random_secret
+BUNDLED_DATABASE_URL=postgres://9router:replace_with_a_long_random_secret@postgres:5432/9router
+BUNDLED_API_WORKERS=3
+```
+
+```bash
+docker compose --profile postgres up -d --build
+```
+
+`API_WORKERS` counts all Node processes: one control process plus the remaining
+API workers. Values above `1` require PostgreSQL and are capped at `8`.
 
 ### Manage container
 

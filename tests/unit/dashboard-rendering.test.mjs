@@ -5,9 +5,12 @@ import { readFileSync } from "node:fs";
 const source = (path) => readFileSync(new URL(`../../src/${path}`, import.meta.url), "utf8");
 
 const usageStats = source("shared/components/UsageStats.js");
+const providerTopology = source("app/(dashboard)/dashboard/usage/components/ProviderTopology.js");
+const globalCss = source("app/globals.css");
 const usageTable = source("app/(dashboard)/dashboard/usage/components/UsageTable.js");
 const consoleLog = source("app/(dashboard)/dashboard/console-log/ConsoleLogClient.js");
 const translator = source("app/(dashboard)/dashboard/translator/page.js");
+const usageStream = source("app/api/usage/stream/route.js");
 
 test("UsageStats memoizes heavy children so SSE ticks do not re-render them", () => {
   assert.match(usageStats, /import \{[^}]*\bmemo\b[^}]*\} from "react"/);
@@ -24,6 +27,16 @@ test("UsageStats memoizes heavy children so SSE ticks do not re-render them", ()
   );
   // Provider list derived once, stable identity for the topology subtree
   assert.match(usageStats, /useMemo\(\s*\(\) =>/);
+});
+
+test("Usage shows accessible activity animation while requests are active", () => {
+  assert.match(usageStats, /Active Requests/);
+  assert.match(usageStats, /motion-safe:animate-ping/);
+  assert.match(usageStats, /stats\.activeRequests/);
+  assert.match(providerTopology, /topology-edge-electric/);
+  assert.match(providerTopology, /<animateMotion/);
+  assert.match(globalCss, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(usageStream, /setInterval\([^)]*sendPending/s);
 });
 
 test("UsageTable memoizes row/cell subtrees and isolates expanded state persistence", () => {

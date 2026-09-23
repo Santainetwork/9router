@@ -1,10 +1,11 @@
-import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
+import { getUsageStats, statsEmitter, getActiveRequests, getSharedActiveRequests } from "@/lib/usageDb";
+import { mergeActiveRequests } from "@/shared/utils/usageActivity.js";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const encoder = new TextEncoder();
-  const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
+  const state = { closed: false, keepalive: null, activityTimer: null, send: null, sendPending: null, cachedStats: null };
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -14,18 +15,27 @@ export async function GET() {
         try {
           // Push lightweight update immediately so UI reflects changes fast
           if (state.cachedStats) {
-            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
+            const [{ activeRequests: localActive, recentRequests, errorProvider }, sharedActive] = await Promise.all([
+              getActiveRequests(),
+              getSharedActiveRequests(),
+            ]);
+            const activeRequests = mergeActiveRequests(localActive, sharedActive);
             const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
           }
           // Then do full recalc and update cache
-          const stats = await getUsageStats();
+          const [stats, sharedActive] = await Promise.all([
+            getUsageStats(),
+            getSharedActiveRequests(),
+          ]);
+          stats.activeRequests = mergeActiveRequests(stats.activeRequests, sharedActive);
           state.cachedStats = stats;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
           state.closed = true;
           statsEmitter.off("update", state.send);
           statsEmitter.off("pending", state.sendPending);
+          clearInterval(state.activityTimer);
           clearInterval(state.keepalive);
         }
       };
@@ -34,13 +44,18 @@ export async function GET() {
       state.sendPending = async () => {
         if (state.closed || !state.cachedStats) return;
         try {
-          const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
+          const [{ activeRequests: localActive, recentRequests, errorProvider }, sharedActive] = await Promise.all([
+            getActiveRequests(),
+            getSharedActiveRequests(),
+          ]);
+          const activeRequests = mergeActiveRequests(localActive, sharedActive);
           const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
           state.closed = true;
           statsEmitter.off("update", state.send);
           statsEmitter.off("pending", state.sendPending);
+          clearInterval(state.activityTimer);
           clearInterval(state.keepalive);
         }
       };
@@ -50,12 +65,18 @@ export async function GET() {
       statsEmitter.on("update", state.send);
       statsEmitter.on("pending", state.sendPending);
 
+      // Requests are served by separate API worker processes in multicore mode.
+      // Poll the shared Go limiter instead of relying on control-local events.
+      state.activityTimer = setInterval(state.sendPending, 1000);
+      state.activityTimer?.unref?.();
+
       state.keepalive = setInterval(() => {
         if (state.closed) { clearInterval(state.keepalive); return; }
         try {
           controller.enqueue(encoder.encode(": ping\n\n"));
         } catch {
           state.closed = true;
+          clearInterval(state.activityTimer);
           clearInterval(state.keepalive);
         }
       }, 25000);
@@ -65,6 +86,7 @@ export async function GET() {
       state.closed = true;
       statsEmitter.off("update", state.send);
       statsEmitter.off("pending", state.sendPending);
+      clearInterval(state.activityTimer);
       clearInterval(state.keepalive);
     },
   });

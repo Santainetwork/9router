@@ -24,6 +24,7 @@ if (!global._statsEmitter) {
 if (!global._pendingTimers) global._pendingTimers = {};
 if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
+if (!global._connectionListCache) global._connectionListCache = { items: [], ts: 0 };
 if (!global._nodePrefixMapCache) global._nodePrefixMapCache = { map: {}, ts: 0 };
 if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null };
 
@@ -32,6 +33,7 @@ const lastErrorProvider = global._lastErrorProvider;
 const pendingTimers = global._pendingTimers;
 const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
+const connectionListCache = global._connectionListCache;
 const nodePrefixCache = global._nodePrefixMapCache;
 const statsEmitTimers = global._statsEmitTimers;
 
@@ -117,6 +119,14 @@ async function getConnectionMapCached() {
     connCache.ts = Date.now();
   } catch {}
   return connCache.map;
+}
+
+async function getConnectionListCached() {
+  if (Date.now() - connectionListCache.ts < CONN_CACHE_TTL_MS) return connectionListCache.items;
+  const { getProviderConnections } = await import("./connectionsRepo.js");
+  connectionListCache.items = await getProviderConnections();
+  connectionListCache.ts = Date.now();
+  return connectionListCache.items;
 }
 
 export async function getNodePrefixMapCached() {
@@ -340,6 +350,20 @@ export async function getActiveRequests() {
 
   const errorProvider = (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "";
   return { activeRequests, recentRequests, errorProvider };
+}
+
+export async function getSharedActiveRequests() {
+  try {
+    const [{ isGoLimiterActive, goSnapshot }, { mapSharedProviderActivity }] = await Promise.all([
+      import("open-sse/services/hybrid/goLimiterClient.js"),
+      import("@/shared/utils/usageActivity.js"),
+    ]);
+    if (!await isGoLimiterActive()) return [];
+    const [snapshot, connections] = await Promise.all([goSnapshot(), getConnectionListCached()]);
+    return mapSharedProviderActivity(snapshot?.buckets, connections);
+  } catch {
+    return [];
+  }
 }
 
 export async function saveRequestUsage(entry) {

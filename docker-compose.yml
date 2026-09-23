@@ -17,6 +17,10 @@ services:
     env_file:
       - path: .env
         required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     environment:
       - APP_NAME=${APP_NAME:-SantaiNetwork}
       - DATA_DIR=/app/data
@@ -31,9 +35,10 @@ services:
       - INITIAL_PASSWORD=${INITIAL_PASSWORD:-}
       - MACHINE_ID_SALT=${MACHINE_ID_SALT:-}
       - API_KEY_SECRET=${API_KEY_SECRET:-}
-      - DATABASE_URL=${DATABASE_URL:-}
+      - DATABASE_URL=${DATABASE_URL:-${BUNDLED_DATABASE_URL:-}}
+      - DB_TYPE=${DB_TYPE:-}
       - WORKER_ROLE=${WORKER_ROLE:-control}
-      - API_WORKERS=${API_WORKERS:-1}
+      - API_WORKERS=${API_WORKERS:-${BUNDLED_API_WORKERS:-1}}
       - HEADROOM_URL=${HEADROOM_URL:-}
 
   # Optional PostgreSQL database (enable via: docker compose --profile postgres up -d)
@@ -45,9 +50,14 @@ services:
     environment:
       POSTGRES_DB: 9router
       POSTGRES_USER: 9router
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-santainetwork_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
     volumes:
       - 9router-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U 9router -d 9router"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     ports:
       - "127.0.0.1:5432:5432"
 

@@ -36,6 +36,9 @@
 #   # Dry run inspection
 #   bash scripts/install-docker.sh --dry-run
 #
+#   # Bundled PostgreSQL + 3 Node processes (1 control + 2 API workers)
+#   bash scripts/install-docker.sh --postgres --yes
+#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,9 +60,13 @@ PUBLIC_PORT="${PUBLIC_PORT:-20140}"
 APP_NAME="${APP_NAME:-SantaiNetwork}"
 INITIAL_PASSWORD="${INITIAL_PASSWORD:-}"
 DATABASE_URL="${DATABASE_URL:-}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 WORKER_ROLE="${WORKER_ROLE:-}"
 API_WORKERS="${API_WORKERS:-}"
+API_WORKERS_EXPLICIT=0
+[ -n "$API_WORKERS" ] && API_WORKERS_EXPLICIT=1
 USE_POSTGRES=0
+USE_BUNDLED_POSTGRES=0
 
 ASSUME_YES=0
 DRY_RUN=0
@@ -326,6 +333,9 @@ EXISTING_SALT="$(read_env_val "MACHINE_ID_SALT" "$ENV_FILE")"
 EXISTING_AKS="$(read_env_val "API_KEY_SECRET" "$ENV_FILE")"
 EXISTING_PWD="$(read_env_val "INITIAL_PASSWORD" "$ENV_FILE")"
 EXISTING_DB="$(read_env_val "DATABASE_URL" "$ENV_FILE")"
+EXISTING_BUNDLED_DB="$(read_env_val "BUNDLED_DATABASE_URL" "$ENV_FILE")"
+EXISTING_PG_PASSWORD="$(read_env_val "POSTGRES_PASSWORD" "$ENV_FILE")"
+EXISTING_BUNDLED_WORKERS="$(read_env_val "BUNDLED_API_WORKERS" "$ENV_FILE")"
 EXISTING_WORKER_ROLE="$(read_env_val "WORKER_ROLE" "$ENV_FILE")"
 EXISTING_API_WORKERS="$(read_env_val "API_WORKERS" "$ENV_FILE")"
 
@@ -333,10 +343,23 @@ JWT_SECRET="${EXISTING_JWT:-$(generate_token)}"
 MACHINE_ID_SALT="${EXISTING_SALT:-$(generate_token | head -c 16)}"
 API_KEY_SECRET="${EXISTING_AKS:-$(generate_token)}"
 [ -z "$INITIAL_PASSWORD" ] && INITIAL_PASSWORD="${EXISTING_PWD:-$(generate_token | head -c 14)}"
-[ -z "$DATABASE_URL" ] && DATABASE_URL="${EXISTING_DB:-}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-${EXISTING_PG_PASSWORD:-}}"
 # Preserve an existing operator value on upgrade; otherwise fall back to single-process defaults.
 WORKER_ROLE="${WORKER_ROLE:-${EXISTING_WORKER_ROLE:-control}}"
-API_WORKERS="${API_WORKERS:-${EXISTING_API_WORKERS:-1}}"
+
+if [ "$USE_POSTGRES" -eq 1 ]; then
+  if [ -z "$DATABASE_URL" ]; then
+    [ -n "$POSTGRES_PASSWORD" ] || POSTGRES_PASSWORD="$(generate_token)"
+    DATABASE_URL="${EXISTING_BUNDLED_DB:-postgres://9router:${POSTGRES_PASSWORD}@postgres:5432/9router}"
+    USE_BUNDLED_POSTGRES=1
+  fi
+  if [ "$API_WORKERS_EXPLICIT" -ne 1 ]; then
+    API_WORKERS="${EXISTING_API_WORKERS:-${EXISTING_BUNDLED_WORKERS:-3}}"
+  fi
+else
+  DATABASE_URL="${DATABASE_URL:-${EXISTING_DB:-}}"
+  API_WORKERS="${API_WORKERS:-${EXISTING_API_WORKERS:-1}}"
+fi
 
 step "Generating environment configuration (.env)"
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -367,6 +390,12 @@ API_WORKERS=${API_WORKERS}
 EOF
   if [ -n "$DATABASE_URL" ]; then
     echo "DATABASE_URL=${DATABASE_URL}" >> "$ENV_FILE"
+    echo "DB_TYPE=postgres" >> "$ENV_FILE"
+  fi
+  if [ "$USE_BUNDLED_POSTGRES" -eq 1 ]; then
+    echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" >> "$ENV_FILE"
+    echo "BUNDLED_DATABASE_URL=${DATABASE_URL}" >> "$ENV_FILE"
+    echo "BUNDLED_API_WORKERS=${API_WORKERS}" >> "$ENV_FILE"
   fi
   chmod 600 "$ENV_FILE"
   ok "Saved ${ENV_FILE} (permissions 600)"
@@ -375,7 +404,7 @@ fi
 # Build and start services
 step "Building and starting 9Router container stack"
 COMPOSE_PROFILE_ARGS=()
-if [ "$USE_POSTGRES" -eq 1 ] && [ -z "$DATABASE_URL" ]; then
+if [ "$USE_BUNDLED_POSTGRES" -eq 1 ]; then
   COMPOSE_PROFILE_ARGS+=(--profile postgres)
 fi
 
