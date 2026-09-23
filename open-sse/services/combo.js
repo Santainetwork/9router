@@ -277,7 +277,7 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
  * @returns {Promise<Response>}
  */
-export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true, allowBodyReadFallback = false }) {
   // Apply rotation strategy if enabled
   let rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
 
@@ -332,7 +332,14 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs } = checkFallbackError(result.status, errorText);
+      const { shouldFallback: accountFallback, cooldownMs } = checkFallbackError(result.status, errorText);
+      // The body arriving here was already parsed and re-serialized by 9Router,
+      // so this exact upstream 400 is an endpoint/parser limitation, commonly on
+      // very large payloads. Keep ordinary semantic 400s terminal, but let a
+      // combo try a different provider for this transport-specific failure.
+      const bodyReadFailure = allowBodyReadFallback && result.status === 400
+        && errorText.toLowerCase().includes("failed to read request body");
+      const shouldFallback = accountFallback || bodyReadFailure;
 
       if (!shouldFallback) {
         log.warn("COMBO", `Model ${modelStr} failed (no fallback)`, { status: result.status });
