@@ -98,6 +98,15 @@ test("Recent Requests order by completion timestamp rather than insertion id", a
   assert.equal(live.recentRequests[0].model, "openrouter/older-id-newer-time");
 });
 
+test("Recent Requests keep distinct requests with matching token counts", async () => {
+  insertWorkerRowWithId({ id: 9010, model: "same-signature", timestamp: "2026-09-23T22:58:01.000Z" });
+  insertWorkerRowWithId({ id: 9011, model: "same-signature", timestamp: "2026-09-23T22:58:02.000Z" });
+
+  const live = await getActiveRequests();
+  const matches = live.recentRequests.filter((r) => r.model === "openrouter/same-signature");
+  assert.equal(matches.length, 2, "separate requests must not be collapsed by display-value dedupe");
+});
+
 test.after(() => {
   try { adapter.close?.(); } catch {}
   fs.rmSync(tmpDir, { recursive: true, force: true });

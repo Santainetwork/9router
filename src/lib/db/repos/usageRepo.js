@@ -244,7 +244,6 @@ function getRecentRequestsFromDb(db) {
   // Indexed by idx_uh_ts; insertion id order breaks when a slower request from
   // an API worker commits after a newer one (Recent Requests showed old rows).
   const rows = db.all(`SELECT timestamp, provider, model, tokens, meta, status FROM usageHistory ORDER BY timestamp DESC LIMIT 100`);
-  const seen = new Set();
   return rows
     .map((r) => {
       const tokens = parseJson(r.tokens, {}) || {};
@@ -261,14 +260,10 @@ function getRecentRequestsFromDb(db) {
         upstreamModel: meta.upstreamModel || undefined,
       };
     })
-    .filter((entry) => {
-      if (entry.promptTokens === 0 && entry.completionTokens === 0) return false;
-      const minute = entry.timestamp ? entry.timestamp.slice(0, 16) : "";
-      const key = `${entry.model}|${entry.provider}|${entry.promptTokens}|${entry.completionTokens}|${minute}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
+    // Distinct requests may share provider/model/token counts within a minute,
+    // so keying on display values hid real requests. saveRequestUsage() already
+    // suppresses duplicate writes of the same request.
+    .filter((entry) => entry.promptTokens !== 0 || entry.completionTokens !== 0)
     .slice(0, 20);
 }
 
