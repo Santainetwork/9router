@@ -4,6 +4,26 @@
 
 Allow multiple API worker processes while SQLite remains the primary persistent database. Preserve one control process, one SQLite writer, shared limiter correctness, stream cancellation, durable usage records, credential safety, and conservative single-process defaults.
 
+## Approved Interpretation and Verification Status
+
+The original request asked whether adding a Redis module could make SQLite multicore. Before the design was approved, the following details required interpretation:
+
+- SQLite remains the primary database; Redis is supporting coordination and transport, not a replacement database.
+- "Redis module" means an optional Redis service/client integration, supporting bundled Docker and external `REDIS_URL` deployments.
+- Initial scope is Docker. Native systemd remains single-process.
+- Existing Go limiter remains authoritative; Redis does not duplicate request concurrency control.
+- Safety takes priority over availability: failed Redis/writer dependencies remove API workers from readiness and route eligible new traffic to control.
+- Redis durability permits explicitly measured best-effort telemetry loss, but never silent loss of credential/routing correctness mutations.
+
+The user approved the design with those interpretations. This document is still a specification, not an implemented feature. Fresh baseline checks on 2026-09-24 observed:
+
+- SQLite with `API_WORKERS=2` exits `1` and reports that PostgreSQL is required.
+- SQLite with `API_WORKERS=1` passes configuration validation.
+- Compose currently contains only the `9router` default service; no Redis client dependency or `REDIS_URL` implementation exists.
+- Current real interfaces remain healthy: health `200`, models `200`, limiter readiness `200`, usage without a key `401`, malformed chat `400`, and public `/ready` `404`.
+
+Therefore the current application has not gained SQLite multicore capability. The design improves requirement clarity and provides testable acceptance gates. End-to-end Redis/SQLite multicore acceptance remains blocked until implementation, disposable Redis integration tests, and the specified canary are completed.
+
 ## Current Constraints
 
 - `custom-server.js` and `deploy/docker-entrypoint.sh` reject `API_WORKERS>1` unless PostgreSQL is selected.
