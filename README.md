@@ -1493,11 +1493,10 @@ Published images (multi-platform `linux/amd64` + `linux/arm64`):
 - Docker Hub: [`decolua/9router`](https://hub.docker.com/r/decolua/9router)
 - GHCR: [`ghcr.io/decolua/9router`](https://github.com/decolua/9router/pkgs/container/9router)
 
-**Docker Compose with bundled PostgreSQL + multicore:**
+**Docker Compose with bundled PostgreSQL + multicore (SantaiNetwork source):**
 
 ```bash
-git clone https://github.com/decolua/9router.git
-cd 9router
+# From this SantaiNetwork repository root
 
 # Starts PostgreSQL plus 3 Node processes: 1 control + 2 API workers.
 bash scripts/install-docker.sh --postgres --yes --password "choose-a-strong-password"
