@@ -1,4 +1,5 @@
 import { makeKv } from "../../src/lib/db/helpers/kvStore.js";
+import { isSqliteMulticoreWorker } from "../../src/lib/db/driver.js";
 
 const MAX_SIGNATURES = 2000;
 const MAX_PERSISTED_SIGNATURES = 10_000;
@@ -43,7 +44,17 @@ function pruneMemoryExpired() {
   }
 }
 
+// ponytail: a SQLite multicore API worker opens the DB read-only, so every kv
+// write here would throw ReadOnlyAdapterError into a swallowed .catch and
+// silently lose the 7-day persistence. Ceiling: such workers keep RAM-only
+// signatures (1h TTL, per-process). Upgrade path: enqueue a typed
+// `kv.set`/`kv.remove` mutation via workerMutation.js once that type exists.
+function canPersist() {
+  return !isSqliteMulticoreWorker();
+}
+
 async function maybePrunePersisted() {
+  if (!canPersist()) return;
   pruneCounter++;
   if (pruneCounter % 100 !== 0) return;
 
@@ -105,12 +116,14 @@ export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = n
     });
 
     // Async persist to SQLite kv table without blocking
-    signatureKv.set(k, {
-      signature,
-      family,
-      createdAt: now,
-      expiresAt: now + PERSISTED_TTL_MS,
-    }).catch(() => {});
+    if (canPersist()) {
+      signatureKv.set(k, {
+        signature,
+        family,
+        createdAt: now,
+        expiresAt: now + PERSISTED_TTL_MS,
+      }).catch(() => {});
+    }
   }
 
   maybePrunePersisted().catch(() => {});
@@ -156,7 +169,7 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null, mo
     const row = await signatureKv.get(toolCallId);
     if (row && typeof row.signature === "string") {
       if (row.expiresAt && row.expiresAt <= Date.now()) {
-        signatureKv.remove(toolCallId).catch(() => {});
+        if (canPersist()) signatureKv.remove(toolCallId).catch(() => {});
         return null;
       }
       if (!isCompatible(row, family)) return null;
