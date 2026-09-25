@@ -5,6 +5,7 @@
 // placed in a payload.
 import { getRedisManager } from "../redis/client.js";
 import { createMutationQueue } from "./sqliteMutationQueue.js";
+import { encryptQueuePayload, getQueueEncryptionKey } from "./queueEncryption.js";
 
 const state = global.__workerMutationState ??= { queue: null };
 
@@ -88,4 +89,43 @@ export async function enqueueTelemetry(queue, input) {
   } catch {
     return { enqueued: false, dropped: true, receiptId: input?.receiptId ?? null };
   }
+}
+
+// Task 5: synchronous provider-state mutation payload + enqueue. Token-bearing
+// credential fields are encrypted into a `ciphertext` field; only non-secret
+// routing/health/cooldown/lock fields remain in `updates`. Plaintext secrets
+// never enter the Redis command JSON.
+const TOKEN_BEARING_KEYS = [
+  "accessToken", "refreshToken", "idToken", "apiKey", "token",
+  "copilotToken", "copilotTokenExpiresAt", "providerSpecificData", "expiresAt",
+  "expiresIn", "lastRefreshAt", "projectId", "scope", "tokenType",
+];
+
+function splitConnectionUpdate(updates) {
+  const plain = {};
+  const secret = {};
+  for (const [key, value] of Object.entries(updates ?? {})) {
+    if (value === undefined) continue;
+    (TOKEN_BEARING_KEYS.includes(key) ? secret : plain)[key] = value;
+  }
+  return { plain, secret };
+}
+
+export function buildConnectionUpdatePayload(connectionId, updates, { ciphertext = null } = {}) {
+  const payload = { connectionId, updates };
+  if (ciphertext) payload.ciphertext = ciphertext;
+  return payload;
+}
+
+export async function enqueueSyncConnectionUpdate(queue, connectionId, updates) {
+  const { plain, secret } = splitConnectionUpdate(updates);
+  let ciphertext = null;
+  if (Object.keys(secret).length > 0) {
+    ciphertext = encryptQueuePayload(getQueueEncryptionKey(), secret);
+  }
+  const payload = buildConnectionUpdatePayload(connectionId, plain, { ciphertext });
+  // consistency "sync": enqueueMutation blocks on the committed receipt and
+  // throws on timeout/queue failure. No direct-write fallback exists here.
+  const result = await queue.enqueueMutation({ type: "connection.update", payload, consistency: "sync" });
+  return result.result ?? { updated: true };
 }

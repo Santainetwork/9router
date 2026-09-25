@@ -58,6 +58,14 @@ const valid = {
     model: "ag/gemini-3.7-flash",
     referralText: "This response was delivered by Antigravity",
   },
+  "connection.update": {
+    connectionId: "conn-1",
+    updates: {
+      testStatus: "unavailable",
+      lastError: "429",
+      modelLock_claude: "2026-09-25T01:00:00.000Z",
+    },
+  },
 };
 
 function cmd(type, payload = valid[type]) {
@@ -76,8 +84,8 @@ function expectReject(mutation, pattern, message) {
   );
 }
 
-test("command union is exactly the three allowlisted types", () => {
-  assert.deepEqual([...MUTATION_TYPES].sort(), ["footerLog.add", "requestDetail.save", "usage.save"]);
+test("command union is exactly the four allowlisted types", () => {
+  assert.deepEqual([...MUTATION_TYPES].sort(), ["connection.update", "footerLog.add", "requestDetail.save", "usage.save"]);
   assert.ok(Object.isFrozen(MUTATION_TYPES) || Array.isArray(MUTATION_TYPES));
 });
 

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { getAdapter } from "../driver.js";
+import { getAdapter, isSqliteMulticoreWorker } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const OPTIONAL_FIELDS = [
@@ -212,7 +212,15 @@ export async function createProviderConnection(data) {
 }
 
 // Critical: OAuth refresh token race — atomic merge inside transaction
+// Task 5: in a SQLite multicore API worker, route synchronously through the
+// Redis single-writer bridge: wait for the committed receipt, then reread
+// versioned SQLite state. Never fall back to a direct write in multicore.
 export async function updateProviderConnection(id, data) {
+  if (isSqliteMulticoreWorker()) {
+    const { getWorkerMutationQueue, enqueueSyncConnectionUpdate } = await import("../workerMutation.js");
+    await enqueueSyncConnectionUpdate(getWorkerMutationQueue(), id, data);
+    return await getProviderConnectionById(id);
+  }
   const db = await getAdapter();
   let result;
   db.transaction(() => {

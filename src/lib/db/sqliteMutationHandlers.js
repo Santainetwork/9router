@@ -1,4 +1,5 @@
 import { validateMutation, MutationValidationError } from "./mutationProtocol.js";
+import { getQueueEncryptionKey, decryptQueuePayload } from "./queueEncryption.js";
 
 const MAX_LOGS = 200;
 
@@ -215,10 +216,43 @@ function applyFooterLogAdd(db, payload) {
   return { inserted: true };
 }
 
+function applyConnectionUpdate(db, payload) {
+  const { connectionId, updates, ciphertext } = payload;
+  const row = db.get("SELECT * FROM providerConnections WHERE id = ?", [connectionId]);
+  if (!row) return { updated: false };
+  const existing = parseJson(row.data, {});
+
+  // Decrypt token-bearing credential fields in the control process before merge.
+  // Never accepts plaintext credential keys: the protocol deep scan rejects them
+  // upstream, so only encrypted material can arrive here.
+  let mergedUpdates = updates ?? {};
+  if (ciphertext) {
+    const key = getQueueEncryptionKey();
+    const decrypted = decryptQueuePayload(key, ciphertext);
+    mergedUpdates = { ...mergedUpdates, ...decrypted };
+  }
+
+  const merged = { ...existing, ...mergedUpdates, updatedAt: new Date().toISOString() };
+  db.run(
+    "UPDATE providerConnections SET data = ?, updatedAt = ? WHERE id = ?",
+    [stringifyJson(merged), merged.updatedAt, connectionId],
+  );
+  // Synchronous correctness mutation: bump the monotonic database version in the
+  // same transaction so workers reread versioned state, never a stale cache.
+  const cur = db.get("SELECT version FROM dbVersion WHERE id = 1");
+  const next = (cur ? Number(cur.version) : 0) + 1;
+  db.run(
+    "INSERT INTO dbVersion(id, version, updatedAt) VALUES(1, ?, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version, updatedAt = excluded.updatedAt",
+    [String(next), merged.updatedAt],
+  );
+  return { updated: true, version: next };
+}
+
 const HANDLERS = Object.freeze({
   "usage.save": applyUsageSave,
   "requestDetail.save": applyRequestDetailSave,
   "footerLog.add": applyFooterLogAdd,
+  "connection.update": applyConnectionUpdate,
 });
 
 export function applyMutation(db, command) {

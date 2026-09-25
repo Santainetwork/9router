@@ -84,6 +84,17 @@ export const MUTATION_SPECS = Object.freeze({
     required: ["provider", "model", "referralText"],
     allowed: ["timestamp", "provider", "model", "referralText"],
   },
+  // Synchronous provider-state mutation (Task 5). The `updates` object carries
+  // only routing/health/cooldown/lock fields. Token-bearing keys are rejected by
+  // the deep secret scan, so a worker that needs a credential update must keep
+  // that provider control-only. connectionId is an opaque row id, never a key.
+  "connection.update": {
+    consistency: "sync",
+    required: ["connectionId", "updates"],
+    // `ciphertext` carries token-bearing credential fields encrypted with the
+    // dedicated queue key; plaintext secrets are rejected by the deep scan.
+    allowed: ["connectionId", "updates", "ciphertext"],
+  },
 });
 
 export const MUTATION_TYPES = Object.freeze(Object.keys(MUTATION_SPECS));

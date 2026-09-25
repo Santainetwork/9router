@@ -249,3 +249,50 @@ test("unknown mutation type is rejected", () => {
   const { adapter } = createDb();
   assert.throws(() => applyMutation(adapter, { ...usageCommand(baseUsage), type: "settings.save" }), /unknown mutation type/);
 });
+
+test("connection.update merges state and bumps dbVersion in one transaction", () => {
+  const { db, adapter } = createDb();
+  db.run("CREATE TABLE IF NOT EXISTS providerConnections (id TEXT PRIMARY KEY, provider TEXT, authType TEXT, name TEXT, email TEXT, priority INTEGER, isActive INTEGER, data TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)");
+  db.run("CREATE TABLE IF NOT EXISTS dbVersion (id INTEGER PRIMARY KEY, version INTEGER NOT NULL DEFAULT 0, updatedAt TEXT)");
+  db.run("INSERT INTO providerConnections(id, provider, authType, data, createdAt, updatedAt) VALUES(?, 'anthropic', 'oauth', ?, ?, ?)", ["conn-1", JSON.stringify({ accessToken: "at", testStatus: "active" }), "t0", "t0"]);
+  db.run("INSERT INTO dbVersion(id, version) VALUES(1, 0)");
+
+  const result = applyMutation(adapter, {
+    schemaVersion: 1,
+    type: "connection.update",
+    receiptId: "m-1234567890abcdef",
+    workerId: "worker-1",
+    createdAt: "2026-09-25T00:00:00.000Z",
+    payload: { connectionId: "conn-1", updates: { testStatus: "unavailable", modelLock_claude: "2026-09-25T01:00:00.000Z" } },
+    consistency: "sync",
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(result.version, 1);
+  const row = db.get("SELECT data FROM providerConnections WHERE id = 'conn-1'");
+  const data = JSON.parse(row.data);
+  assert.equal(data.testStatus, "unavailable");
+  assert.equal(data.accessToken, "at", "existing credentials preserved");
+  const ver = db.get("SELECT version FROM dbVersion WHERE id = 1");
+  assert.equal(ver.version, 1);
+});
+
+test("connection.update for a missing connection returns updated:false without bumping version", () => {
+  const { db, adapter } = createDb();
+  db.run("CREATE TABLE IF NOT EXISTS providerConnections (id TEXT PRIMARY KEY, provider TEXT, authType TEXT, name TEXT, email TEXT, priority INTEGER, isActive INTEGER, data TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)");
+  db.run("CREATE TABLE IF NOT EXISTS dbVersion (id INTEGER PRIMARY KEY, version INTEGER NOT NULL DEFAULT 0, updatedAt TEXT)");
+  db.run("INSERT INTO dbVersion(id, version) VALUES(1, 0)");
+
+  const result = applyMutation(adapter, {
+    schemaVersion: 1,
+    type: "connection.update",
+    receiptId: "m-1234567890abcdef",
+    workerId: "worker-1",
+    createdAt: "2026-09-25T00:00:00.000Z",
+    payload: { connectionId: "missing", updates: { testStatus: "unavailable" } },
+    consistency: "sync",
+  });
+
+  assert.equal(result.updated, false);
+  assert.equal(db.get("SELECT version FROM dbVersion WHERE id = 1").version, 0);
+});
