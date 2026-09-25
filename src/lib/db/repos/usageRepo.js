@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { getAdapter } from "../driver.js";
+import { getAdapter, isSqliteMulticoreWorker } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
 
@@ -354,6 +354,9 @@ export async function getSharedActiveRequests() {
 
 export async function saveRequestUsage(entry) {
   try {
+    if (isSqliteMulticoreWorker()) {
+      return await saveRequestUsageViaMutation(entry);
+    }
     const db = await getAdapter();
     await getNodePrefixMapCached();
 
@@ -437,6 +440,36 @@ export async function saveRequestUsage(entry) {
   } catch (e) {
     console.error("Failed to save usage stats:", e);
   }
+}
+
+// Worker (SQLite Redis multicore) path: compute the same display model + cost the
+// control writer would, resolve the raw apiKey to its opaque id, then enqueue a
+// typed usage.save mutation. The raw key never enters the payload.
+async function saveRequestUsageViaMutation(entry) {
+  if (!entry.timestamp) entry.timestamp = new Date().toISOString();
+
+  const displayModel = formatModelWithProviderPrefix(entry.model, entry.provider, {
+    requestedModel: entry.requestedModel,
+    upstreamModel: entry.upstreamModel,
+  });
+  const originalRawModel = entry.model;
+  entry.model = displayModel;
+
+  const cost = await calculateCost(entry.provider, originalRawModel, entry.tokens, {
+    requestedModel: entry.requestedModel,
+    upstreamModel: entry.upstreamModel,
+  });
+
+  let apiKeyId = entry.apiKeyId ?? null;
+  if (!apiKeyId && entry.apiKey) {
+    const db = await getAdapter();
+    const { resolveApiKeyId } = await import("../workerMutation.js");
+    apiKeyId = await resolveApiKeyId(db, entry.apiKey);
+  }
+
+  const { getWorkerMutationQueue, buildUsageSavePayload, enqueueTelemetry } = await import("../workerMutation.js");
+  const payload = buildUsageSavePayload({ ...entry, apiKeyId, cost });
+  return await enqueueTelemetry(getWorkerMutationQueue(), { type: "usage.save", payload });
 }
 
 export async function getUsageHistory(filter = {}) {

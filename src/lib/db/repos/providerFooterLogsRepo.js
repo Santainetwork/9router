@@ -1,4 +1,4 @@
-import { getAdapter } from "../driver.js";
+import { getAdapter, isSqliteMulticoreWorker } from "../driver.js";
 import { redactProviderFooterText } from "@/shared/utils/providerFooter.js";
 
 export { redactProviderFooterText };
@@ -8,6 +8,15 @@ const MAX_LOGS = 200;
 export async function addProviderFooterLog(provider, model, referralText, timestamp = new Date().toISOString()) {
   if (!provider || !model || !referralText) {
     throw new Error("provider, model, and referralText are required");
+  }
+
+  // Worker (SQLite Redis multicore) path: redact first, enqueue typed mutation.
+  if (isSqliteMulticoreWorker()) {
+    const { getWorkerMutationQueue, buildFooterLogAddPayload, enqueueTelemetry } = await import("../workerMutation.js");
+    const redacted = redactProviderFooterText(referralText);
+    const payload = buildFooterLogAddPayload(provider, model, redacted, timestamp);
+    await enqueueTelemetry(getWorkerMutationQueue(), { type: "footerLog.add", payload });
+    return;
   }
 
   const db = await getAdapter();

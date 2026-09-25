@@ -86,11 +86,12 @@ function installGracefulShutdown(server) {
     }, DRAIN_TIMEOUT_MS);
     forceExit.unref();
 
-    server.close((error) => {
+    server.close(async (error) => {
       clearTimeout(forceExit);
       if (error && error.code !== "ERR_SERVER_NOT_RUNNING") {
         console.error(`[9Router] ${signal}: server drain failed:`, error.message);
       }
+      try { await global.__stopSqliteMutationWriter?.(); } catch {}
       process.exit(exitCode);
     });
   };

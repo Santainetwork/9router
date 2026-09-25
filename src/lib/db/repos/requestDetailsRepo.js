@@ -1,4 +1,4 @@
-import { getAdapter } from "../driver.js";
+import { getAdapter, isSqliteMulticoreWorker } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { formatModelWithProviderPrefix } from "./usageRepo.js";
 
@@ -147,6 +147,20 @@ async function flushToDatabase() {
 export async function saveRequestDetail(detail) {
   const config = await getObservabilityConfig();
   if (!config.enabled) {return;}
+
+  // Worker (SQLite Redis multicore) path: enqueue metadata only. Bodies and
+  // headers are dropped at the boundary and never leave the worker.
+  if (isSqliteMulticoreWorker()) {
+    const { getWorkerMutationQueue, buildRequestDetailSavePayload, enqueueTelemetry, resolveApiKeyId } = await import("../workerMutation.js");
+    let apiKeyId = detail.apiKeyId ?? null;
+    if (!apiKeyId && detail.apiKey) {
+      const db = await getAdapter();
+      apiKeyId = await resolveApiKeyId(db, detail.apiKey);
+    }
+    const payload = buildRequestDetailSavePayload({ ...detail, apiKeyId });
+    await enqueueTelemetry(getWorkerMutationQueue(), { type: "requestDetail.save", payload });
+    return;
+  }
 
   // Truncate fields IMMEDIATELY before pushing to memory buffer to avoid retaining huge objects in heap
   const trimmed = {

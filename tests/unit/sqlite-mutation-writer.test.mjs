@@ -1,0 +1,203 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+const { createMutationWriter, isTransientSqliteError } = await import("../../src/lib/db/sqliteMutationWriter.js");
+
+function fakeRedis(messages = []) {
+  const calls = { groups: [], reads: [], claims: [], acks: [], deletes: [], adds: [], sets: [], pushes: [] };
+  let read = 0;
+  return {
+    calls,
+    async xGroupCreate(...args) { calls.groups.push(args); },
+    async xReadGroup(...args) {
+      calls.reads.push(args);
+      if (read++) return null;
+      return messages.length ? [{ name: "n:mutations", messages }] : null;
+    },
+    async xAutoClaim(...args) { calls.claims.push(args); return { nextId: "0-0", messages: [] }; },
+    async xAck(...args) { calls.acks.push(args); return 1; },
+    async xDel(...args) { calls.deletes.push(args); return 1; },
+    async xAdd(...args) { calls.adds.push(args); return "2-0"; },
+    async set(...args) { calls.sets.push(args); return "OK"; },
+    async lPush(...args) { calls.pushes.push(args); return 1; },
+    async expire() { return 1; },
+  };
+}
+
+function fakeDb(existingReceipt = null) {
+  const state = { inserted: [], applied: [], versions: 0 };
+  return {
+    state,
+    get(sql, params) {
+      if (sql.includes("sqliteMutationReceipts")) return existingReceipt;
+      return null;
+    },
+    run(sql, params = []) {
+      if (sql.includes("INSERT INTO sqliteMutationReceipts")) state.inserted.push(params);
+      if (sql.includes("dbVersion")) state.versions++;
+      return { changes: 1 };
+    },
+    transaction(fn) { return fn(); },
+  };
+}
+
+const mutation = {
+  schemaVersion: 1,
+  type: "footerLog.add",
+  receiptId: "m-1234567890abcdef",
+  workerId: "worker-1",
+  createdAt: "2026-09-25T00:00:00.000Z",
+  payload: { provider: "anthropic", model: "claude", referralText: "safe" },
+  consistency: "async",
+};
+
+function message(command = mutation, id = "1-0") {
+  return { id, message: { command: JSON.stringify(command) } };
+}
+
+test("writer creates consumer group, commits mutation, then acknowledges", async () => {
+  const redis = fakeRedis([message()]);
+  const db = fakeDb();
+  const order = [];
+  db.transaction = (fn) => { const value = fn(); order.push("commit"); return value; };
+  redis.xAck = async (...args) => { order.push("ack"); redis.calls.acks.push(args); return 1; };
+  const writer = createMutationWriter({
+    redis,
+    db,
+    streamKey: "n:mutations",
+    deadLetterKey: "n:dead",
+    group: "writer",
+    consumer: "control-1",
+    applyMutation(_db, command) { db.state.applied.push(command.receiptId); return { stored: true }; },
+  });
+
+  await writer.start();
+  assert.equal(await writer.runOnce({ blockMs: 1 }), 1);
+  assert.deepEqual(order, ["commit", "ack"]);
+  assert.deepEqual(db.state.applied, [mutation.receiptId]);
+  assert.equal(db.state.inserted.length, 1);
+  assert.equal(redis.calls.acks.length, 1);
+  assert.equal(redis.calls.deletes.length, 1);
+  assert.equal(writer.status().committed, 1);
+  await writer.stop();
+});
+
+test("duplicate durable receipt is a successful no-op then acknowledged", async () => {
+  const prior = { result: JSON.stringify({ stored: true }), appliedAt: "2026-09-25T00:00:01.000Z" };
+  const redis = fakeRedis([message()]);
+  const db = fakeDb(prior);
+  let applied = 0;
+  const writer = createMutationWriter({ redis, db, applyMutation() { applied++; } });
+
+  await writer.start();
+  await writer.runOnce({ blockMs: 1 });
+  assert.equal(applied, 0);
+  assert.equal(db.state.inserted.length, 0);
+  assert.equal(redis.calls.acks.length, 1);
+  assert.equal(writer.status().duplicates, 1);
+});
+
+test("invalid command moves to dead letter and is acknowledged", async () => {
+  const redis = fakeRedis([message({ ...mutation, type: "sql.run" })]);
+  const writer = createMutationWriter({ redis, db: fakeDb(), applyMutation() { throw new Error("must not run"); } });
+
+  await writer.start();
+  await writer.runOnce({ blockMs: 1 });
+  assert.equal(redis.calls.adds.length, 1);
+  assert.equal(redis.calls.acks.length, 1);
+  assert.equal(writer.status().deadLettered, 1);
+  assert.equal(JSON.stringify(redis.calls.adds[0]).includes("sql.run"), false);
+});
+
+test("exhausted SQLite busy retry is durably dead-lettered before source acknowledgement", async () => {
+  const redis = fakeRedis([message()]);
+  let attempts = 0;
+  const writer = createMutationWriter({
+    redis,
+    db: fakeDb(),
+    maxBusyRetries: 1,
+    retryDelayMs: 0,
+    applyMutation() {
+      attempts++;
+      const error = new Error("database is busy");
+      error.code = "SQLITE_BUSY";
+      throw error;
+    },
+  });
+
+  await writer.start();
+  await writer.runOnce({ blockMs: 1 });
+  assert.equal(attempts, 2);
+  assert.equal(redis.calls.adds.length, 1);
+  assert.equal(redis.calls.acks.length, 1);
+  assert.equal(redis.calls.deletes.length, 1);
+  assert.match(redis.calls.adds[0][2].command, /m-1234567890abcdef/);
+});
+
+test("pending messages are reclaimed after startup", async () => {
+  const redis = fakeRedis();
+  redis.xAutoClaim = async (...args) => {
+    redis.calls.claims.push(args);
+    return { nextId: "0-0", messages: [message()] };
+  };
+  const writer = createMutationWriter({ redis, db: fakeDb(), applyMutation() { return { stored: true }; } });
+  await writer.start();
+  assert.equal(await writer.recoverPending(), 1);
+  assert.equal(redis.calls.claims.length, 1);
+  assert.equal(redis.calls.acks.length, 1);
+});
+
+test("pending recovery drains every claim batch", async () => {
+  const redis = fakeRedis();
+  const claimed = [
+    { nextId: "2-0", messages: [message(mutation, "1-0")] },
+    { nextId: "0-0", messages: [message({ ...mutation, receiptId: "m-abcdef1234567890" }, "2-0")] },
+  ];
+  redis.xAutoClaim = async (...args) => {
+    redis.calls.claims.push(args);
+    return claimed.shift();
+  };
+  const db = fakeDb();
+  const writer = createMutationWriter({ redis, db, applyMutation() { return { stored: true }; } });
+
+  await writer.start();
+  assert.equal(await writer.recoverPending(), 2);
+  assert.equal(redis.calls.claims.length, 2);
+  assert.equal(redis.calls.acks.length, 2);
+});
+
+test("sync mutation receives bounded receipt result only after commit", async () => {
+  const sync = { ...mutation, consistency: "sync" };
+  const redis = fakeRedis([message(sync)]);
+  const writer = createMutationWriter({ redis, db: fakeDb(), applyMutation() { return { stored: true }; } });
+  await writer.start();
+  await writer.runOnce({ blockMs: 1 });
+  assert.equal(redis.calls.pushes.length, 1);
+  assert.match(redis.calls.pushes[0][0], /m-1234567890abcdef/);
+  assert.equal(JSON.parse(redis.calls.pushes[0][1]).ok, true);
+});
+
+test("SQLite transient classification is narrow", () => {
+  assert.equal(isTransientSqliteError({ code: "SQLITE_BUSY" }), true);
+  assert.equal(isTransientSqliteError({ code: "SQLITE_LOCKED" }), true);
+  assert.equal(isTransientSqliteError({ code: "SQLITE_FULL" }), false);
+  assert.equal(isTransientSqliteError(new Error("disk I/O error")), false);
+});
+
+test("stop waits for the active consumer loop to finish", async () => {
+  let releaseRead;
+  const redis = fakeRedis();
+  redis.xReadGroup = () => new Promise((resolve) => { releaseRead = resolve; });
+  const writer = createMutationWriter({ redis, db: fakeDb(), applyMutation() {} });
+
+  const running = writer.run();
+  await new Promise((resolve) => setImmediate(resolve));
+  let stopped = false;
+  const stopping = writer.stop().then(() => { stopped = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(stopped, false);
+  releaseRead(null);
+  await stopping;
+  await running;
+  assert.equal(writer.status().running, false);
+});

@@ -13,6 +13,8 @@ export async function register() {
     if (!isApiWorkerRole() && !isBuildPhase) {
       const { startWorkerJournalCollector } = await import("@/lib/workerJournalLogs");
       startWorkerJournalCollector();
+      const { startSqliteMutationWriter } = await import("@/lib/db/sqliteMutationRuntime.js");
+      await startSqliteMutationWriter();
     }
 
     // Server-only: lets capabilities.js read the synced catalog without pulling
