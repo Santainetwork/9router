@@ -9,6 +9,18 @@ const { pathToFileURL } = require("url");
 // in agreement.
 const MAX_API_WORKERS = 8;
 
+function validRedisUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return ["redis:", "rediss:"].includes(url.protocol)
+      && Boolean(url.hostname)
+      && (!url.pathname || /^\/[0-9]+$/.test(url.pathname));
+  } catch {
+    return false;
+  }
+}
+
 function validateWorkerConfig(env = process.env) {
   // Honor the NINEROUTER_WORKER_ROLE alias too, matching driver/engine role
   // detection so an api worker is recognized regardless of which is set.
@@ -23,10 +35,19 @@ function validateWorkerConfig(env = process.env) {
     throw new Error(`API_WORKERS must not exceed ${MAX_API_WORKERS}`);
   }
   if (role !== "control" && role !== "api") throw new Error("WORKER_ROLE must be control or api");
-  if ((role === "api" || workers > 1) && !postgres) {
-    throw new Error("WORKER_ROLE=api or API_WORKERS>1 requires PostgreSQL (set DATABASE_URL=postgres://... or DB_TYPE=postgres)");
+  const needsSharedSqlite = !postgres && (role === "api" || workers > 1);
+  if (needsSharedSqlite && String(env.SQLITE_MULTICORE || "").toLowerCase() !== "redis") {
+    throw new Error(role === "api"
+      ? "WORKER_ROLE=api requires PostgreSQL or SQLITE_MULTICORE=redis"
+      : "SQLite API_WORKERS>1 requires PostgreSQL or SQLITE_MULTICORE=redis");
   }
-  return { role, workers, postgres };
+  if (needsSharedSqlite && !validRedisUrl(env.REDIS_URL)) {
+    throw new Error("SQLite multicore requires a valid redis:// or rediss:// REDIS_URL");
+  }
+  if (needsSharedSqlite && String(env.ENABLE_GO_HYBRID || "").toLowerCase() !== "true") {
+    throw new Error("SQLite multicore requires ENABLE_GO_HYBRID=true");
+  }
+  return { role, workers, postgres, sqliteMulticore: needsSharedSqlite };
 }
 
 if (process.argv.includes("--check-config")) {

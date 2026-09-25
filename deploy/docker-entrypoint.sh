@@ -44,8 +44,17 @@ esac
 if [ "$WORKER_ROLE" = "api" ] || [ "$API_WORKERS" -gt 1 ]; then
   case "${DATABASE_URL:-}" in postgres://*|postgresql://*) : ;;
     *) if [ "$(printf '%s' "${DB_TYPE:-}" | tr '[:upper:]' '[:lower:]')" != "postgres" ]; then
-      echo "[9router-docker] API_WORKERS>1 or WORKER_ROLE=api requires PostgreSQL (set DATABASE_URL=postgres://... or DB_TYPE=postgres)" >&2
-      exit 1
+      if [ "$(printf '%s' "${SQLITE_MULTICORE:-}" | tr '[:upper:]' '[:lower:]')" != "redis" ]; then
+        echo "[9router-docker] SQLite API_WORKERS>1 requires PostgreSQL or SQLITE_MULTICORE=redis" >&2
+        exit 1
+      fi
+      case "${REDIS_URL:-}" in redis://*|rediss://*) : ;;
+        *) echo "[9router-docker] SQLite multicore requires a valid redis:// or rediss:// REDIS_URL" >&2; exit 1 ;;
+      esac
+      if [ "$(printf '%s' "${ENABLE_GO_HYBRID:-}" | tr '[:upper:]' '[:lower:]')" != "true" ]; then
+        echo "[9router-docker] SQLite multicore requires ENABLE_GO_HYBRID=true" >&2
+        exit 1
+      fi
     fi ;;
   esac
 fi
