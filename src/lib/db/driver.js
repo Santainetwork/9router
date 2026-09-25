@@ -22,19 +22,29 @@ export function isApiWorker(env = process.env) {
   return String(role).toLowerCase() === "api";
 }
 
-async function tryBunSqlite() {
+// Opt-in SQLite multicore (docs/superpowers/plans/2026-09-24-sqlite-redis-multicore.md):
+// an API worker of a Redis-bridged deployment opens SQLite READ-ONLY and sends
+// mutations to the single control writer. Anything else (including plain
+// API_WORKERS=1 with an api role) keeps the pre-existing read-write open, so
+// default behavior is unchanged.
+export function isSqliteMulticoreWorker(env = process.env) {
+  if (!isApiWorker(env)) return false;
+  return String(env.SQLITE_MULTICORE || "").toLowerCase() === "redis";
+}
+
+async function tryBunSqlite(opts) {
   // Bun runtime only — built-in, no install needed
   if (!process.versions.bun) return null;
   try {
     const { createBunSqliteAdapter } = await import("./adapters/bunSqliteAdapter.js");
-    return await createBunSqliteAdapter(DATA_FILE);
+    return await createBunSqliteAdapter(DATA_FILE, opts);
   } catch (e) {
     console.warn(`[DB] bun:sqlite unavailable: ${e.message}`);
     return null;
   }
 }
 
-async function tryBetterSqlite() {
+async function tryBetterSqlite(opts) {
   // Skip on Bun — better-sqlite3 native bindings unsupported
   if (process.versions.bun) return null;
   // Skip on Node >= 24: the native addon SIGSEGVs on load there, which is a
@@ -43,21 +53,21 @@ async function tryBetterSqlite() {
   if (nodeMajor >= 24) return null;
   try {
     const { createBetterSqliteAdapter } = await import("./adapters/betterSqliteAdapter.js");
-    return createBetterSqliteAdapter(DATA_FILE);
+    return createBetterSqliteAdapter(DATA_FILE, opts);
   } catch (e) {
     console.warn(`[DB] better-sqlite3 unavailable: ${e.message}`);
     return null;
   }
 }
 
-async function tryNodeSqlite() {
+async function tryNodeSqlite(opts) {
   // Built-in since Node 22.5.0 — no install needed. Skip under Bun (no node:sqlite).
   if (process.versions.bun) return null;
   const [maj, min] = process.versions.node.split(".").map(Number);
   if (maj < 22 || (maj === 22 && min < 5)) return null;
   try {
     const { createNodeSqliteAdapter } = await import("./adapters/nodeSqliteAdapter.js");
-    return await createNodeSqliteAdapter(DATA_FILE);
+    return await createNodeSqliteAdapter(DATA_FILE, opts);
   } catch (e) {
     console.warn(`[DB] node:sqlite unavailable: ${e.message}`);
     return null;
@@ -73,6 +83,17 @@ async function trySqlJs() {
     return null;
   }
 }
+
+// Ordered fallback chain per runtime (see initAdapter). `workerSafe: false` marks
+// an adapter that must never back an API worker in multicore mode: sql.js loads
+// the whole database into process memory and rewrites the file after mutations,
+// so a worker would serve a stale private image and race the control writer.
+export const SQLITE_OPENERS = [
+  { name: "bun:sqlite", open: tryBunSqlite, workerSafe: true },
+  { name: "better-sqlite3", open: tryBetterSqlite, workerSafe: true },
+  { name: "node:sqlite", open: tryNodeSqlite, workerSafe: true },
+  { name: "sql.js", open: trySqlJs, workerSafe: false },
+];
 
 // Migrations run only on the control process (see isApiWorker). getAdapter()
 // clears a rejected initPromise so a readiness probe can retry, which means a
@@ -111,17 +132,25 @@ export async function initAdapter(deps = {}) {
   }
 
   ensureDirs();
-  // Order per runtime:
-  //   Bun:  bun:sqlite → sql.js
-  //   Node: better-sqlite3 → node:sqlite (≥22.5) → sql.js
-  let adapter = await tryBunSqlite();
-  if (!adapter) adapter = await tryBetterSqlite();
-  if (!adapter) adapter = await tryNodeSqlite();
-  if (!adapter) adapter = await trySqlJs();
-  if (!adapter) throw new Error("[DB] No SQLite driver available (bun/better/node/sql.js all failed)");
+  // Multicore API worker: native read-only only — sql.js is rejected outright
+  // because each process would hold a stale private image of the database.
+  const readOnly = isSqliteMulticoreWorker();
+  const opts = readOnly ? { readOnly: true } : undefined;
+  const openers = deps.sqliteOpeners || SQLITE_OPENERS;
+  let adapter = null;
+  for (const { open, workerSafe } of openers) {
+    if (readOnly && workerSafe === false) continue;
+    adapter = await open(opts);
+    if (adapter) break;
+  }
+  if (!adapter) {
+    throw new Error(readOnly
+      ? "[DB] SQLITE_MULTICORE=redis API worker requires a native SQLite adapter with read-only support (better-sqlite3, node:sqlite or bun:sqlite); sql.js is not supported in multicore mode"
+      : "[DB] No SQLite driver available (bun/better/node/sql.js all failed)");
+  }
 
   if (!state.logged) {
-    console.log(`[DB] Driver: ${adapter.driver} | file: ${DATA_FILE}`);
+    console.log(`[DB] Driver: ${adapter.driver}${readOnly ? " (read-only worker)" : ""} | file: ${DATA_FILE}`);
     state.logged = true;
   }
 

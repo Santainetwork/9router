@@ -1,14 +1,16 @@
 // Bun runtime adapter — uses built-in bun:sqlite (native, fastest under Bun).
 // Loaded only when process.versions.bun is present.
-import { PRAGMA_SQL } from "../schema.js";
+import { PRAGMA_SQL, READONLY_PRAGMA_SQL, denyWrite } from "../schema.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
-export async function createBunSqliteAdapter(filePath) {
+export async function createBunSqliteAdapter(filePath, { readOnly = false } = {}) {
   // Dynamic import — only resolves under Bun runtime
   const { Database } = await import("bun:sqlite");
-  const db = new Database(filePath, { create: true });
-  db.exec(PRAGMA_SQL);
+  // readOnly: API worker of a SQLITE_MULTICORE=redis deployment. create:false so
+  // a missing file is an error rather than a new empty database.
+  const db = new Database(filePath, readOnly ? { readonly: true, create: false } : { create: true });
+  db.exec(readOnly ? READONLY_PRAGMA_SQL : PRAGMA_SQL);
 
   const stmtCache = new Map();
   function prepare(sql) {
@@ -20,22 +22,31 @@ export async function createBunSqliteAdapter(filePath) {
     return stmt;
   }
 
-  const checkpointTimer = setInterval(() => {
+  function checkpoint() {
     try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
-  }, CHECKPOINT_INTERVAL_MS);
-  if (typeof checkpointTimer.unref === "function") checkpointTimer.unref();
+  }
+
+  const checkpointTimer = readOnly ? null : setInterval(checkpoint, CHECKPOINT_INTERVAL_MS);
+  if (typeof checkpointTimer?.unref === "function") checkpointTimer.unref();
 
   function gracefulClose() {
-    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
+    if (!readOnly) checkpoint();
     try { stmtCache.clear(); } catch {}
     try { db.close(); } catch {}
   }
   const onShutdown = () => gracefulClose();
   process.once("beforeExit", onShutdown);
 
+  function writeTransaction(fn) {
+    // bun:sqlite has db.transaction() API (similar to better-sqlite3)
+    const tx = db.transaction(fn);
+    return tx();
+  }
+
   return {
     driver: "bun:sqlite",
-    run(sql, params = []) {
+    readOnly,
+    run: readOnly ? denyWrite("run") : (sql, params = []) => {
       const r = prepare(sql).run(...params);
       return { changes: Number(r.changes ?? 0), lastInsertRowid: Number(r.lastInsertRowid ?? 0) };
     },
@@ -45,15 +56,11 @@ export async function createBunSqliteAdapter(filePath) {
     all(sql, params = []) {
       return prepare(sql).all(...params);
     },
-    exec(sql) { return db.exec(sql); },
-    transaction(fn) {
-      // bun:sqlite has db.transaction() API (similar to better-sqlite3)
-      const tx = db.transaction(fn);
-      return tx();
-    },
-    checkpoint() { try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {} },
+    exec: readOnly ? denyWrite("exec") : (sql) => db.exec(sql),
+    transaction: readOnly ? denyWrite("transaction") : writeTransaction,
+    checkpoint: readOnly ? denyWrite("checkpoint") : checkpoint,
     close() {
-      clearInterval(checkpointTimer);
+      if (checkpointTimer) clearInterval(checkpointTimer);
       gracefulClose();
     },
     raw: db,

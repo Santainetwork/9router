@@ -1,12 +1,15 @@
 import Database from "better-sqlite3";
-import { PRAGMA_SQL } from "../schema.js";
+import { PRAGMA_SQL, READONLY_PRAGMA_SQL, denyWrite } from "../schema.js";
 
 // Periodic checkpoint to keep WAL file small (avoid huge -wal/-shm growth)
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
-export function createBetterSqliteAdapter(filePath) {
-  const db = new Database(filePath);
-  db.exec(PRAGMA_SQL);
+// readOnly: API worker of a SQLITE_MULTICORE=redis deployment. The connection
+// must not checkpoint (needs write access to -wal), migrate, or run any
+// write PRAGMA; only the control process owns the read-write handle.
+export function createBetterSqliteAdapter(filePath, { readOnly = false } = {}) {
+  const db = new Database(filePath, readOnly ? { readonly: true, fileMustExist: true } : {});
+  db.exec(readOnly ? READONLY_PRAGMA_SQL : PRAGMA_SQL);
   // Schema is created/synced by migrate.js after adapter init
 
   const stmtCache = new Map();
@@ -20,14 +23,16 @@ export function createBetterSqliteAdapter(filePath) {
     return stmt;
   }
 
-  // Truncate WAL periodically so file stays small for backup/copy
-  const checkpointTimer = setInterval(() => {
+  function checkpoint() {
     try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
-  }, CHECKPOINT_INTERVAL_MS);
-  if (typeof checkpointTimer.unref === "function") checkpointTimer.unref();
+  }
+
+  // Truncate WAL periodically so file stays small for backup/copy
+  const checkpointTimer = readOnly ? null : setInterval(checkpoint, CHECKPOINT_INTERVAL_MS);
+  if (typeof checkpointTimer?.unref === "function") checkpointTimer.unref();
 
   function gracefulClose() {
-    try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+    if (!readOnly) checkpoint();
     try { stmtCache.clear(); } catch {}
     try { db.close(); } catch {}
   }
@@ -38,14 +43,15 @@ export function createBetterSqliteAdapter(filePath) {
 
   return {
     driver: "better-sqlite3",
-    run(sql, params = []) { return prepare(sql).run(...params); },
+    readOnly,
+    run: readOnly ? denyWrite("run") : (sql, params = []) => prepare(sql).run(...params),
     get(sql, params = []) { return prepare(sql).get(...params); },
     all(sql, params = []) { return prepare(sql).all(...params); },
-    exec(sql) { return db.exec(sql); },
-    transaction(fn) { return db.transaction(fn)(); },
-    checkpoint() { try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {} },
+    exec: readOnly ? denyWrite("exec") : (sql) => db.exec(sql),
+    transaction: readOnly ? denyWrite("transaction") : (fn) => db.transaction(fn)(),
+    checkpoint: readOnly ? denyWrite("checkpoint") : checkpoint,
     close() {
-      clearInterval(checkpointTimer);
+      if (checkpointTimer) clearInterval(checkpointTimer);
       gracefulClose();
     },
     raw: db,

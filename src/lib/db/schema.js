@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -14,6 +14,30 @@ PRAGMA cache_size = -64000;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 `;
+
+// Read-only worker connections (SQLITE_MULTICORE=redis API workers) run only
+// connection-local PRAGMAs: journal_mode/synchronous/temp_store/mmap_size/
+// cache_size either need a writable handle or a -shm/-wal sidecar a reader must
+// not touch. query_only is belt-and-braces on top of the read-only file flag.
+export const READONLY_PRAGMA_SQL = `
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+PRAGMA query_only = ON;
+`;
+
+export class ReadOnlyAdapterError extends Error {
+  constructor(operation) {
+    super(`[DB] read-only SQLite worker connection cannot ${operation}`);
+    this.name = "ReadOnlyAdapterError";
+    this.code = "DB_READONLY_WORKER";
+  }
+}
+
+// Replaces a write entry point so a worker fails loudly instead of dropping a
+// mutation the single control writer never sees.
+export function denyWrite(operation) {
+  return () => { throw new ReadOnlyAdapterError(operation); };
+}
 
 // Declarative current schema. Used by syncSchemaFromTables() to
 // auto-add missing tables/columns/indexes after versioned migrations.
@@ -156,6 +180,31 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
     ],
+  },
+  // Single-writer bridge (docs/superpowers/plans/2026-09-24-sqlite-redis-multicore.md,
+  // Task 2). Idempotency ledger for commands replayed from the Redis Stream: the
+  // control writer inserts the receipt, applies the mutation and bumps
+  // dbVersion in ONE transaction, so a duplicate delivery is a no-op.
+  sqliteMutationReceipts: {
+    columns: {
+      receiptId: "TEXT PRIMARY KEY",
+      type: "TEXT NOT NULL",
+      workerId: "TEXT",
+      appliedAt: "TEXT NOT NULL",
+      result: "TEXT",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_smr_applied ON sqliteMutationReceipts(appliedAt DESC)",
+    ],
+  },
+  // Monotonic database version. Workers compare cached values against this row
+  // instead of trusting a Pub/Sub wake-up, which can be lost on reconnect.
+  dbVersion: {
+    columns: {
+      id: "INTEGER PRIMARY KEY CHECK (id = 1)",
+      version: "INTEGER NOT NULL DEFAULT 0",
+      updatedAt: "TEXT",
+    },
   },
   provider_footer_logs: {
     columns: {
