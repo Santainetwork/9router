@@ -2,5 +2,6 @@ export async function buildWorkerReadyDeps({ isWorker, redisManager, limiterHeal
   if (!isWorker()) return {};
   let redis = null;
   try { redis = await redisManager().command(); } catch {}
-  return { redis, goLimiterHealth: limiterHealth };
+  const { getWorkerTelemetryStatus } = await import("./workerMutation.js");
+  return { redis, goLimiterHealth: limiterHealth, telemetryStatus: getWorkerTelemetryStatus };
 }

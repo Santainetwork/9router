@@ -8,6 +8,15 @@ const DEFAULT_CLAIM_IDLE_MS = 30_000;
 const DEFAULT_HEARTBEAT_TTL_MS = 15_000;
 const RECEIPT_TTL_SECONDS = 60;
 
+// XACK then XDEL as two commands is not atomic: a crash in between leaves the
+// entry acknowledged but still in the stream, so it is never redelivered and
+// XLEN (the producer's backpressure bound) grows without bound.
+const FINISH_ENTRY = `
+local acked = redis.call('XACK', KEYS[1], ARGV[1], ARGV[2])
+local deleted = redis.call('XDEL', KEYS[1], ARGV[2])
+return {acked, deleted}
+`;
+
 function sleep(ms) {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
@@ -85,10 +94,22 @@ export function createMutationWriter({
   }
 
   async function finishSource(messageId) {
-    await redis.xAck(streamKey, group, messageId);
-    // XLEN is the producer's hard backpressure bound. Remove committed/poison
-    // entries after ACK so acknowledged history cannot permanently fill it.
-    await redis.xDel?.(streamKey, messageId);
+    if (typeof redis.eval !== "function") {
+      throw new TypeError("redis client must support eval for atomic XACK+XDEL");
+    }
+    // XLEN is the producer's hard backpressure bound. ACK and delete committed
+    // or poison entries in one script so a crash cannot leave an acknowledged
+    // entry behind to permanently fill the stream.
+    const [acked, deleted] = await redis.eval(FINISH_ENTRY, {
+      keys: [streamKey],
+      arguments: [group, messageId],
+    });
+    if (Number(deleted) !== 1) {
+      // Entry was acknowledged but not removed. Retrying is safe: XACK is
+      // idempotent and the entry is still present, so surface it loudly.
+      throw new Error(`stream entry ${messageId} was acknowledged but not deleted`);
+    }
+    return Number(acked);
   }
 
   function applyInTransaction(command) {

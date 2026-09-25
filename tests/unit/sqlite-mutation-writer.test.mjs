@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 const { createMutationWriter, isTransientSqliteError } = await import("../../src/lib/db/sqliteMutationWriter.js");
 
 function fakeRedis(messages = []) {
-  const calls = { groups: [], reads: [], claims: [], acks: [], deletes: [], adds: [], sets: [], pushes: [] };
+  const calls = { groups: [], reads: [], claims: [], evals: [], adds: [], sets: [], pushes: [] };
   let read = 0;
   return {
     calls,
@@ -15,8 +15,7 @@ function fakeRedis(messages = []) {
       return messages.length ? [{ name: "n:mutations", messages }] : null;
     },
     async xAutoClaim(...args) { calls.claims.push(args); return { nextId: "0-0", messages: [] }; },
-    async xAck(...args) { calls.acks.push(args); return 1; },
-    async xDel(...args) { calls.deletes.push(args); return 1; },
+    async eval(...args) { calls.evals.push(args); return [1, 1]; },
     async xAdd(...args) { calls.adds.push(args); return "2-0"; },
     async set(...args) { calls.sets.push(args); return "OK"; },
     async lPush(...args) { calls.pushes.push(args); return 1; },
@@ -55,12 +54,12 @@ function message(command = mutation, id = "1-0") {
   return { id, message: { command: JSON.stringify(command) } };
 }
 
-test("writer creates consumer group, commits mutation, then acknowledges", async () => {
+test("writer creates consumer group, commits mutation, then atomically finishes the entry", async () => {
   const redis = fakeRedis([message()]);
   const db = fakeDb();
   const order = [];
   db.transaction = (fn) => { const value = fn(); order.push("commit"); return value; };
-  redis.xAck = async (...args) => { order.push("ack"); redis.calls.acks.push(args); return 1; };
+  redis.eval = async (...args) => { order.push("ack"); redis.calls.evals.push(args); return [1, 1]; };
   const writer = createMutationWriter({
     redis,
     db,
@@ -76,8 +75,7 @@ test("writer creates consumer group, commits mutation, then acknowledges", async
   assert.deepEqual(order, ["commit", "ack"]);
   assert.deepEqual(db.state.applied, [mutation.receiptId]);
   assert.equal(db.state.inserted.length, 1);
-  assert.equal(redis.calls.acks.length, 1);
-  assert.equal(redis.calls.deletes.length, 1);
+  assert.equal(redis.calls.evals.length, 1);
   assert.equal(writer.status().committed, 1);
   await writer.stop();
 });
@@ -93,7 +91,7 @@ test("duplicate durable receipt is a successful no-op then acknowledged", async 
   await writer.runOnce({ blockMs: 1 });
   assert.equal(applied, 0);
   assert.equal(db.state.inserted.length, 0);
-  assert.equal(redis.calls.acks.length, 1);
+  assert.equal(redis.calls.evals.length, 1);
   assert.equal(writer.status().duplicates, 1);
 });
 
@@ -104,7 +102,7 @@ test("invalid command moves to dead letter and is acknowledged", async () => {
   await writer.start();
   await writer.runOnce({ blockMs: 1 });
   assert.equal(redis.calls.adds.length, 1);
-  assert.equal(redis.calls.acks.length, 1);
+  assert.equal(redis.calls.evals.length, 1);
   assert.equal(writer.status().deadLettered, 1);
   assert.equal(JSON.stringify(redis.calls.adds[0]).includes("sql.run"), false);
 });
@@ -129,8 +127,7 @@ test("exhausted SQLite busy retry is durably dead-lettered before source acknowl
   await writer.runOnce({ blockMs: 1 });
   assert.equal(attempts, 2);
   assert.equal(redis.calls.adds.length, 1);
-  assert.equal(redis.calls.acks.length, 1);
-  assert.equal(redis.calls.deletes.length, 1);
+  assert.equal(redis.calls.evals.length, 1);
   assert.match(redis.calls.adds[0][2].command, /m-1234567890abcdef/);
 });
 
@@ -144,7 +141,7 @@ test("pending messages are reclaimed after startup", async () => {
   await writer.start();
   assert.equal(await writer.recoverPending(), 1);
   assert.equal(redis.calls.claims.length, 1);
-  assert.equal(redis.calls.acks.length, 1);
+  assert.equal(redis.calls.evals.length, 1);
 });
 
 test("pending recovery drains every claim batch", async () => {
@@ -163,7 +160,7 @@ test("pending recovery drains every claim batch", async () => {
   await writer.start();
   assert.equal(await writer.recoverPending(), 2);
   assert.equal(redis.calls.claims.length, 2);
-  assert.equal(redis.calls.acks.length, 2);
+  assert.equal(redis.calls.evals.length, 2);
 });
 
 test("sync mutation receives bounded receipt result only after commit", async () => {

@@ -8,6 +8,10 @@ import { createMutationQueue } from "./sqliteMutationQueue.js";
 import { encryptQueuePayload, getQueueEncryptionKey } from "./queueEncryption.js";
 
 const state = global.__workerMutationState ??= { queue: null };
+// Async telemetry loss observed by this process. The queue counts its own drops;
+// this counts the drops this worker actually saw, so a silently degraded worker
+// is visible even when the queue itself is unreachable.
+const lossState = global.__workerTelemetryLoss ??= { lost: 0 };
 
 function withoutUndefined(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
@@ -85,10 +89,36 @@ export function buildFooterLogAddPayload(provider, model, referralText, timestam
 // Best-effort async enqueue. Never throws; reports loss so callers can count it.
 export async function enqueueTelemetry(queue, input) {
   try {
-    return await queue.enqueueMutation({ ...input, consistency: "async" });
+    const result = await queue.enqueueMutation({ ...input, consistency: "async" });
+    if (result?.dropped) lossState.lost++;
+    return result;
   } catch {
+    lossState.lost++;
     return { enqueued: false, dropped: true, receiptId: input?.receiptId ?? null };
   }
+}
+
+function bounded(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(n, 1_000_000_000));
+}
+
+// Sanitized worker telemetry health: bounded counters only, no payloads, keys or
+// error text. Loss here is the process-observed drop count; the queue counters
+// cover enqueues this worker attempted.
+export function getWorkerTelemetryStatus() {
+  let queueStatus = {};
+  try {
+    queueStatus = state.queue?.status?.() ?? {};
+  } catch {}
+  return {
+    enqueued: bounded(queueStatus.enqueued),
+    telemetryDropped: bounded(queueStatus.telemetryDropped),
+    backpressure: bounded(queueStatus.backpressure),
+    failures: bounded(queueStatus.failures),
+    telemetryLost: bounded(lossState.lost),
+  };
 }
 
 // Task 5: synchronous provider-state mutation payload + enqueue. Token-bearing

@@ -20,7 +20,7 @@ function redisFor(entry) {
     async xGroupCreate() {},
     async set() {},
     async xReadGroup() { return [{ name: "stream", messages: [entry] }]; },
-    async xAck() { calls.ack++; },
+    async eval() { calls.ack++; return [1, 1]; },
     async xAdd() { calls.dead++; },
     async lPush() {},
     async expire() {},

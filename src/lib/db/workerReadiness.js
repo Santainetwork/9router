@@ -3,7 +3,7 @@
 //   * Non-multicore roles (control, postgres, plain sqlite) delegate straight
 //     to checkDatabaseReady().
 //   * A SQLite Redis API worker is ready only when every dependency holds:
-//     database ready and opened read-only, Redis ping, writer heartbeat fresh,
+//     database ready and opened read-only, Redis ping, live writer heartbeat TTL,
 //     Go limiter healthy, stream backlog within limit, and oldest pending entry
 //     within its age limit.
 //   * The payload is sanitized: ready/database/reason plus bounded counters.
@@ -18,9 +18,6 @@ import { checkDatabaseReady } from "./readiness.js";
 const DEFAULT_NAMESPACE = "9router:sqlite";
 const DEFAULT_STREAM_KEY = "9router:sqlite:mutations";
 const DEFAULT_GROUP = "sqlite-writer";
-// Writer heartbeat TTL is 15s (sqliteMutationWriter.js); two TTLs of grace so a
-// writer mid-commit is never falsely declared stale.
-const DEFAULT_HEARTBEAT_FRESH_MS = 30_000;
 const DEFAULT_MAX_BACKLOG = 10_000;
 const DEFAULT_MAX_PENDING_AGE_MS = 120_000;
 const MAX_COUNTER = 1_000_000_000;
@@ -73,7 +70,6 @@ export async function checkWorkerReady(deps = {}) {
   const heartbeatKey = deps.heartbeatKey ?? `${deps.namespace ?? DEFAULT_NAMESPACE}:writer:heartbeat`;
   const streamKey = deps.streamKey ?? DEFAULT_STREAM_KEY;
   const group = deps.group ?? DEFAULT_GROUP;
-  const heartbeatFreshMs = deps.heartbeatFreshMs ?? DEFAULT_HEARTBEAT_FRESH_MS;
   const maxBacklog = deps.maxBacklog ?? DEFAULT_MAX_BACKLOG;
   const maxPendingAgeMs = deps.maxPendingAgeMs ?? DEFAULT_MAX_PENDING_AGE_MS;
 
@@ -99,14 +95,15 @@ export async function checkWorkerReady(deps = {}) {
   } catch {}
   if (!pingOk) return fail(db.database ?? database, WORKER_READY_REASONS.redisUnhealthy);
 
-  // 3. Writer heartbeat fresh.
-  let heartbeatFresh = false;
+  // 3. Writer heartbeat live. The writer sets the key with PX, so Redis owns
+  //    the deadline: a skewed worker clock cannot invalidate a beating writer,
+  //    and an expired/missing key (or one with no TTL) fails closed.
+  let heartbeatLive = false;
   try {
-    const value = await redis.get?.(heartbeatKey);
-    const stampedAt = typeof value === "string" ? Date.parse(value) : NaN;
-    heartbeatFresh = Number.isFinite(stampedAt) && now() - stampedAt <= heartbeatFreshMs;
+    const pttl = await (redis.pTTL ?? redis.pttl)?.(heartbeatKey);
+    heartbeatLive = Number.isFinite(Number(pttl)) && Number(pttl) > 0;
   } catch {}
-  if (!heartbeatFresh) return fail(db.database ?? database, WORKER_READY_REASONS.heartbeatStale);
+  if (!heartbeatLive) return fail(db.database ?? database, WORKER_READY_REASONS.heartbeatStale);
 
   // 4. Go limiter health.
   const limiterProbe = deps.goLimiterHealth;
@@ -134,6 +131,22 @@ export async function checkWorkerReady(deps = {}) {
   }
 
   const counters = { streamLength, pending, oldestPendingAgeMs };
+
+  // 5b. Worker telemetry health. Loss/backpressure are reported, never a gate:
+  // telemetry is best-effort by design, so a degraded producer stays ready while
+  // operators can still see the loss.
+  const telemetryProbe = deps.telemetryStatus;
+  if (typeof telemetryProbe === "function") {
+    try {
+      const status = await telemetryProbe();
+      if (status && typeof status === "object") {
+        counters.telemetryDropped = clamp(status.telemetryDropped);
+        counters.backpressure = clamp(status.backpressure);
+        counters.telemetryLost = clamp(status.telemetryLost);
+      }
+    } catch {}
+  }
+
   if (streamLength > maxBacklog) {
     return fail(db.database ?? database, WORKER_READY_REASONS.backlogExceeded, counters);
   }

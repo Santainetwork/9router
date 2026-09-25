@@ -47,3 +47,88 @@ test("Redis manager redacts URL and fails health closed", async () => {
   assert.equal(await manager.health(), false);
   assert.doesNotMatch(JSON.stringify(manager.status()), /secret|redis:\/\//);
 });
+
+// Regression: a second connect() on a client that is already connecting resolves
+// before the socket is ready, so concurrent callers got a client that rejects every
+// command as offline. Concurrent callers must share one in-flight connection.
+test("concurrent command callers share one in-flight connection", async () => {
+  const calls = [];
+  let finishConnect;
+  const createClient = () => {
+    const client = {
+      isOpen: false,
+      on() { return client; },
+      connect() {
+        calls.push("connect");
+        return new Promise((resolve) => {
+          finishConnect = () => { client.isOpen = true; resolve(); };
+        });
+      },
+      async close() { client.isOpen = false; },
+      destroy() {},
+    };
+    return client;
+  };
+
+  const manager = createRedisManager({ url: "redis://cache:6379", createClient });
+  const first = manager.command();
+  const second = manager.command();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.filter((call) => call === "connect").length, 1);
+
+  finishConnect();
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(a, b);
+  assert.equal(a.isOpen, true);
+  await manager.close();
+});
+
+// Regression: node-redis marks a client open the moment connect() starts, so a
+// concurrent caller that only checks isOpen gets a client whose socket is not ready
+// and every command fails with "The client is offline". Callers must await the
+// in-flight connect, and a dedicated connection must be ready when handed out.
+test("concurrent command and dedicated callers never receive a client before its socket is ready", async () => {
+  const connects = [];
+  const createClient = () => {
+    const client = {
+      isOpen: false,
+      ready: false,
+      on() { return client; },
+      connect() {
+        client.isOpen = true;
+        return new Promise((resolve) => {
+          connects.push(() => { client.ready = true; resolve(); });
+        });
+      },
+      async eval() {
+        if (!client.ready) throw new Error("The client is offline");
+        return "1-0";
+      },
+      async blPop() {
+        if (!client.ready) throw new Error("The client is offline");
+        return null;
+      },
+      async close() { client.isOpen = false; },
+      destroy() { client.isOpen = false; },
+    };
+    return client;
+  };
+
+  const manager = createRedisManager({ url: "redis://cache:6379", createClient });
+  const first = manager.command();
+  const second = manager.command();
+  const dedicated = manager.dedicated();
+  let settledEarly = false;
+  second.then(() => { settledEarly = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(connects.length, 2, "command slot shares one connect and dedicated opens its own");
+  assert.equal(settledEarly, false, "command caller resolved before its socket was ready");
+
+  for (const release of connects) release();
+  const [a, b, d] = await Promise.all([first, second, dedicated]);
+  assert.equal(a, b);
+  assert.equal(await b.eval("return 1", { keys: [], arguments: [] }), "1-0");
+  assert.equal(await d.blPop("n:receipt:x", 0.1), null);
+  await manager.close();
+});

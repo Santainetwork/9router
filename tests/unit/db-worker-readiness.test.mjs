@@ -28,7 +28,8 @@ const dbNotReady = { ready: false, database: "sqlite", reason: "schema_missing" 
 function okRedis(overrides = {}) {
   return {
     async ping() { return "PONG"; },
-    async get() { return new Date(Date.now()).toISOString(); },
+    // Writer heartbeat validity comes from Redis PTTL, never from a host clock.
+    async pTTL() { return 12_000; },
     async xLen() { return 5; },
     async xPending() { return { pending: 2, firstId: `${Date.now()}-0`, lastId: `${Date.now()}-0` }; },
     ...overrides,
@@ -81,7 +82,7 @@ test("multicore worker with all dependencies healthy is ready with bounded count
   const result = await checkWorkerReady(okDeps({
     now: () => now,
     redis: okRedis({
-      async get() { return new Date(now - 5_000).toISOString(); },
+      async pTTL() { return 9_000; },
       async xLen() { return 42; },
       async xPending() { return { pending: 3, firstId: `${now - 10_000}-0`, lastId: `${now}-0` }; },
     }),
@@ -130,28 +131,51 @@ test("redis ping that throws is redis_unhealthy and never leaks the error", asyn
   assert.ok(!JSON.stringify(result).includes("sup3rsecret"));
 });
 
-test("writer heartbeat missing or too old fails writer_heartbeat_stale", async () => {
-  for (const value of [null, "not-a-date", ""]) {
-    const result = await checkWorkerReady(okDeps({ redis: okRedis({ async get() { return value; } }) }));
-    assert.equal(result.ready, false, `heartbeat value ${JSON.stringify(value)}`);
-    assert.equal(result.reason, "writer_heartbeat_stale");
-  }
+test("live writer heartbeat TTL survives severe worker clock skew", async () => {
+  const realNow = Date.now();
+  const sixHoursMs = 6 * 60 * 60 * 1_000;
 
-  const stale = await checkWorkerReady(okDeps({
-    now: () => 1_000_000,
-    redis: okRedis({ async get() { return new Date(1_000_000 - 60_000).toISOString(); } }),
-  }));
-  assert.equal(stale.ready, false);
-  assert.equal(stale.reason, "writer_heartbeat_stale");
+  for (const skew of [-sixHoursMs, sixHoursMs]) {
+    let getCalls = 0;
+    const result = await checkWorkerReady(okDeps({
+      // Worker clock is hours behind or ahead of the writer's host clock.
+      now: () => realNow + skew,
+      redis: okRedis({
+        async get() { getCalls += 1; return new Date(realNow).toISOString(); },
+        async pTTL() { return 8_000; },
+        // Empty stream: isolate the heartbeat from the pending-age check.
+        async xPending() { return { pending: 0, firstId: null, lastId: null }; },
+      }),
+    }));
+
+    assert.equal(result.ready, true, `skew ${skew}ms must not matter when the TTL is live`);
+    assert.equal(result.reason, undefined);
+    assert.equal(getCalls, 0, "the writer's host timestamp must not be consulted");
+  }
 });
 
-test("fresh heartbeat within the configured window passes", async () => {
+test("heartbeat without a live TTL is stale: missing or expired or no expiry", async () => {
+  // -2 = key missing or already expired, -1 = key exists but never expires.
+  for (const pttl of [-2, -1, 0, null, undefined, "not-a-number"]) {
+    const result = await checkWorkerReady(okDeps({ redis: okRedis({ async pTTL() { return pttl; } }) }));
+    assert.equal(result.ready, false, `pTTL ${JSON.stringify(pttl)}`);
+    assert.equal(result.reason, "writer_heartbeat_stale");
+  }
+});
+
+test("heartbeat TTL read failure is stale and never leaks the error", async () => {
   const result = await checkWorkerReady(okDeps({
-    now: () => 1_000_000,
-    redis: okRedis({ async get() { return new Date(1_000_000 - 20_000).toISOString(); } }),
-    heartbeatFreshMs: 30_000,
+    redis: okRedis({ async pTTL() { throw new Error(`NOAUTH ${SECRET_URL}`); } }),
   }));
-  assert.equal(result.ready, true);
+  assert.equal(result.ready, false);
+  assert.equal(result.reason, "writer_heartbeat_stale");
+  assert.ok(!JSON.stringify(result).includes("sup3rsecret"));
+  assert.ok(!JSON.stringify(result).includes("NOAUTH"));
+});
+
+test("heartbeat TTL exactly at the boundary: one millisecond left is still live", async () => {
+  const live = await checkWorkerReady(okDeps({ redis: okRedis({ async pTTL() { return 1; } }) }));
+  assert.equal(live.ready, true);
 });
 
 test("go limiter unhealthy fails go_limiter_unhealthy", async () => {

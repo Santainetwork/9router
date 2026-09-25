@@ -7,6 +7,8 @@ export function createRedisManager({ url = process.env.REDIS_URL, createClient =
   if (!url) throw new Error("REDIS_URL is required");
   let commandClient = null;
   let blockingClient = null;
+  const dedicatedClients = new Set();
+  const connecting = new Map();
   let healthy = false;
   let lastCheckedAt = null;
 
@@ -30,8 +32,21 @@ export function createRedisManager({ url = process.env.REDIS_URL, createClient =
       client = makeClient();
       if (slot === "command") commandClient = client;
       else blockingClient = client;
+      connecting.delete(slot);
     }
-    if (!client.isOpen) await client.connect();
+    // Concurrent callers must await the same connect(). node-redis marks a client
+    // open as soon as connect() starts, so an isOpen check alone would hand out a
+    // client whose socket is not ready and every command would fail as offline.
+    const pending = connecting.get(slot);
+    if (pending?.client === client) {
+      await pending.promise;
+    } else if (!client.isOpen) {
+      const promise = Promise.resolve(client.connect()).finally(() => {
+        if (connecting.get(slot)?.promise === promise) connecting.delete(slot);
+      });
+      connecting.set(slot, { client, promise });
+      await promise;
+    }
     return client;
   }
 
@@ -58,15 +73,40 @@ export function createRedisManager({ url = process.env.REDIS_URL, createClient =
     }
   }
 
+  // Short-lived connection for a single blocking wait. One connection can only run
+  // one blocking command at a time, so concurrent waiters each need their own.
+  async function dedicated() {
+    const client = makeClient();
+    dedicatedClients.add(client);
+    try {
+      await client.connect();
+    } catch (error) {
+      dedicatedClients.delete(client);
+      await closeOne(client);
+      throw error;
+    }
+    return client;
+  }
+
+  async function release(client) {
+    if (!client) return;
+    dedicatedClients.delete(client);
+    await closeOne(client);
+  }
+
   return {
     command: () => connect("command"),
     blocking: () => connect("blocking"),
+    dedicated,
+    release,
     health,
     status: () => ({ healthy, connected: Boolean(commandClient?.isOpen), lastCheckedAt }),
     async close() {
-      const clients = [commandClient, blockingClient];
+      const clients = [commandClient, blockingClient, ...dedicatedClients];
       commandClient = null;
       blockingClient = null;
+      dedicatedClients.clear();
+      connecting.clear();
       healthy = false;
       await Promise.all(clients.map(closeOne));
     },

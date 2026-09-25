@@ -469,7 +469,12 @@ async function saveRequestUsageViaMutation(entry) {
 
   const { getWorkerMutationQueue, buildUsageSavePayload, enqueueTelemetry } = await import("../workerMutation.js");
   const payload = buildUsageSavePayload({ ...entry, apiKeyId, cost });
-  return await enqueueTelemetry(getWorkerMutationQueue(), { type: "usage.save", payload });
+  const result = await enqueueTelemetry(getWorkerMutationQueue(), { type: "usage.save", payload });
+  // The direct path fires this after commit. In worker mode the control writer
+  // commits the row, so the worker has nothing to wait for; still fire the same
+  // event so its dashboards/stream refresh instead of showing stale usage.
+  if (result?.enqueued) scheduleStatsEvent("update", 250);
+  return result;
 }
 
 export async function getUsageHistory(filter = {}) {

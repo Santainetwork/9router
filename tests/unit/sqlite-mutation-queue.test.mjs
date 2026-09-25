@@ -173,3 +173,64 @@ test("sync Redis failure rejects with sanitized error rather than falling back",
   assert.equal(redis.calls.blPop.length, 0);
   assert.equal(queue.status().failures, 1);
 });
+
+// Regression: one connection can only run a single blocking command at a time, so
+// a shared blocking client makes every concurrent sync waiter queue behind the
+// slowest one. A lost receipt must not delay receipts that are already available.
+test("concurrent sync mutations each receive their own receipt within syncTimeoutMs", async () => {
+  const { createRedisManager } = await import("../../src/lib/redis/client.js");
+  const receipts = new Map();
+  const clients = [];
+  const createClient = () => {
+    let chain = Promise.resolve();
+    const client = {
+      isOpen: false,
+      on() { return client; },
+      async connect() { client.isOpen = true; },
+      async close() { client.isOpen = false; },
+      destroy() { client.isOpen = false; },
+      async eval() { return "1-0"; },
+      blPop(key, timeoutSeconds) {
+        const run = chain.then(() => new Promise((resolve) => {
+          const deadline = Date.now() + timeoutSeconds * 1000;
+          const poll = () => {
+            if (receipts.has(key)) {
+              const element = receipts.get(key);
+              receipts.delete(key);
+              resolve({ key, element });
+              return;
+            }
+            if (Date.now() >= deadline) { resolve(null); return; }
+            setTimeout(poll, 2);
+          };
+          poll();
+        }));
+        chain = run.then(() => {}, () => {});
+        return run;
+      },
+    };
+    clients.push(client);
+    return client;
+  };
+
+  const manager = createRedisManager({ url: "redis://fake:6379", createClient });
+  const queue = createMutationQueue({ redis: manager, namespace: "n", syncTimeoutMs: 300 });
+  const ids = ["m-aaaaaaaaaaaaaaaa", "m-bbbbbbbbbbbbbbbb", "m-cccccccccccccccc"];
+  const started = Date.now();
+  const waits = ids.map((receiptId) => queue.enqueueMutation({ ...input, receiptId, consistency: "sync" })
+    .then((value) => ({ value, elapsed: Date.now() - started }), (error) => ({ error, elapsed: Date.now() - started })));
+
+  setTimeout(() => {
+    receipts.set(`n:receipt:${ids[1]}`, JSON.stringify({ ok: true, receiptId: ids[1], result: { saved: 2 } }));
+    receipts.set(`n:receipt:${ids[2]}`, JSON.stringify({ ok: true, receiptId: ids[2], result: { saved: 3 } }));
+  }, 40);
+
+  const [lost, first, second] = await Promise.all(waits);
+  await manager.close();
+
+  assert.equal(lost.error?.code, "MUTATION_SYNC_TIMEOUT");
+  assert.deepEqual(first.value, { enqueued: true, receiptId: ids[1], result: { saved: 2 } });
+  assert.deepEqual(second.value, { enqueued: true, receiptId: ids[2], result: { saved: 3 } });
+  assert.ok(first.elapsed < 250, `waiter with available receipt took ${first.elapsed}ms`);
+  assert.ok(second.elapsed < 250, `waiter with available receipt took ${second.elapsed}ms`);
+});

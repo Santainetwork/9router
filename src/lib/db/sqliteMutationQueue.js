@@ -113,14 +113,22 @@ export function createMutationQueue({
       return { enqueued: true, receiptId: command.receiptId, messageId: String(messageId) };
     }
 
+    // A connection runs one blocking command at a time, so concurrent sync waiters
+    // must not share one. Take a dedicated connection for this wait and always give
+    // it back, otherwise a lost receipt stalls every other waiter past its timeout.
+    let client;
     try {
-      const client = await redis.blocking();
+      client = await (redis.dedicated ? redis.dedicated() : redis.blocking());
       const reply = await client.blPop(`${namespace}:receipt:${command.receiptId}`, syncTimeoutMs / 1000);
       return { enqueued: true, receiptId: command.receiptId, result: receiptResult(reply, command.receiptId) };
     } catch (error) {
       metrics.failures++;
       if (error instanceof MutationQueueError) throw error;
       throw queueError("MUTATION_QUEUE_UNAVAILABLE", "mutation receipt unavailable");
+    } finally {
+      if (client && typeof redis.release === "function") {
+        try { await redis.release(client); } catch {}
+      }
     }
   }
 
