@@ -10,6 +10,7 @@ import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModel
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { resolveCustomErrorMessage } from "../utils/customErrorResolver.js";
+import { upstreamResponseHeaders } from "../utils/upstreamHeaders.js";
 import { HTTP_STATUS, TOKEN_SAVER_HEADER } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -514,7 +515,7 @@ upstreamModel,
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     const customMsg = resolveCustomErrorMessage(statusCode, errMsg, settings);
-    return createErrorResult(statusCode, customMsg, resetsAtMs, errMsg);
+    return createErrorResult(statusCode, customMsg, resetsAtMs, errMsg, upstreamResponseHeaders(providerResponse.headers));
   }
 
   const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log, responseFooterEnabled, responseFooterText, requestedModel, upstreamModel };

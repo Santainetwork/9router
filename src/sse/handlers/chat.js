@@ -18,6 +18,7 @@ import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { errorResponse, unavailableResponse, limiterUnavailableResponse } from "open-sse/utils/error.js";
 import { resolveCustomErrorMessage } from "open-sse/utils/customErrorResolver.js";
+import { upstreamResponseHeaders } from "open-sse/utils/upstreamHeaders.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
@@ -334,6 +335,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let lastHeaders = null;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
@@ -347,7 +349,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
         const chatSettings = await getSettings().catch(() => null);
         const finalMsg = resolveCustomErrorMessage(status, `[${provider}/${model}] ${errorMsg}`, chatSettings);
-        return unavailableResponse(status, finalMsg, credentials.retryAfter, credentials.retryAfterHuman);
+        return unavailableResponse(status, finalMsg, credentials.retryAfter, credentials.retryAfterHuman, lastHeaders);
       }
       if (excludeConnectionIds.size === 0) {
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
@@ -358,7 +360,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       log.warn("CHAT", "No more accounts available", { provider });
       const chatSettings = await getSettings().catch(() => null);
       const finalMsg = resolveCustomErrorMessage(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable", chatSettings);
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, finalMsg);
+      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, finalMsg, lastHeaders);
     }
 
     // Account selection shown in the unified "▶" line (acc:...)
@@ -519,6 +521,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       lastError = result.error;
       lastStatus = result.status;
       try { releaseProvider(); } catch {}
+      lastHeaders = upstreamResponseHeaders(result.response?.headers);
       continue;
     }
 
