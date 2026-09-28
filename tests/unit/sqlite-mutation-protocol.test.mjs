@@ -218,6 +218,13 @@ test("nested secrets, headers, cookies and raw bodies are rejected", () => {
   // Long opaque secrets are rejected by value shape even without a telltale key.
   expectReject({ ...cmd("usage.save"), payload: { ...usage, note: "sk-abcdefghijklmnopqrstuvwxyz0123456789" } }, /sensitive|secret/i);
   expectReject({ ...cmd("usage.save"), payload: { ...usage, note: "Bearer abcdefghijklmnopqrstuvwxyz012345" } }, /sensitive|secret/i);
+
+  // JWT / JWS / JWE credential material: opaque under an unlisted key name, so
+  // only value-shape detection can catch it in the deep scan.
+  expectReject({ ...cmd("usage.save"), payload: { ...usage, note: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c" } }, /sensitive|secret/i);
+  expectReject({ ...cmd("usage.save"), payload: { ...usage, meta: { note: "eyJhbGciOiJFZERTVCJ9.RXhhbXBsZQ.sig" } } }, /sensitive|secret/i);
+  expectReject({ ...cmd("connection.update"), payload: { connectionId: "c1", updates: { note: "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRS" } } }, /sensitive|secret/i);
+  expectReject({ ...cmd("connection.update"), payload: { connectionId: "c1", updates: { note: "xoxb-" + "123456789012-1234567890123-abcdefghijklmnopqrstuvwx" } } }, /sensitive|secret/i);
 });
 
 test("legitimate non-secret payloads still pass", () => {

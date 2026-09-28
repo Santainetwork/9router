@@ -1,4 +1,5 @@
 import { getAdapter } from "../driver.js";
+import { bumpDbVersion } from "../dbVersion.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { DEFAULT_FOOTER_FIELDS } from "@/shared/utils/footerSettings.js";
 
@@ -133,6 +134,7 @@ export async function updateSettings(updates) {
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [stringifyJson(next)],
     );
+    bumpDbVersion(db);
   });
   return mergeWithDefaults(next);
 }

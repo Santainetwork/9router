@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { bumpDbVersion } from "../dbVersion.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 function rowToCombo(row) {
@@ -43,10 +44,13 @@ export async function createCombo(data) {
     createdAt: now,
     updatedAt: now,
   };
-  db.run(
-    `INSERT INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
-    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), combo.createdAt, combo.updatedAt]
-  );
+  db.transaction(() => {
+    db.run(
+      `INSERT INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
+      [combo.id, combo.name, combo.kind, stringifyJson(combo.models), combo.createdAt, combo.updatedAt]
+    );
+    bumpDbVersion(db);
+  });
   return combo;
 }
 
@@ -62,12 +66,18 @@ export async function updateCombo(id, data) {
       [merged.name, merged.kind, stringifyJson(merged.models || []), merged.updatedAt, id]
     );
     result = merged;
+    bumpDbVersion(db);
   });
   return result;
 }
 
 export async function deleteCombo(id) {
   const db = await getAdapter();
-  const res = db.run(`DELETE FROM combos WHERE id = ?`, [id]);
-  return (res?.changes ?? 0) > 0;
+  let deleted = false;
+  db.transaction(() => {
+    const res = db.run(`DELETE FROM combos WHERE id = ?`, [id]);
+    deleted = (res?.changes ?? 0) > 0;
+    if (deleted) bumpDbVersion(db);
+  });
+  return deleted;
 }

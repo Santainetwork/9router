@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { bumpDbVersion } from "../dbVersion.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -63,10 +64,13 @@ export async function createApiKey(name, machineId) {
     concurrency: 0,
     queueTimeoutMs: 0,
   };
-  db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, rpm, concurrency, queueTimeoutMs, allowedModels, tokenQuota) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, 0, 0, 0, null, 0]
-  );
+  db.transaction(() => {
+    db.run(
+      `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, rpm, concurrency, queueTimeoutMs, allowedModels, tokenQuota) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, 0, 0, 0, null, 0]
+    );
+    bumpDbVersion(db);
+  });
   return { ...apiKey, allowedModels: [], tokenQuota: 0 };
 }
 
@@ -87,14 +91,20 @@ export async function updateApiKey(id, data) {
       [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, rpm, concurrency, queueTimeoutMs, allowedModelsJson, tokenQuota, id]
     );
     result = { ...merged, rpm, concurrency, queueTimeoutMs, tokenQuota, allowedModels: parseAllowedModels(allowedModelsJson) };
+    bumpDbVersion(db);
   });
   return result;
 }
 
 export async function deleteApiKey(id) {
   const db = await getAdapter();
-  const res = db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
-  return (res?.changes ?? 0) > 0;
+  let deleted = false;
+  db.transaction(() => {
+    const res = db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
+    deleted = (res?.changes ?? 0) > 0;
+    if (deleted) bumpDbVersion(db);
+  });
+  return deleted;
 }
 
 export async function validateApiKey(key) {

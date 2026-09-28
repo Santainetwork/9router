@@ -1,3 +1,4 @@
+import { redisNamespace } from "../redis/client.js";
 import { validateMutation, MutationValidationError } from "./mutationProtocol.js";
 
 const DEFAULT_STREAM_KEY = "9router:sqlite:mutations";
@@ -15,6 +16,15 @@ const FINISH_ENTRY = `
 local acked = redis.call('XACK', KEYS[1], ARGV[1], ARGV[2])
 local deleted = redis.call('XDEL', KEYS[1], ARGV[2])
 return {acked, deleted}
+`;
+
+// LPUSH + PEXPIRE in one script: two separate commands leave an orphaned
+// receipt key with no TTL if the writer crashes between them, so receipts
+// accumulate forever for sync mutations whose producer already timed out.
+const PUBLISH_RECEIPT = `
+redis.call('LPUSH', KEYS[1], ARGV[1])
+redis.call('PEXPIRE', KEYS[1], ARGV[2])
+return 1
 `;
 
 function sleep(ms) {
@@ -52,7 +62,7 @@ export function createMutationWriter({
   redis,
   db,
   applyMutation,
-  namespace = "9router:sqlite",
+  namespace = redisNamespace(),
   streamKey,
   deadLetterKey,
   group = DEFAULT_GROUP,
@@ -85,8 +95,16 @@ export function createMutationWriter({
   async function publishReceipt(command, result) {
     if (command.consistency !== "sync") return;
     const key = receiptKey(namespace, command.receiptId);
-    await redis.lPush(key, JSON.stringify({ ok: true, receiptId: command.receiptId, result }));
-    await redis.expire(key, RECEIPT_TTL_SECONDS);
+    await redis.eval(PUBLISH_RECEIPT, {
+      keys: [key],
+      arguments: [JSON.stringify({ ok: true, receiptId: command.receiptId, result }), String(RECEIPT_TTL_SECONDS * 1000)],
+    });
+  }
+
+  async function publishVersionHint(result) {
+    const version = Number(result?.version);
+    if (!Number.isSafeInteger(version) || version < 0) return;
+    await redis.publish(`${namespace}:db-version`, String(version));
   }
 
   async function heartbeat() {
@@ -165,6 +183,7 @@ export function createMutationWriter({
     while (true) {
       try {
         const { duplicate, result } = applyInTransaction(command);
+        await publishVersionHint(result);
         await publishReceipt(command, result);
         await finishSource(entry.id);
         if (duplicate) metrics.duplicates++;

@@ -236,6 +236,20 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
   return rotatedModels;
 }
 
+// Task 6: atomic Redis combo rotation for SQLite multicore. Redis failure
+// rejects; the caller fails closed rather than reverting to local state.
+export async function getRotatedModelsMulticore(models, comboName, stickyLimit = 1, { getRedisManager, isWorker } = {}) {
+  if (!Array.isArray(models) || models.length <= 1) return models;
+  if (!isWorker || !(await isWorker())) return getRotatedModels(models, comboName, "round-robin", stickyLimit);
+
+  const manager = await getRedisManager();
+  const { createRoutingState } = await import("../../src/lib/redis/routingState.js");
+  const routing = createRoutingState({ redis: await manager.command() });
+  const scope = `combo:${comboName || "__default__"}`;
+  const idx = await routing.rotateSticky(scope, models, normalizeStickyLimit(stickyLimit));
+  return rotateModelsFromIndex(models, idx);
+}
+
 /**
  * Reset in-memory rotation state when combo/settings change
  * @param {string} [comboName] - Combo name to reset; omit to clear all
@@ -278,8 +292,14 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true, allowBodyReadFallback = false }) {
-  // Apply rotation strategy if enabled
-  let rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
+  // Apply rotation strategy if enabled. SQLite multicore uses atomic Redis
+  // rotation; single-process/Postgres keep the local map.
+  let rotatedModels = comboStrategy === "round-robin"
+    ? await getRotatedModelsMulticore(models, comboName, comboStickyLimit, {
+        getRedisManager: () => import("../../src/lib/redis/client.js").then((m) => m.getRedisManager()),
+        isWorker: async () => (await import("../../src/lib/db/driver.js")).isSqliteMulticoreWorker(),
+      })
+    : getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
 
   // Auto-switch: float models that satisfy the request's required capabilities to the front.
   if (autoSwitch) {

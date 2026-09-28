@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { bumpDbVersion } from "../dbVersion.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 function rowToNode(row) {
@@ -36,6 +37,7 @@ function upsert(db, n) {
        type=excluded.type, name=excluded.name, data=excluded.data, updatedAt=excluded.updatedAt`,
     [r.id, r.type, r.name, r.data, r.createdAt, r.updatedAt]
   );
+  bumpDbVersion(db);
 }
 
 export async function getProviderNodes(filter = {}) {
@@ -65,7 +67,7 @@ export async function createProviderNode(data) {
     createdAt: now,
     updatedAt: now,
   };
-  upsert(db, node);
+  db.transaction(() => upsert(db, node));
   return node;
 }
 
@@ -90,6 +92,7 @@ export async function deleteProviderNode(id) {
     if (!row) return;
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
+    bumpDbVersion(db);
   });
   return removed;
 }

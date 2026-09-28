@@ -11,6 +11,7 @@ import { handleSystemoneCore } from "open-sse/handlers/systemoneCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { withWorkerRefusal } from "@/lib/db/providerEligibility.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
 
@@ -20,7 +21,7 @@ import { saveRequestUsage } from "@/lib/usageDb.js";
  *
  * @param {Request} request
  */
-export async function handleSystemone(request) {
+async function doHandleSystemone(request) {
   let body;
   try {
     body = await request.json();
@@ -150,3 +151,5 @@ export async function handleSystemone(request) {
     return result.response;
   }
 }
+
+export const handleSystemone = withWorkerRefusal(doHandleSystemone);

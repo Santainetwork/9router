@@ -6,6 +6,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
+import { providerNotWorkerSafeResponse } from "@/lib/db/providerEligibility.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
@@ -54,6 +55,10 @@ export async function handleImageGeneration(request) {
 
   try {
     return await doHandleImageGeneration(request, body, apiKey, modelStr, settings, url);
+  } catch (err) {
+    const refusal = providerNotWorkerSafeResponse(err);
+    if (refusal) return refusal;
+    throw err;
   } finally {
     try { releaseApiKey(); } catch {}
   }

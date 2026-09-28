@@ -47,6 +47,34 @@ function validateWorkerConfig(env = process.env) {
   if (needsSharedSqlite && String(env.ENABLE_GO_HYBRID || "").toLowerCase() !== "true") {
     throw new Error("SQLite multicore requires ENABLE_GO_HYBRID=true");
   }
+  if (needsSharedSqlite) {
+    // Validate the dedicated queue encryption key at boot, not lazily on the
+    // first token-bearing sync mutation: a worker that boots ready and then
+    // fails its first credential update is a latent runtime outage.
+    // Inlined (not required from src/lib/db/queueEncryption.js) because this
+    // file ships as the standalone entrypoint where ./src is not traced in.
+    const queueKey = String(env.SQLITE_QUEUE_ENCRYPTION_KEY || "");
+    const redisPassword = (() => {
+      try {
+        const url = new URL(env.REDIS_URL || "");
+        return url.password ? decodeURIComponent(url.password) : null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!queueKey) {
+      throw new Error("SQLite multicore queue encryption key invalid: QUEUE_KEY_MISSING");
+    }
+    if (queueKey === String(env.API_KEY_SECRET || "")) {
+      throw new Error("SQLite multicore queue encryption key invalid: QUEUE_KEY_REUSE");
+    }
+    if (redisPassword && queueKey === redisPassword) {
+      throw new Error("SQLite multicore queue encryption key invalid: QUEUE_KEY_REUSE");
+    }
+    if (!/^[0-9a-f]{64}$/i.test(queueKey)) {
+      throw new Error("SQLite multicore queue encryption key invalid: QUEUE_KEY_INVALID");
+    }
+  }
   return { role, workers, postgres, sqliteMulticore: needsSharedSqlite };
 }
 

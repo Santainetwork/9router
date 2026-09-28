@@ -9,6 +9,7 @@ import {
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
+import { providerNotWorkerSafeResponse } from "@/lib/db/providerEligibility.js";
 import { acquire, RateLimitTimeoutError } from "open-sse/services/rateLimiter.js";
 import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -76,6 +77,10 @@ export async function handleChat(request, clientRawRequest = null) {
     return res;
   } catch (err) {
     safeReleaseApiKey();
+    // Typed worker refusal: convert to a 409 the gateway can identify and route
+    // back to a healthy direct-write control instead of a generic Next 500.
+    const refusal = providerNotWorkerSafeResponse(err);
+    if (refusal) return refusal;
     throw err;
   }
 }

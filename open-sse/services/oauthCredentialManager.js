@@ -4,6 +4,7 @@ import {
   refreshTokenByProvider,
 } from "./tokenRefresh.js";
 import { PROVIDER_OAUTH } from "../providers/index.js";
+import { withDistributedRefreshOwnership } from "../../src/lib/redis/refreshOwnership.js";
 
 // Single source: codex.oauth.maxRefreshAgeMs (8 days) — proactive refresh window
 export const CODEX_MAX_REFRESH_AGE_MS = PROVIDER_OAUTH["codex"]?.maxRefreshAgeMs;
@@ -146,11 +147,37 @@ export async function withCredentialRefreshLock(provider, credentials, refreshFn
   return pending;
 }
 
-export async function refreshProviderCredentials(provider, credentials, log) {
+export async function refreshProviderCredentials(provider, credentials, log, { persistFn } = {}) {
   if (!credentials) return null;
 
-  return withCredentialRefreshLock(provider, credentials, async () => {
-    const refreshed = await refreshTokenByProvider(provider, credentials, log);
-    return mergeRefreshedCredentials(provider, credentials, refreshed);
+  // SQLite Redis multicore: the local Map below is per-process, so ownership
+  // must come from the shared Redis lock. Non-multicore returns null and the
+  // local path is untouched (PostgreSQL + single-process SQLite unchanged).
+  // persistFn (when supplied) runs inside the ownership critical section so
+  // the committed row is visible before another worker can acquire.
+  const distributed = await withDistributedRefreshOwnership({
+    key: getRefreshLockKey(provider, credentials),
+    connectionId: credentials?.connectionId ?? credentials?.id ?? null,
+    credentials,
+    refreshFn: () => refreshOnce(provider, credentials, log),
+    persistFn,
   });
+  if (distributed) {
+    if (distributed.lockLost) {
+      log?.warn?.("TOKEN_REFRESH", `Refresh lock lost for ${provider}; using committed credentials`);
+    }
+    return distributed.result;
+  }
+
+  const local = await withCredentialRefreshLock(provider, credentials, async () => {
+    const refreshed = await refreshOnce(provider, credentials, log);
+    if (persistFn) await persistFn(refreshed);
+    return refreshed;
+  });
+  return local;
+}
+
+async function refreshOnce(provider, credentials, log) {
+  const refreshed = await refreshTokenByProvider(provider, credentials, log);
+  return mergeRefreshedCredentials(provider, credentials, refreshed);
 }

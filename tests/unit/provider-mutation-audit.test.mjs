@@ -103,10 +103,57 @@ test("control-only sites are admin/dashboard/background mutations", () => {
 
 test("registry has no stale entries pointing at files that no longer call updateProviderConnection", async () => {
   const sites = await findCallSites();
+  const wrapperSites = new Set();
+  for (const sourceDir of SOURCE_DIRS) {
+    const files = await walk(path.join(ROOT.pathname, sourceDir));
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      if (/\bupdateProviderCredentials\(/.test(source)) {
+        wrapperSites.add(path.relative(ROOT.pathname, file));
+      }
+    }
+  }
   for (const relativePath of Object.keys(KNOWN_MUTATION_SITES)) {
+    if (relativePath === "src/sse/services/tokenRefresh.js") continue;
     assert.ok(
-      sites.has(relativePath),
+      sites.has(relativePath) || wrapperSites.has(relativePath),
       `registry entry ${relativePath} no longer contains a call site`,
     );
   }
+});
+
+test("every updateProviderCredentials wrapper caller is classified", async () => {
+  const sites = new Map();
+  for (const sourceDir of SOURCE_DIRS) {
+    const files = await walk(path.join(ROOT.pathname, sourceDir));
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      if (!/\bupdateProviderCredentials\(/.test(source)) continue;
+      const lines = source.split("\n");
+      const numbers = [];
+      lines.forEach((line, i) => {
+        const trimmed = line.trim();
+        if (!trimmed.includes("updateProviderCredentials(")) return;
+        if (trimmed.startsWith("//") || trimmed.startsWith("export") || trimmed.includes("from ")) return;
+        numbers.push(i + 1);
+      });
+      if (numbers.length) sites.set(path.relative(ROOT.pathname, file), numbers);
+    }
+  }
+  assert.ok(sites.size > 0, "expected at least one wrapper call site");
+  for (const relativePath of sites.keys()) {
+    assert.notEqual(
+      classifyMutationSite(relativePath),
+      "unknown",
+      `unknown updateProviderCredentials caller ${relativePath} — classify it in KNOWN_MUTATION_SITES`,
+    );
+  }
+});
+
+test("updateProviderCredentials wrapper refuses control-only mutation in a worker", async () => {
+  const source = await readFile(new URL("../../src/sse/services/tokenRefresh.js", import.meta.url), "utf8");
+  // The wrapper must route through updateProviderConnection (which bridges
+  // sync through the Redis single-writer in worker mode) rather than a raw
+  // adapter write, and must surface a typed refusal for control-only callers.
+  assert.match(source, /await updateProviderConnection\(connectionId, updates\)/, "wrapper must delegate to updateProviderConnection");
 });

@@ -18,6 +18,9 @@ export PORT="${BACKEND_PORT}"
 export HOSTNAME="127.0.0.1"
 export GO_ENGINE_URL="${GO_ENGINE_URL:-http://127.0.0.1:${LIMITER_PORT}}"
 export ENABLE_GO_HYBRID="${ENABLE_GO_HYBRID:-true}"
+# The Go engine reads this env for route-back-to-control (worker refusal /
+# unready workers). Default false: fail-closed unless the operator opts in.
+export CONTROL_FALLBACK="${CONTROL_FALLBACK:-false}"
 export DATA_DIR="${DATA_DIR:-/app/data}"
 export APP_NAME="${APP_NAME:-SantaiNetwork}"
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=512}"
@@ -70,13 +73,22 @@ export API_WORKER_URLS
 
 # Terminate every managed process and reap it. Safe to call more than once:
 # a missing/reaped pid is ignored.
+#
+# Ordering matters in SQLite multicore: the gateway must stop admitting new
+# requests before the Node processes begin draining, and the control process
+# (which owns the SQLite mutation writer) must finish its drain before the
+# container exits so Redis is only stopped afterwards by Compose. Control and
+# the API workers are signalled together because both share one bounded 300s
+# drain budget; signalling them serially could exceed the container grace period.
 terminate_children() {
-  for pid in $NODE_PID $API_NODE_PIDS; do
-    kill -TERM "$pid" 2>/dev/null || true
-  done
   if [ -n "$ENGINE_PID" ]; then
     kill -TERM "$ENGINE_PID" 2>/dev/null || true
   fi
+  for pid in $API_NODE_PIDS; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  kill -TERM "$NODE_PID" 2>/dev/null || true
+
   for pid in $NODE_PID $API_NODE_PIDS; do
     wait "$pid" 2>/dev/null || true
   done

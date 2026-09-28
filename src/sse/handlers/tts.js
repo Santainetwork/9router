@@ -6,6 +6,7 @@ import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLim
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
+import { providerNotWorkerSafeResponse } from "@/lib/db/providerEligibility.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
@@ -52,6 +53,10 @@ export async function handleTts(request) {
 
   try {
     return await doHandleTts(request, apiKey, settings, modelStr, body);
+  } catch (err) {
+    const refusal = providerNotWorkerSafeResponse(err);
+    if (refusal) return refusal;
+    throw err;
   } finally {
     try { releaseApiKey(); } catch {}
   }

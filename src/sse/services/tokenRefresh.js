@@ -242,16 +242,19 @@ export async function checkAndRefreshToken(provider, credentials, options = {}) 
       lastRefreshAt: creds.lastRefreshAt || null,
     });
 
-    const newCreds = await _refreshProviderCredentials(provider, creds, log);
-    if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
+    const persistFn = async (newCreds) => {
+      if (!(newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken)) return;
+      // Runs inside the distributed refresh ownership critical section in
+      // SQLite multicore: the committed row must be visible before the lock is
+      // released, or a second worker rotates the same single-use refresh token.
       const mergedCreds = {
         ...newCreds,
         existingProviderSpecificData: creds.providerSpecificData,
       };
-
-      // Persist to DB (non-blocking path continues below)
       await updateProviderCredentials(creds.connectionId, mergedCreds);
-
+    };
+    const newCreds = await _refreshProviderCredentials(provider, creds, log, { persistFn });
+    if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
       creds = {
         ...creds,
         ...newCreds,

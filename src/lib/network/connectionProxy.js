@@ -1,4 +1,9 @@
-import { getProxyPoolById } from "@/models";
+// Lazy import so this module loads without the Next.js/webpack `@/` alias
+// resolver (unit tests and open-sse relative imports).
+async function loadProxyPoolById() {
+  const { getProxyPoolById } = await import("@/models");
+  return getProxyPoolById;
+}
 
 // Safely normalize any value into a trimmed string.
 function normalizeString(value) {
@@ -31,6 +36,21 @@ export function pickProxyPoolId(poolIds, strategy, providerId) {
   }
 
   return poolIds[0]; // "none" or unknown
+}
+
+// Task 6: atomic Redis proxy-pool rotation for SQLite multicore. Redis failure
+// rejects; callers fail closed. Single-process/Postgres keep pickProxyPoolId.
+export async function pickProxyPoolIdMulticore(poolIds, strategy, providerId, { getRedisManager, isWorker } = {}) {
+  if (!poolIds || poolIds.length === 0) return null;
+  if (poolIds.length === 1) return poolIds[0];
+  if (strategy !== "round-robin") return pickProxyPoolId(poolIds, strategy, providerId);
+  if (!isWorker || !(await isWorker())) return pickProxyPoolId(poolIds, strategy, providerId);
+
+  const manager = await getRedisManager();
+  const { createRoutingState } = await import("../redis/routingState.js");
+  const routing = createRoutingState({ redis: await manager.command() });
+  const idx = await routing.rotate(`pool:${providerId || "__default__"}`, poolIds);
+  return poolIds[idx];
 }
 
 /**
@@ -83,6 +103,7 @@ export async function resolveConnectionProxyConfig(
      * -----------------------------
      */
     if (proxyPoolId) {
+      const getProxyPoolById = await loadProxyPoolById();
       const proxyPool = await getProxyPoolById(proxyPoolId);
 
       const proxyUrl = normalizeString(proxyPool?.proxyUrl);

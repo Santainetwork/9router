@@ -1,24 +1,19 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { createVersionedCache } from "../../redis/cacheVersion.js";
+import { bumpDbVersion } from "../dbVersion.js";
 
 const pricingKv = makeKv("pricing");
 const CACHE_TTL_MS = 5000;
 
-let cache = { value: null, expiresAt: 0 };
-
-function invalidate() {
-  cache = { value: null, expiresAt: 0 };
-}
+const cache = createVersionedCache({ load: loadMergedPricing, ttlMs: CACHE_TTL_MS });
 
 async function getUserPricing() {
   return await pricingKv.getAll();
 }
 
-export async function getPricing() {
-  const now = Date.now();
-  if (cache.value && cache.expiresAt > now) return cache.value;
-
+async function loadMergedPricing() {
   const userPricing = await getUserPricing();
   const { PROVIDER_PRICING } = await import("open-sse/providers/pricing.js");
   const merged = {};
@@ -44,8 +39,12 @@ export async function getPricing() {
     }
   }
 
-  cache = { value: merged, expiresAt: now + CACHE_TTL_MS };
   return merged;
+}
+
+export async function getPricing() {
+  const db = await getAdapter();
+  return await cache.get(db);
 }
 
 export async function getPricingForModel(provider, model) {
@@ -72,8 +71,9 @@ export async function updatePricing(pricingData) {
         [provider, stringifyJson(merged)]
       );
     }
+    bumpDbVersion(db);
   });
-  invalidate();
+  cache.invalidate();
   return await getUserPricing();
 }
 
@@ -83,6 +83,7 @@ export async function resetPricing(provider, model) {
   db.transaction(() => {
     if (!model) {
       db.run(`DELETE FROM kv WHERE scope = 'pricing' AND key = ?`, [provider]);
+      bumpDbVersion(db);
       return;
     }
     const row = db.get(`SELECT value FROM kv WHERE scope = 'pricing' AND key = ?`, [provider]);
@@ -96,13 +97,18 @@ export async function resetPricing(provider, model) {
         [provider, stringifyJson(current)]
       );
     }
+    bumpDbVersion(db);
   });
-  invalidate();
+  cache.invalidate();
   return await getUserPricing();
 }
 
 export async function resetAllPricing() {
-  await pricingKv.clear();
-  invalidate();
+  const db = await getAdapter();
+  db.transaction(() => {
+    db.run(`DELETE FROM kv WHERE scope = 'pricing'`);
+    bumpDbVersion(db);
+  });
+  cache.invalidate();
   return {};
 }

@@ -6,6 +6,7 @@ import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLim
 import { getSettings, getCustomModels } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleSttCore } from "open-sse/handlers/sttCore.js";
+import { providerNotWorkerSafeResponse } from "@/lib/db/providerEligibility.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
@@ -64,6 +65,10 @@ export async function handleStt(request) {
 
   try {
     return await doHandleStt(request, apiKey, settings, modelStr, formData);
+  } catch (err) {
+    const refusal = providerNotWorkerSafeResponse(err);
+    if (refusal) return refusal;
+    throw err;
   } finally {
     try { releaseApiKey(); } catch {}
   }

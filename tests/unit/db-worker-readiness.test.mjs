@@ -28,6 +28,7 @@ const dbNotReady = { ready: false, database: "sqlite", reason: "schema_missing" 
 function okRedis(overrides = {}) {
   return {
     async ping() { return "PONG"; },
+    async eval() { return 1; },
     // Writer heartbeat validity comes from Redis PTTL, never from a host clock.
     async pTTL() { return 12_000; },
     async xLen() { return 5; },
@@ -129,6 +130,16 @@ test("redis ping that throws is redis_unhealthy and never leaks the error", asyn
   assert.equal(result.ready, false);
   assert.equal(result.reason, "redis_unhealthy");
   assert.ok(!JSON.stringify(result).includes("sup3rsecret"));
+});
+
+test("routing command failure makes worker unready even when Redis ping succeeds", async () => {
+  const result = await checkWorkerReady(okDeps({
+    redis: okRedis({ async eval() { throw new Error(`NOPERM ${SECRET_URL}`); } }),
+  }));
+  assert.equal(result.ready, false);
+  assert.equal(result.reason, "redis_unhealthy");
+  assert.ok(!JSON.stringify(result).includes("sup3rsecret"));
+  assert.ok(!JSON.stringify(result).includes("NOPERM"));
 });
 
 test("live writer heartbeat TTL survives severe worker clock skew", async () => {

@@ -100,3 +100,28 @@ test("plaintext secret fields are still rejected by the protocol scan even with 
     /sensitive/i,
   );
 });
+
+test("lastError text is encrypted, never plaintext in the Redis command JSON", async () => {
+  process.env.SQLITE_QUEUE_ENCRYPTION_KEY = "a".repeat(64);
+  delete process.env.API_KEY_SECRET;
+  delete process.env.REDIS_URL;
+  const captured = [];
+  const queue = {
+    enqueueMutation: (input) => {
+      captured.push(input);
+      return Promise.resolve({ enqueued: true, receiptId: input.receiptId, result: { updated: true } });
+    },
+  };
+  // lastError carries upstream error text, which can embed response-body
+  // fragments. It must ride inside the encrypted ciphertext bucket.
+  await enqueueSyncConnectionUpdate(queue, "conn-1", {
+    testStatus: "unavailable",
+    lastError: "upstream 500 body fragment sk-LEAK-1234",
+  });
+  const command = captured[0];
+  assert.equal(command.payload.updates.testStatus, "unavailable");
+  assert.equal("lastError" in command.payload.updates, false);
+  assert.ok(command.payload.ciphertext, "lastError must be encrypted");
+  assert.equal(JSON.stringify(command).includes("sk-LEAK-1234"), false);
+  delete process.env.SQLITE_QUEUE_ENCRYPTION_KEY;
+});

@@ -12,6 +12,7 @@ import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets } from "open-sse/
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { withWorkerRefusal } from "@/lib/db/providerEligibility.js";
 import * as log from "../utils/logger.js";
 
 // Video generation is xAI-only today; requests without a provider prefix
@@ -113,7 +114,7 @@ function withConnectionHeader(response, connectionId) {
 /**
  * POST /v1/videos/{generations|edits|extensions} — async job creation proxy.
  */
-export async function handleVideoCreate(request, action) {
+async function doHandleVideoCreate(request, action) {
   const authError = await requireValidApiKey(request);
   if (authError) return authError;
 
@@ -208,7 +209,7 @@ export async function handleVideoCreate(request, action) {
  * Jobs are account-bound upstream, so no cross-account rotation here: the
  * caller pins the creating account via `x-connection-id` (returned on create).
  */
-export async function handleVideoGet(request, requestId) {
+async function doHandleVideoGet(request, requestId) {
   const authError = await requireValidApiKey(request);
   if (authError) return authError;
 
@@ -250,3 +251,6 @@ export async function handleVideoGet(request, requestId) {
   );
   return result.response;
 }
+
+export const handleVideoCreate = withWorkerRefusal(doHandleVideoCreate);
+export const handleVideoGet = withWorkerRefusal(doHandleVideoGet);

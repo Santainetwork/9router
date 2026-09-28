@@ -312,6 +312,14 @@ test("entrypoint validates API worker roles and preserves singleton defaults", (
   assert.match(source, /BACKEND_PORT\s*\+\s*4\s*\+\s*i/);
 });
 
+test("entrypoint exposes the CONTROL_FALLBACK env to the Go engine", () => {
+  // resolveControlFallback in the engine honors the CONTROL_FALLBACK env var,
+  // but only if the container entrypoint exports it. Without the pass-through
+  // the documented route-back-to-control path is dead code in Docker.
+  const source = readFileSync(ENTRYPOINT_SH, "utf8");
+  assert.match(source, /export\s+CONTROL_FALLBACK/);
+});
+
 test("docker entrypoint remains valid POSIX sh", () => {
   execFileSync("sh", ["-n", ENTRYPOINT_SH], { stdio: "pipe" });
 });

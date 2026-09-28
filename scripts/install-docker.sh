@@ -39,6 +39,12 @@
 #   # Bundled PostgreSQL + 3 Node processes (1 control + 2 API workers)
 #   bash scripts/install-docker.sh --postgres --yes
 #
+#   # Bundled private Redis + 2 Node processes (SQLite multicore, opt-in)
+#   bash scripts/install-docker.sh --sqlite-redis --yes
+#
+#   # External Redis (must be rediss:// unless loopback/private)
+#   bash scripts/install-docker.sh --sqlite-redis --redis-url rediss://user:pass@cache.example.com:6380/0 --yes
+#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,6 +73,14 @@ API_WORKERS_EXPLICIT=0
 [ -n "$API_WORKERS" ] && API_WORKERS_EXPLICIT=1
 USE_POSTGRES=0
 USE_BUNDLED_POSTGRES=0
+# Opt-in SQLite multicore over Redis. Default install stays single-process.
+USE_SQLITE_REDIS=0
+USE_BUNDLED_REDIS=0
+EXTERNAL_REDIS_URL=""
+REDIS_PASSWORD="${REDIS_PASSWORD:-}"
+REDIS_URL="${REDIS_URL:-}"
+SQLITE_QUEUE_ENCRYPTION_KEY="${SQLITE_QUEUE_ENCRYPTION_KEY:-}"
+REDIS_MAXMEMORY="${REDIS_MAXMEMORY:-}"
 
 ASSUME_YES=0
 DRY_RUN=0
@@ -110,8 +124,10 @@ while [ $# -gt 0 ]; do
     --password)             shift; INITIAL_PASSWORD="${1:-}" ;;
     --database-url)         shift; DATABASE_URL="${1:-}" ;;
     --postgres)             USE_POSTGRES=1 ;;
+    --sqlite-redis)         USE_SQLITE_REDIS=1 ;;
+    --redis-url)            shift; EXTERNAL_REDIS_URL="${1:-}" ;;
     -h|--help)
-      sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -120,6 +136,57 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Reject ambiguous database selection before touching Docker. Re-checked after
+# --redis-url and the upgrade path below, because both can still flip
+# USE_SQLITE_REDIS after this early gate.
+reject_conflicting_modes() {
+  if [ "$USE_SQLITE_REDIS" -eq 1 ] && [ "$USE_POSTGRES" -eq 1 ]; then
+    fail "--sqlite-redis and --postgres are mutually exclusive (choose one database mode)"
+  fi
+}
+reject_conflicting_modes
+
+# External Redis must be encrypted unless it is loopback or a private host.
+validate_external_redis_url() {
+  local url="$1"
+  case "$url" in
+    rediss://*) ;;
+    redis://*)
+      local host="${url#redis://}"
+      host="${host##*@}"
+      host="${host%%:*}"
+      host="${host%%/*}"
+      # Explicit private-range match only. A dotted-shape wildcard like *.*.*.*
+      # would also pass deep public hostnames (redis.internal.corp.example.com),
+      # silently allowing plaintext redis:// to the public internet.
+      case "$host" in
+        127.0.0.1|localhost|::1|\[::1\]|redis) ;;
+        10.*.*.*|192.168.*.*|172.1[6-9].*.*|172.2[0-9].*.*|172.3[01].*.*.*) ;;
+        *) fail "External Redis over plaintext redis:// requires a loopback or private host; use rediss:// for remote servers" ;;
+      esac
+      ;;
+    *) fail "Redis URL must start with redis:// or rediss://" ;;
+  esac
+  # The broker carries encrypted tokens and accepts mutation commands, so any
+  # peer able to reach it must authenticate. A passwordless URL would let the
+  # network read the stream and inject forged mutations.
+  case "$url" in
+    *"@"*) ;;
+    *) fail "External Redis URL must carry credentials (redis://:password@host or user:password@host)" ;;
+  esac
+}
+
+if [ -n "$EXTERNAL_REDIS_URL" ]; then
+  validate_external_redis_url "$EXTERNAL_REDIS_URL"
+  USE_SQLITE_REDIS=1
+fi
+reject_conflicting_modes
+# An ambient REDIS_URL must never switch database modes on its own; it is only
+# consulted once the operator opted in via --sqlite-redis / --redis-url.
+if [ "$USE_SQLITE_REDIS" -eq 1 ] && [ -n "$REDIS_URL" ]; then
+  validate_external_redis_url "$REDIS_URL"
+fi
 
 # Check Docker prerequisite
 detect_docker() {
@@ -152,6 +219,19 @@ read_env_val() {
   local file="$2"
   if [ -f "$file" ]; then
     grep "^${key}=" "$file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true
+  fi
+}
+
+# A previously installed stack may be running profiled services (bundled
+# PostgreSQL/Redis). Down/restart/logs must enable the same profiles, otherwise
+# Compose leaves those containers untouched.
+installed_profile_args() {
+  local file="$1"
+  if [ -n "$(read_env_val "BUNDLED_DATABASE_URL" "$file")" ] || [ -n "$(read_env_val "POSTGRES_PASSWORD" "$file")" ]; then
+    printf '%s\n' "--profile postgres"
+  fi
+  if [ -n "$(read_env_val "BUNDLED_SQLITE_REDIS" "$file")" ]; then
+    printf '%s\n' "--profile sqlite-multicore"
   fi
 }
 
@@ -194,10 +274,12 @@ fi
 if [ "$DO_STOP" -eq 1 ]; then
   step "Stopping 9Router container stack"
   if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    PROFILE_ARGS=()
+    while IFS= read -r line; do [ -n "$line" ] && PROFILE_ARGS+=("$line"); done < <(installed_profile_args "${INSTALL_DIR}/.env")
     if [ "$DRY_RUN" -eq 1 ]; then
-      info "[dry-run] Would execute: cd $INSTALL_DIR && $COMPOSE_CMD down"
+      info "[dry-run] Would execute: cd $INSTALL_DIR && $COMPOSE_CMD ${PROFILE_ARGS[*]} down"
     else
-      (cd "$INSTALL_DIR" && $COMPOSE_CMD down)
+      (cd "$INSTALL_DIR" && $COMPOSE_CMD "${PROFILE_ARGS[@]}" down)
       ok "9Router containers stopped."
     fi
   else
@@ -209,10 +291,12 @@ fi
 if [ "$DO_RESTART" -eq 1 ]; then
   step "Restarting 9Router container stack"
   if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    PROFILE_ARGS=()
+    while IFS= read -r line; do [ -n "$line" ] && PROFILE_ARGS+=("$line"); done < <(installed_profile_args "${INSTALL_DIR}/.env")
     if [ "$DRY_RUN" -eq 1 ]; then
-      info "[dry-run] Would execute: cd $INSTALL_DIR && $COMPOSE_CMD restart"
+      info "[dry-run] Would execute: cd $INSTALL_DIR && $COMPOSE_CMD ${PROFILE_ARGS[*]} restart"
     else
-      (cd "$INSTALL_DIR" && $COMPOSE_CMD restart)
+      (cd "$INSTALL_DIR" && $COMPOSE_CMD "${PROFILE_ARGS[@]}" restart)
       ok "9Router containers restarted."
     fi
   else
@@ -223,7 +307,9 @@ fi
 
 if [ "$DO_LOGS" -eq 1 ]; then
   if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-    (cd "$INSTALL_DIR" && $COMPOSE_CMD logs -f)
+    PROFILE_ARGS=()
+    while IFS= read -r line; do [ -n "$line" ] && PROFILE_ARGS+=("$line"); done < <(installed_profile_args "${INSTALL_DIR}/.env")
+    (cd "$INSTALL_DIR" && $COMPOSE_CMD "${PROFILE_ARGS[@]}" logs -f)
   else
     fail "No docker-compose.yml found in $INSTALL_DIR"
   fi
@@ -242,18 +328,20 @@ if [ "$DO_UNINSTALL" -eq 1 ]; then
   fi
 
   if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    PROFILE_ARGS=()
+    while IFS= read -r line; do [ -n "$line" ] && PROFILE_ARGS+=("$line"); done < <(installed_profile_args "${INSTALL_DIR}/.env")
     if [ "$DRY_RUN" -eq 1 ]; then
-      info "[dry-run] Would execute: cd $INSTALL_DIR && $COMPOSE_CMD down"
+      info "[dry-run] Would execute: cd $INSTALL_DIR && $COMPOSE_CMD ${PROFILE_ARGS[*]} down"
       if [ "$DO_PURGE" -eq 1 ]; then
-        info "[dry-run] Would remove docker volume 9router-data"
+        info "[dry-run] Would remove docker volumes 9router-data, 9router-redis-data, 9router-postgres-data"
       fi
     else
       if [ "$DO_PURGE" -eq 1 ]; then
-        (cd "$INSTALL_DIR" && $COMPOSE_CMD down -v)
+        (cd "$INSTALL_DIR" && $COMPOSE_CMD "${PROFILE_ARGS[@]}" down -v)
         ok "Containers and persistent data volumes removed."
       else
-        (cd "$INSTALL_DIR" && $COMPOSE_CMD down)
-        ok "Containers stopped and removed. Data volume 9router-data preserved."
+        (cd "$INSTALL_DIR" && $COMPOSE_CMD "${PROFILE_ARGS[@]}" down)
+        ok "Containers stopped and removed. Data volumes preserved."
       fi
     fi
   fi
@@ -338,12 +426,23 @@ EXISTING_PG_PASSWORD="$(read_env_val "POSTGRES_PASSWORD" "$ENV_FILE")"
 EXISTING_BUNDLED_WORKERS="$(read_env_val "BUNDLED_API_WORKERS" "$ENV_FILE")"
 EXISTING_WORKER_ROLE="$(read_env_val "WORKER_ROLE" "$ENV_FILE")"
 EXISTING_API_WORKERS="$(read_env_val "API_WORKERS" "$ENV_FILE")"
+EXISTING_REDIS_PASSWORD="$(read_env_val "REDIS_PASSWORD" "$ENV_FILE")"
+EXISTING_REDIS_URL="$(read_env_val "REDIS_URL" "$ENV_FILE")"
+EXISTING_QUEUE_KEY="$(read_env_val "SQLITE_QUEUE_ENCRYPTION_KEY" "$ENV_FILE")"
+EXISTING_BUNDLED_REDIS="$(read_env_val "BUNDLED_SQLITE_REDIS" "$ENV_FILE")"
+EXISTING_REDIS_KEY_PREFIX="$(read_env_val "REDIS_KEY_PREFIX" "$ENV_FILE")"
+EXISTING_REDIS_MAXMEMORY="$(read_env_val "REDIS_MAXMEMORY" "$ENV_FILE")"
 
 # A plain `--upgrade` must preserve a previously selected bundled profile.
 if [ -n "$EXISTING_BUNDLED_DB" ] && [ -n "$EXISTING_PG_PASSWORD" ]; then
   USE_POSTGRES=1
   USE_BUNDLED_POSTGRES=1
 fi
+if [ -n "$EXISTING_BUNDLED_REDIS" ] && [ -n "$EXISTING_REDIS_URL" ]; then
+  USE_SQLITE_REDIS=1
+  USE_BUNDLED_REDIS=1
+fi
+reject_conflicting_modes
 
 JWT_SECRET="${EXISTING_JWT:-$(generate_token)}"
 MACHINE_ID_SALT="${EXISTING_SALT:-$(generate_token | head -c 16)}"
@@ -365,6 +464,42 @@ if [ "$USE_POSTGRES" -eq 1 ]; then
 else
   DATABASE_URL="${DATABASE_URL:-${EXISTING_DB:-}}"
   API_WORKERS="${API_WORKERS:-${EXISTING_API_WORKERS:-1}}"
+fi
+
+if [ "$USE_SQLITE_REDIS" -eq 1 ]; then
+  # Preserve the operator's Redis memory cap: ambient env wins, then the
+  # existing .env value, then the default. Without persisting it, an upgrade
+  # silently resets a tuned cap back to the default.
+  REDIS_MAXMEMORY="${REDIS_MAXMEMORY:-${EXISTING_REDIS_MAXMEMORY:-256mb}}"
+  # `--sqlite-redis` without `--redis-url` means the bundled private Redis service.
+  if [ -z "$EXTERNAL_REDIS_URL" ] && [ -z "$REDIS_URL" ] && [ -z "$EXISTING_REDIS_URL" ]; then
+    USE_BUNDLED_REDIS=1
+  fi
+  if [ "$USE_BUNDLED_REDIS" -eq 1 ] && [ -z "$EXTERNAL_REDIS_URL" ]; then
+    # Bundled Redis: generate/preserve the ACL password and derive the URL.
+    REDIS_PASSWORD="${REDIS_PASSWORD:-${EXISTING_REDIS_PASSWORD:-$(generate_token)}}"
+    REDIS_URL="redis://:${REDIS_PASSWORD}@redis:6379/0"
+  else
+    # External Redis: never echo the operator-supplied URL or its credentials.
+    REDIS_URL="${EXTERNAL_REDIS_URL:-${REDIS_URL:-$EXISTING_REDIS_URL}}"
+    validate_external_redis_url "$REDIS_URL"
+  fi
+  REDIS_KEY_PREFIX="${REDIS_KEY_PREFIX:-${EXISTING_REDIS_KEY_PREFIX:-}}"
+  if [ -z "$REDIS_KEY_PREFIX" ]; then
+    REDIS_KEY_PREFIX="9router:$(generate_token | head -c 12)"
+  fi
+  SQLITE_QUEUE_ENCRYPTION_KEY="${SQLITE_QUEUE_ENCRYPTION_KEY:-${EXISTING_QUEUE_KEY:-$(generate_token)}}"
+  # The queue key must never reuse API-key HMAC material or the Redis password.
+  while [ "$SQLITE_QUEUE_ENCRYPTION_KEY" = "$API_KEY_SECRET" ] \
+     || { [ -n "$REDIS_PASSWORD" ] && [ "$SQLITE_QUEUE_ENCRYPTION_KEY" = "$REDIS_PASSWORD" ]; }; do
+    SQLITE_QUEUE_ENCRYPTION_KEY="$(generate_token)"
+  done
+  if [ "$API_WORKERS_EXPLICIT" -ne 1 ]; then
+    API_WORKERS="${EXISTING_API_WORKERS:-2}"
+  fi
+  if [ "$API_WORKERS" -lt 2 ]; then
+    fail "SQLite multicore requires API_WORKERS>=2 (got ${API_WORKERS})"
+  fi
 fi
 
 step "Generating environment configuration (.env)"
@@ -403,6 +538,19 @@ EOF
     echo "BUNDLED_DATABASE_URL=${DATABASE_URL}" >> "$ENV_FILE"
     echo "BUNDLED_API_WORKERS=${API_WORKERS}" >> "$ENV_FILE"
   fi
+  if [ "$USE_SQLITE_REDIS" -eq 1 ]; then
+    # Only the bundled profile writes REDIS_PASSWORD (Compose needs it for both
+    # the server and the health check); external URLs keep their own credentials.
+    if [ "$USE_BUNDLED_REDIS" -eq 1 ] && [ -z "$EXTERNAL_REDIS_URL" ]; then
+      echo "REDIS_PASSWORD=${REDIS_PASSWORD}" >> "$ENV_FILE"
+      echo "BUNDLED_SQLITE_REDIS=1" >> "$ENV_FILE"
+    fi
+    echo "SQLITE_MULTICORE=redis" >> "$ENV_FILE"
+    echo "REDIS_URL=${REDIS_URL}" >> "$ENV_FILE"
+    echo "REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX}" >> "$ENV_FILE"
+    echo "SQLITE_QUEUE_ENCRYPTION_KEY=${SQLITE_QUEUE_ENCRYPTION_KEY}" >> "$ENV_FILE"
+    echo "REDIS_MAXMEMORY=${REDIS_MAXMEMORY}" >> "$ENV_FILE"
+  fi
   chmod 600 "$ENV_FILE"
   ok "Saved ${ENV_FILE} (permissions 600)"
 fi
@@ -412,6 +560,9 @@ step "Building and starting 9Router container stack"
 COMPOSE_PROFILE_ARGS=()
 if [ "$USE_BUNDLED_POSTGRES" -eq 1 ]; then
   COMPOSE_PROFILE_ARGS+=(--profile postgres)
+fi
+if [ "$USE_SQLITE_REDIS" -eq 1 ] && [ "$USE_BUNDLED_REDIS" -eq 1 ]; then
+  COMPOSE_PROFILE_ARGS+=(--profile sqlite-multicore)
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then

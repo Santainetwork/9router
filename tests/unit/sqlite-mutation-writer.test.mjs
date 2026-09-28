@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 const { createMutationWriter, isTransientSqliteError } = await import("../../src/lib/db/sqliteMutationWriter.js");
 
 function fakeRedis(messages = []) {
-  const calls = { groups: [], reads: [], claims: [], evals: [], adds: [], sets: [], pushes: [] };
+  const calls = { groups: [], reads: [], claims: [], evals: [], adds: [], sets: [], pushes: [], publishes: [] };
   let read = 0;
   return {
     calls,
@@ -19,6 +19,8 @@ function fakeRedis(messages = []) {
     async xAdd(...args) { calls.adds.push(args); return "2-0"; },
     async set(...args) { calls.sets.push(args); return "OK"; },
     async lPush(...args) { calls.pushes.push(args); return 1; },
+    async publish(...args) { calls.publishes.push(args); return 1; },
+    async publish(...args) { calls.publishes.push(args); return 1; },
     async expire() { return 1; },
   };
 }
@@ -78,6 +80,60 @@ test("writer creates consumer group, commits mutation, then atomically finishes 
   assert.equal(redis.calls.evals.length, 1);
   assert.equal(writer.status().committed, 1);
   await writer.stop();
+});
+
+test("writer publishes committed dbVersion channel after config mutation commit", async () => {
+  const redis = fakeRedis([message()]);
+  const db = fakeDb();
+  const order = [];
+  db.transaction = (fn) => { const value = fn(); order.push("commit"); return value; };
+  redis.publish = async (...args) => { order.push("publish"); redis.calls.publishes.push(args); return 1; };
+  redis.eval = async (...args) => { order.push("ack"); redis.calls.evals.push(args); return [1, 1]; };
+  const writer = createMutationWriter({
+    redis,
+    db,
+    namespace: "install-a",
+    applyMutation() { return { updated: true, version: 7 }; },
+  });
+  await writer.start();
+  await writer.runOnce({ blockMs: 1 });
+  assert.deepEqual(order, ["commit", "publish", "ack"]);
+  assert.deepEqual(redis.calls.publishes, [["install-a:db-version", "7"]]);
+});
+
+test("publish failure after commit leaves stream entry pending and replays via recovery", async () => {
+  const redis = fakeRedis([message()]);
+  const db = fakeDb();
+  let committed = false;
+  db.get = (sql) => sql.includes("sqliteMutationReceipts") && committed
+    ? { result: JSON.stringify({ updated: true, version: 8 }), appliedAt: "2026-09-25T00:00:01.000Z" }
+    : null;
+  db.transaction = (fn) => { const value = fn(); committed = true; return value; };
+  let publishes = 0;
+  redis.publish = async () => {
+    publishes++;
+    if (publishes === 1) throw new Error("Redis disconnected");
+    return 1;
+  };
+  // The failed entry stays unacknowledged and surfaces only when reclaimed.
+  redis.xAutoClaim = async () => {
+    redis.calls.claims.push(true);
+    return { nextId: "0-0", messages: [message()] };
+  };
+  const writer = createMutationWriter({
+    redis,
+    db,
+    namespace: "install-b",
+    applyMutation() { return { updated: true, version: 8 }; },
+  });
+  await writer.start();
+  await assert.rejects(writer.runOnce({ blockMs: 1 }), /Redis disconnected/);
+  assert.equal(redis.calls.evals.length, 0);
+  assert.equal(publishes, 1);
+  await writer.recoverPending();
+  assert.equal(publishes, 2);
+  assert.equal(redis.calls.evals.length, 1);
+  assert.equal(writer.status().duplicates, 1);
 });
 
 test("duplicate durable receipt is a successful no-op then acknowledged", async () => {
@@ -169,9 +225,16 @@ test("sync mutation receives bounded receipt result only after commit", async ()
   const writer = createMutationWriter({ redis, db: fakeDb(), applyMutation() { return { stored: true }; } });
   await writer.start();
   await writer.runOnce({ blockMs: 1 });
-  assert.equal(redis.calls.pushes.length, 1);
-  assert.match(redis.calls.pushes[0][0], /m-1234567890abcdef/);
-  assert.equal(JSON.parse(redis.calls.pushes[0][1]).ok, true);
+  // The receipt publish must be atomic: lPush then expire as two commands
+  // leaves an orphaned receipt key without a TTL when the writer crashes in
+  // between, and receipts accumulate forever. One EVAL does LPUSH + PEXPIRE.
+  assert.equal(redis.calls.pushes.length, 0, "no separate lPush command");
+  const receiptEval = redis.calls.evals.find((args) => String(args[0]).includes("LPUSH"));
+  assert.ok(receiptEval, "receipt published via atomic LPUSH+PEXPIRE script");
+  const [script, { keys, arguments: argv }] = receiptEval;
+  assert.match(String(keys[0]), /m-1234567890abcdef/);
+  assert.equal(JSON.parse(argv[0]).ok, true);
+  assert.match(argv[1], /^60000$/, "PEXPIRE 60s in milliseconds");
 });
 
 test("SQLite transient classification is narrow", () => {

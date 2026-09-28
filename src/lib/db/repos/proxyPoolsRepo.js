@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { bumpDbVersion } from "../dbVersion.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 function rowToPool(row) {
@@ -37,6 +38,7 @@ function upsert(db, p) {
        data=excluded.data, updatedAt=excluded.updatedAt`,
     [r.id, r.isActive, r.testStatus, r.data, r.createdAt, r.updatedAt]
   );
+  bumpDbVersion(db);
 }
 
 export async function getProxyPools(filter = {}) {
@@ -73,7 +75,7 @@ export async function createProxyPool(data) {
     createdAt: now,
     updatedAt: now,
   };
-  upsert(db, pool);
+  db.transaction(() => upsert(db, pool));
   return pool;
 }
 
@@ -98,6 +100,7 @@ export async function deleteProxyPool(id) {
     if (!row) return;
     removed = rowToPool(row);
     db.run(`DELETE FROM proxyPools WHERE id = ?`, [id]);
+    bumpDbVersion(db);
   });
   return removed;
 }

@@ -296,3 +296,102 @@ test("connection.update for a missing connection returns updated:false without b
   assert.equal(result.updated, false);
   assert.equal(db.get("SELECT version FROM dbVersion WHERE id = 1").version, 0);
 });
+
+test("connection.update writes top-level columns, resets health on activation, reorders, excludes top-level from data, bumps once", () => {
+  const { db, adapter } = createDb();
+  db.run("CREATE TABLE IF NOT EXISTS providerConnections (id TEXT PRIMARY KEY, provider TEXT, authType TEXT, name TEXT, email TEXT, priority INTEGER, isActive INTEGER, data TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)");
+  db.run("CREATE TABLE IF NOT EXISTS dbVersion (id INTEGER PRIMARY KEY, version INTEGER NOT NULL DEFAULT 0, updatedAt TEXT)");
+  const stale = {
+    accessToken: "at-keep",
+    lastError: "429 rate limited",
+    lastErrorAt: "2026-09-25T00:00:00.000Z",
+    errorCode: "rate_limit",
+    rateLimitedUntil: "2026-09-25T02:00:00.000Z",
+    backoffLevel: 4,
+    modelLock_claude: "2026-09-25T03:00:00.000Z",
+    modelLock_gpt: "2026-09-25T04:00:00.000Z",
+    testStatus: "unavailable",
+  };
+  db.run("INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, 'anthropic', 'oauth', ?, ?, ?, ?, ?, ?, ?)",
+    ["conn-1", "old-name", "old@example.com", 3, 1, JSON.stringify(stale), "t0", "2026-09-25T00:00:00.000Z"]);
+  db.run("INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, 'anthropic', 'oauth', ?, ?, ?, ?, ?, ?, ?)",
+    ["conn-2", "second", "two@example.com", 1, 1, JSON.stringify({}), "t0", "2026-09-25T00:00:01.000Z"]);
+  db.run("INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, 'anthropic', 'oauth', ?, ?, ?, ?, ?, ?, ?)",
+    ["conn-3", "third", "three@example.com", 2, 1, JSON.stringify({}), "t0", "2026-09-25T00:00:02.000Z"]);
+  db.run("INSERT INTO dbVersion(id, version) VALUES(1, 7)");
+
+  const result = applyMutation(adapter, {
+    schemaVersion: 1,
+    type: "connection.update",
+    receiptId: "m-1234567890abcdef",
+    workerId: "worker-1",
+    createdAt: "2026-09-25T00:00:00.000Z",
+    payload: {
+      connectionId: "conn-1",
+      updates: {
+        name: "new-name",
+        email: "new@example.com",
+        priority: 1,
+        isActive: false,
+        testStatus: "active",
+      },
+    },
+    consistency: "sync",
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(result.version, 8, "exactly +1 bump");
+  assert.equal(db.get("SELECT version FROM dbVersion WHERE id = 1").version, 8);
+
+  const row = db.get("SELECT * FROM providerConnections WHERE id = 'conn-1'");
+  assert.equal(row.name, "new-name");
+  assert.equal(row.email, "new@example.com");
+  assert.equal(row.priority, 1);
+  assert.equal(row.isActive, 0);
+  assert.equal(row.provider, "anthropic");
+  assert.equal(row.authType, "oauth");
+
+  const data = JSON.parse(row.data);
+  assert.equal(data.testStatus, "active");
+  assert.equal(data.accessToken, "at-keep", "credentials preserved");
+  // Activation clears stale health/cooldown state and every model lock.
+  assert.equal(data.lastError, null);
+  assert.equal(data.lastErrorAt, null);
+  assert.equal(data.errorCode, null);
+  assert.equal(data.rateLimitedUntil, null);
+  assert.equal(data.backoffLevel, 0);
+  assert.equal(data.modelLock_claude, null);
+  assert.equal(data.modelLock_gpt, null);
+  // Top-level columns live in columns, never duplicated inside data JSON.
+  for (const key of ["id", "provider", "authType", "name", "email", "priority", "isActive", "createdAt", "updatedAt"]) {
+    assert.equal(Object.hasOwn(data, key), false, `data must not carry ${key}`);
+  }
+
+  // Reorder ran because priority changed: conn-1 (freshly bumped to priority 1)
+  // sorts ahead of conn-2 on the updatedAt tie-break, then conn-3.
+  const order = db.all("SELECT id, priority FROM providerConnections WHERE provider = 'anthropic' ORDER BY priority ASC");
+  assert.deepEqual(order.map((r) => r.id), ["conn-1", "conn-2", "conn-3"]);
+  assert.deepEqual(order.map((r) => r.priority), [1, 2, 3]);
+});
+
+test("connection.update without priority leaves row order untouched", () => {
+  const { db, adapter } = createDb();
+  db.run("CREATE TABLE IF NOT EXISTS providerConnections (id TEXT PRIMARY KEY, provider TEXT, authType TEXT, name TEXT, email TEXT, priority INTEGER, isActive INTEGER, data TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)");
+  db.run("CREATE TABLE IF NOT EXISTS dbVersion (id INTEGER PRIMARY KEY, version INTEGER NOT NULL DEFAULT 0, updatedAt TEXT)");
+  db.run("INSERT INTO providerConnections(id, provider, authType, priority, data, createdAt, updatedAt) VALUES(?, 'anthropic', 'oauth', ?, ?, ?, ?)", ["conn-1", 5, JSON.stringify({}), "t0", "t0"]);
+  db.run("INSERT INTO providerConnections(id, provider, authType, priority, data, createdAt, updatedAt) VALUES(?, 'anthropic', 'oauth', ?, ?, ?, ?)", ["conn-2", 9, JSON.stringify({}), "t0", "t0"]);
+  db.run("INSERT INTO dbVersion(id, version) VALUES(1, 0)");
+
+  applyMutation(adapter, {
+    schemaVersion: 1,
+    type: "connection.update",
+    receiptId: "m-1234567890abcdef",
+    workerId: "worker-1",
+    createdAt: "2026-09-25T00:00:00.000Z",
+    payload: { connectionId: "conn-1", updates: { testStatus: "unavailable" } },
+    consistency: "sync",
+  });
+
+  assert.equal(db.get("SELECT priority FROM providerConnections WHERE id = 'conn-1'").priority, 5);
+  assert.equal(db.get("SELECT priority FROM providerConnections WHERE id = 'conn-2'").priority, 9);
+});

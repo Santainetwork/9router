@@ -12,11 +12,11 @@
 // Everything is dependency-injected so the gate is testable without Redis,
 // SQLite or the Go engine.
 
+import { redisNamespace } from "../redis/client.js";
+import { checkRoutingState } from "../redis/routingState.js";
 import { getAdapter, isSqliteMulticoreWorker } from "./driver.js";
 import { checkDatabaseReady } from "./readiness.js";
 
-const DEFAULT_NAMESPACE = "9router:sqlite";
-const DEFAULT_STREAM_KEY = "9router:sqlite:mutations";
 const DEFAULT_GROUP = "sqlite-writer";
 const DEFAULT_MAX_BACKLOG = 10_000;
 const DEFAULT_MAX_PENDING_AGE_MS = 120_000;
@@ -67,8 +67,9 @@ export async function checkWorkerReady(deps = {}) {
   const loadAdapter = deps.getAdapter ?? getAdapter;
   const redis = deps.redis;
   const now = deps.now ?? (() => Date.now());
-  const heartbeatKey = deps.heartbeatKey ?? `${deps.namespace ?? DEFAULT_NAMESPACE}:writer:heartbeat`;
-  const streamKey = deps.streamKey ?? DEFAULT_STREAM_KEY;
+  const namespace = deps.namespace ?? redisNamespace(env);
+  const heartbeatKey = deps.heartbeatKey ?? `${namespace}:writer:heartbeat`;
+  const streamKey = deps.streamKey ?? `${namespace}:mutations`;
   const group = deps.group ?? DEFAULT_GROUP;
   const maxBacklog = deps.maxBacklog ?? DEFAULT_MAX_BACKLOG;
   const maxPendingAgeMs = deps.maxPendingAgeMs ?? DEFAULT_MAX_PENDING_AGE_MS;
@@ -94,6 +95,11 @@ export async function checkWorkerReady(deps = {}) {
     pingOk = (await redis.ping?.()) === "PONG";
   } catch {}
   if (!pingOk) return fail(db.database ?? database, WORKER_READY_REASONS.redisUnhealthy);
+
+  const routingProbe = deps.checkRoutingState ?? checkRoutingState;
+  if (!(await routingProbe(redis, namespace))) {
+    return fail(db.database ?? database, WORKER_READY_REASONS.redisUnhealthy);
+  }
 
   // 3. Writer heartbeat live. The writer sets the key with PX, so Redis owns
   //    the deadline: a skewed worker clock cannot invalidate a beating writer,

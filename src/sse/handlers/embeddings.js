@@ -5,6 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
+import { withWorkerRefusal } from "@/lib/db/providerEligibility.js";
 import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -30,7 +31,7 @@ function exactEmbeddingUsage(raw) {
  *
  * @param {Request} request
  */
-export async function handleEmbeddings(request) {
+async function doHandleEmbeddings(request) {
   let body;
   try {
     body = await request.json();
@@ -188,3 +189,5 @@ async function doHandleEmbeddings(request, body, apiKey, modelStr, settings, url
     return result.response;
   }
 }
+
+export const handleEmbeddings = withWorkerRefusal(doHandleEmbeddings);

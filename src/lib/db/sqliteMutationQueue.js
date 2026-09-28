@@ -1,6 +1,6 @@
 import { buildMutation, validateMutation, MutationValidationError } from "./mutationProtocol.js";
+import { redisNamespace } from "../redis/client.js";
 
-const DEFAULT_NAMESPACE = "9router:sqlite";
 const DEFAULT_MAX_QUEUED = 10_000;
 const DEFAULT_SYNC_TIMEOUT_MS = 5_000;
 const MAX_SYNC_TIMEOUT_MS = 60_000;
@@ -53,7 +53,7 @@ function receiptResult(reply, receiptId) {
 
 export function createMutationQueue({
   redis,
-  namespace = DEFAULT_NAMESPACE,
+  namespace = redisNamespace(),
   workerId = `worker-${process.pid}`,
   maxQueued = DEFAULT_MAX_QUEUED,
   syncTimeoutMs = DEFAULT_SYNC_TIMEOUT_MS,

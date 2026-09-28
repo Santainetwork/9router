@@ -1,4 +1,5 @@
 import { getAdapter } from "../driver.js";
+import { bumpDbVersion } from "../dbVersion.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const SCOPE = "disabledModels";
@@ -29,6 +30,7 @@ export async function disableModels(providerAlias, ids) {
       `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
       [SCOPE, providerAlias, stringifyJson(merged)]
     );
+    bumpDbVersion(db);
   });
 }
 
@@ -38,6 +40,7 @@ export async function enableModels(providerAlias, ids) {
   db.transaction(() => {
     if (!Array.isArray(ids) || ids.length === 0) {
       db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [SCOPE, providerAlias]);
+      bumpDbVersion(db);
       return;
     }
     const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [SCOPE, providerAlias]);
@@ -52,5 +55,6 @@ export async function enableModels(providerAlias, ids) {
         [SCOPE, providerAlias, stringifyJson(next)]
       );
     }
+    bumpDbVersion(db);
   });
 }

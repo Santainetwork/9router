@@ -11,6 +11,7 @@ import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { withWorkerRefusal } from "@/lib/db/providerEligibility.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
@@ -21,7 +22,7 @@ import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
  *
  * @param {Request} request
  */
-export async function handleFetch(request) {
+async function doHandleFetch(request) {
   let body;
   try {
     body = await request.json();
@@ -109,6 +110,8 @@ export async function handleFetch(request) {
 
   return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
 }
+
+export const handleFetch = withWorkerRefusal(doHandleFetch);
 
 async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {
   const targetUrl = body.url;

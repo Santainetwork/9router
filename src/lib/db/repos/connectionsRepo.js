@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter, isSqliteMulticoreWorker } from "../driver.js";
-import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { bumpDbVersion } from "../dbVersion.js";
+import {
+  resetHealthStateOnActivation, rowToConn, upsert, reorderInTx,
+} from "./connectionRow.js";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -10,73 +13,7 @@ const OPTIONAL_FIELDS = [
   "consecutiveUseCount", "idToken", "lastRefreshAt",
 ];
 
-const MODEL_LOCK_PREFIX = "modelLock_";
 
-function resetHealthStateOnActivation(existing, patch) {
-  if (patch?.testStatus !== "active") return patch;
-
-  const normalized = {
-    ...patch,
-    testStatus: "active",
-    lastError: Object.hasOwn(patch, "lastError") ? patch.lastError : null,
-    lastErrorAt: Object.hasOwn(patch, "lastErrorAt") ? patch.lastErrorAt : null,
-    errorCode: null,
-    rateLimitedUntil: null,
-    backoffLevel: 0,
-  };
-
-  for (const key of Object.keys(existing || {})) {
-    if (key.startsWith(MODEL_LOCK_PREFIX)) normalized[key] = null;
-  }
-
-  return normalized;
-}
-
-function rowToConn(row) {
-  if (!row) return null;
-  const extra = parseJson(row.data, {});
-  return {
-    ...extra,
-    id: row.id,
-    provider: row.provider,
-    authType: row.authType,
-    name: row.name,
-    email: row.email,
-    priority: row.priority,
-    isActive: row.isActive === 1 || row.isActive === true,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
-function connToRow(c) {
-  const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
-  return {
-    id,
-    provider,
-    authType,
-    name: name ?? null,
-    email: email ?? null,
-    priority: priority ?? null,
-    isActive: isActive === false ? 0 : 1,
-    data: stringifyJson(rest),
-    createdAt,
-    updatedAt,
-  };
-}
-
-function upsert(db, c) {
-  const r = connToRow(c);
-  db.run(
-    `INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       provider=excluded.provider, authType=excluded.authType, name=excluded.name,
-       email=excluded.email, priority=excluded.priority, isActive=excluded.isActive,
-       data=excluded.data, updatedAt=excluded.updatedAt`,
-    [r.id, r.provider, r.authType, r.name, r.email, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt]
-  );
-}
 
 function deriveConnectionName(data, fallbackName) {
   if (data.provider === "github") {
@@ -106,30 +43,6 @@ export async function getProviderConnectionById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
   return rowToConn(row);
-}
-
-// Internal sync reorder — must be called INSIDE a transaction.
-//
-// Normalizes priorities to a contiguous 1..N after a DELETE or an explicit
-// reorder, so gaps don't accumulate over time.
-//
-// Deliberately NOT called on insert: a new connection already gets
-// MAX(priority)+1, which sorts after every existing row, so the order is
-// identical with or without the rewrite. Skipping it there is what makes
-// import O(1) per key instead of O(pool) — see createProviderConnection.
-function reorderInTx(db, providerId) {
-  const list = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [providerId]).map(rowToConn);
-  list.sort((a, b) => {
-    const pDiff = (a.priority || 0) - (b.priority || 0);
-    if (pDiff !== 0) return pDiff;
-    return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
-  });
-  list.forEach((c, i) => {
-    const want = i + 1;
-    if ((c.priority || 0) !== want) {
-      db.run(`UPDATE providerConnections SET priority = ? WHERE id = ?`, [want, c.id]);
-    }
-  });
 }
 
 export async function createProviderConnection(data) {
@@ -212,6 +125,7 @@ export async function createProviderConnection(data) {
       const normalized = resetHealthStateOnActivation(existing, data);
       const merged = { ...existing, ...normalized, updatedAt: now };
       upsert(db, merged);
+      bumpDbVersion(db);
       result = merged;
       return;
     }
@@ -253,6 +167,7 @@ export async function createProviderConnection(data) {
     // produced anyway. The rewrite cost ~2N statements per insert — O(pool) —
     // which made a 5k-key import O(n*m): ~25M statements at a 5k pool, and it
     // serialized every parallel writer on the same transaction. #4311
+    bumpDbVersion(db);
     result = conn;
   });
 
@@ -279,6 +194,7 @@ export async function updateProviderConnection(id, data) {
     const merged = { ...existing, ...normalized, updatedAt: new Date().toISOString() };
     upsert(db, merged);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
+    bumpDbVersion(db);
     result = merged;
   });
   return result;
@@ -292,6 +208,7 @@ export async function deleteProviderConnection(id) {
     if (!row) return;
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider);
+    bumpDbVersion(db);
     ok = true;
   });
   return ok;
@@ -299,14 +216,22 @@ export async function deleteProviderConnection(id) {
 
 export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
-  const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);
-  db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
-  return before?.n || 0;
+  let removed = 0;
+  db.transaction(() => {
+    const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);
+    removed = before?.n || 0;
+    db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
+    if (removed > 0) bumpDbVersion(db);
+  });
+  return removed;
 }
 
 export async function reorderProviderConnections(providerId) {
   const db = await getAdapter();
-  db.transaction(() => reorderInTx(db, providerId));
+  db.transaction(() => {
+    reorderInTx(db, providerId);
+    bumpDbVersion(db);
+  });
 }
 
 export async function cleanupProviderConnections() {
@@ -321,21 +246,23 @@ export async function cleanupProviderConnections() {
   let cleaned = 0;
   db.transaction(() => {
     const rows = db.all(`SELECT * FROM providerConnections`);
+    let dirty = false;
     for (const row of rows) {
       const conn = rowToConn(row);
-      let dirty = false;
+      let rowDirty = false;
       for (const f of fieldsToCheck) {
         if (conn[f] === null || conn[f] === undefined) {
-          if (f in conn) { delete conn[f]; cleaned++; dirty = true; }
+          if (f in conn) { delete conn[f]; cleaned++; rowDirty = true; }
         }
       }
       if (conn.providerSpecificData && Object.keys(conn.providerSpecificData).length === 0) {
         delete conn.providerSpecificData;
         cleaned++;
-        dirty = true;
+        rowDirty = true;
       }
-      if (dirty) upsert(db, conn);
+      if (rowDirty) { upsert(db, conn); dirty = true; }
     }
+    if (dirty) bumpDbVersion(db);
   });
   return cleaned;
 }

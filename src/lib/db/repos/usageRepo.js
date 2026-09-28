@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter, isSqliteMulticoreWorker } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { createVersionedCache, readCommittedDbVersion } from "../../redis/cacheVersion.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -22,18 +23,16 @@ if (!global._statsEmitter) {
   global._statsEmitter.setMaxListeners(50);
 }
 if (!global._pendingTimers) global._pendingTimers = {};
-if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
-if (!global._connectionListCache) global._connectionListCache = { items: [], ts: 0, promise: null };
-if (!global._nodePrefixMapCache) global._nodePrefixMapCache = { map: {}, ts: 0 };
 if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null };
 
 const pendingRequests = global._pendingRequests;
 const lastErrorProvider = global._lastErrorProvider;
 const pendingTimers = global._pendingTimers;
-const connCache = global._connectionMapCache;
-const connectionListCache = global._connectionListCache;
-const nodePrefixCache = global._nodePrefixMapCache;
 const statsEmitTimers = global._statsEmitTimers;
+
+const connectionMapCache = createVersionedCache({ ttlMs: CONN_CACHE_TTL_MS });
+const connectionListCache = createVersionedCache({ ttlMs: CONN_CACHE_TTL_MS });
+const nodePrefixCache = createVersionedCache({ ttlMs: CONN_CACHE_TTL_MS });
 
 export const statsEmitter = global._statsEmitter;
 
@@ -100,51 +99,43 @@ function aggregateEntryToDay(day, entry) {
 }
 
 async function getConnectionMapCached() {
-  if (Date.now() - connCache.ts < CONN_CACHE_TTL_MS) return connCache.map;
   try {
     const { getProviderConnections } = await import("./connectionsRepo.js");
-    const all = await getProviderConnections();
-    const map = {};
-    for (const c of all) map[c.id] = c.name || c.email || c.id;
-    connCache.map = map;
-    connCache.ts = Date.now();
+    const db = await getAdapter();
+    return await connectionMapCache.get(db, async () => {
+      const all = await getProviderConnections();
+      const map = {};
+      for (const c of all) map[c.id] = c.name || c.email || c.id;
+      return map;
+    });
   } catch {}
-  return connCache.map;
+  return {};
 }
 
 async function getConnectionListCached() {
-  if (Date.now() - connectionListCache.ts < CONN_CACHE_TTL_MS) return connectionListCache.items;
-  if (!connectionListCache.promise) {
-    connectionListCache.promise = import("./connectionsRepo.js")
-      .then(({ getProviderConnections }) => getProviderConnections())
-      .then((items) => {
-        connectionListCache.items = items;
-        connectionListCache.ts = Date.now();
-        return items;
-      })
-      .finally(() => { connectionListCache.promise = null; });
-  }
-  return connectionListCache.promise;
+  const db = await getAdapter();
+  return await connectionListCache.get(db, async () => {
+    const { getProviderConnections } = await import("./connectionsRepo.js");
+    return await getProviderConnections();
+  });
 }
 
 export async function getNodePrefixMapCached() {
-  if (nodePrefixCache.map && Date.now() - nodePrefixCache.ts < CONN_CACHE_TTL_MS) {
-    return nodePrefixCache.map;
-  }
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT id, data FROM providerNodes`);
-    const map = {};
-    for (const r of rows) {
-      try {
-        const d = parseJson(r.data, {});
-        if (d?.prefix) map[r.id] = d.prefix;
-      } catch {}
-    }
-    nodePrefixCache.map = map;
-    nodePrefixCache.ts = Date.now();
+    return await nodePrefixCache.get(db, async () => {
+      const rows = db.all(`SELECT id, data FROM providerNodes`);
+      const map = {};
+      for (const r of rows) {
+        try {
+          const d = parseJson(r.data, {});
+          if (d?.prefix) map[r.id] = d.prefix;
+        } catch {}
+      }
+      return map;
+    });
   } catch {}
-  return nodePrefixCache.map;
+  return {};
 }
 
 async function calculateCost(provider, model, tokens, meta = {}) {

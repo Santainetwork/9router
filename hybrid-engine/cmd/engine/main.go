@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -132,6 +133,26 @@ func readyHandler(upstream string) http.HandlerFunc {
 	}
 }
 
+// resolveControlFallback returns the effective ControlFallback value. The
+// explicit -control-fallback flag wins when set; otherwise the CONTROL_FALLBACK
+// env var is honored. An invalid env value is always fatal so misconfiguration
+// cannot silently disable the fail-closed default.
+func resolveControlFallback(flagSet bool, flagVal bool, envRaw string) (bool, error) {
+	if envRaw != "" {
+		if _, err := strconv.ParseBool(envRaw); err != nil {
+			return false, fmt.Errorf("invalid CONTROL_FALLBACK value %q: %w", envRaw, err)
+		}
+	}
+	if flagSet {
+		return flagVal, nil
+	}
+	if envRaw == "" {
+		return false, nil
+	}
+	v, _ := strconv.ParseBool(envRaw)
+	return v, nil
+}
+
 func defaultStaticDir() string {
 	candidates := []string{
 		"/opt/9router/deploy",
@@ -156,7 +177,20 @@ func main() {
 	proxyRPM := flag.Int("proxy-rpm", 0, "Default per-key RPM limit in proxy (0 = disabled)")
 	proxyTimeout := flag.Int("proxy-timeout", 60, "Proxy queue timeout in seconds")
 	apiWorkers := flag.String("api-workers", "", "Comma-separated API worker URLs")
+	controlFallback := flag.Bool("control-fallback", false, "Allow API requests to fall back to control upstream when workers are unready and control is healthy")
 	flag.Parse()
+
+	controlFallbackSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "control-fallback" {
+			controlFallbackSet = true
+		}
+	})
+	controlFallbackEnv := strings.TrimSpace(os.Getenv("CONTROL_FALLBACK"))
+	controlFallbackResolved, err := resolveControlFallback(controlFallbackSet, *controlFallback, controlFallbackEnv)
+	if err != nil {
+		log.Fatalf("[Hybrid Go Engine] %v", err)
+	}
 	var apiWorkerURLs []string
 	for _, workerURL := range strings.Split(*apiWorkers, ",") {
 		if workerURL = strings.TrimSpace(workerURL); workerURL != "" {
@@ -239,14 +273,15 @@ func main() {
 	var gatewaySrv *http.Server
 	if *gatewayPort > 0 {
 		gatewayHandler, err := proxy.NewServer(proxy.Config{
-			UpstreamURL:    *upstream,
-			StaticDir:      *staticDir,
-			Limiter:        eng,
-			KeyConcurrency: *proxyConcurrency,
-			KeyRPM:         *proxyRPM,
-			QueueTimeout:   time.Duration(*proxyTimeout) * time.Second,
-			AllowAllPaths:  true, // Master Gateway allows /dashboard, /_next, /api, and gates /v1
-			APIWorkerURLs:  apiWorkerURLs,
+			UpstreamURL:     *upstream,
+			StaticDir:       *staticDir,
+			Limiter:         eng,
+			KeyConcurrency:  *proxyConcurrency,
+			KeyRPM:          *proxyRPM,
+			QueueTimeout:    time.Duration(*proxyTimeout) * time.Second,
+			AllowAllPaths:   true, // Master Gateway allows /dashboard, /_next, /api, and gates /v1
+			APIWorkerURLs:   apiWorkerURLs,
+			ControlFallback: controlFallbackResolved,
 		})
 		if err != nil {
 			log.Fatalf("[Master Gateway] Initialization error: %v", err)
@@ -267,14 +302,15 @@ func main() {
 	var proxySrv *http.Server
 	if *proxyPort > 0 {
 		proxyHandler, err := proxy.NewServer(proxy.Config{
-			UpstreamURL:    *upstream,
-			StaticDir:      *staticDir,
-			Limiter:        eng,
-			KeyConcurrency: *proxyConcurrency,
-			KeyRPM:         *proxyRPM,
-			QueueTimeout:   time.Duration(*proxyTimeout) * time.Second,
-			AllowAllPaths:  false, // Public proxy mode: blocks admin routes with 404
-			APIWorkerURLs:  apiWorkerURLs,
+			UpstreamURL:     *upstream,
+			StaticDir:       *staticDir,
+			Limiter:         eng,
+			KeyConcurrency:  *proxyConcurrency,
+			KeyRPM:          *proxyRPM,
+			QueueTimeout:    time.Duration(*proxyTimeout) * time.Second,
+			AllowAllPaths:   false, // Public proxy mode: blocks admin routes with 404
+			APIWorkerURLs:   apiWorkerURLs,
+			ControlFallback: controlFallbackResolved,
 		})
 		if err != nil {
 			log.Fatalf("[Frontdoor Proxy] Initialization error: %v", err)

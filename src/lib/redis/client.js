@@ -2,6 +2,20 @@ import { createClient as defaultCreateClient } from "redis";
 
 const CONNECT_TIMEOUT_MS = 2000;
 const COMMAND_TIMEOUT_MS = 2000;
+const DEFAULT_REDIS_NAMESPACE = "9router:sqlite";
+const REDIS_NAMESPACE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/;
+
+// Deployment-scoped Redis key namespace. Two installations on one Redis must not
+// share a mutation stream, receipt key, heartbeat or routing counter, so the
+// namespace comes from REDIS_KEY_PREFIX. The default keeps existing single-stack
+// installs on the historical 9router:sqlite keys. Unsafe prefixes fail closed
+// rather than being truncated into an ambiguous namespace.
+export function redisNamespace(env = process.env) {
+  const value = String(env?.REDIS_KEY_PREFIX ?? "").trim();
+  if (!value) return DEFAULT_REDIS_NAMESPACE;
+  if (!REDIS_NAMESPACE_PATTERN.test(value)) throw new TypeError("REDIS_KEY_PREFIX must be a safe Redis namespace");
+  return value;
+}
 
 export function createRedisManager({ url = process.env.REDIS_URL, createClient = defaultCreateClient } = {}) {
   if (!url) throw new Error("REDIS_URL is required");

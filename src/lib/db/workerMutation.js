@@ -129,6 +129,9 @@ const TOKEN_BEARING_KEYS = [
   "accessToken", "refreshToken", "idToken", "apiKey", "token",
   "copilotToken", "copilotTokenExpiresAt", "providerSpecificData", "expiresAt",
   "expiresIn", "lastRefreshAt", "projectId", "scope", "tokenType",
+  // lastError carries upstream error text, which can embed response-body
+  // fragments. It rides encrypted, never plaintext in the stream.
+  "lastError",
 ];
 
 function splitConnectionUpdate(updates) {

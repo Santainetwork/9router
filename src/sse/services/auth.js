@@ -1,13 +1,26 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
-import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
+import { resolveConnectionProxyConfig, pickProxyPoolId, pickProxyPoolIdMulticore } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
+import { isSqliteMulticoreWorker } from "@/lib/db/driver.js";
+import { assertProviderWorkerSafe } from "@/lib/db/providerEligibility.js";
 import * as log from "../utils/logger.js";
 
-// Mutex to prevent race conditions during account selection
+// Mutex to prevent race conditions during account selection (single-process).
+// Multicore replaces this with atomic Redis routing state; never fall back.
 let selectionMutex = Promise.resolve();
+
+let sharedRoutingState = null;
+async function getSharedRoutingState() {
+  if (!sharedRoutingState) {
+    const { getRedisManager } = await import("@/lib/redis/client.js");
+    const { createRoutingState } = await import("@/lib/redis/routingState.js");
+    sharedRoutingState = createRoutingState({ redis: await getRedisManager().command() });
+  }
+  return sharedRoutingState;
+}
 
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 
@@ -42,6 +55,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
     const providerId = resolveProviderId(provider);
 
+    // Runtime eligibility gate: unknown/stateful providers stay control-only in
+    // SQLite multicore. Single-process and Postgres are unchanged (isWorker false).
+    assertProviderWorkerSafe(providerId, { isWorker: isSqliteMulticoreWorker });
+
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
       const settings = await getSettings();
@@ -51,7 +68,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (strategy !== "none") {
         const allPools = await getProxyPools({ isActive: true });
         const poolIds = allPools.filter(p => p.proxyUrl).map(p => p.id);
-        pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+        pickedId = isSqliteMulticoreWorker()
+          ? await pickProxyPoolIdMulticore(poolIds, strategy, providerId, {
+              getRedisManager: async () => (await import("@/lib/redis/client.js")).getRedisManager(),
+              isWorker: async () => isSqliteMulticoreWorker(),
+            })
+          : pickProxyPoolId(poolIds, strategy, providerId);
       }
       const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
       return {
@@ -151,41 +173,70 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
-      // Sort by lastUsed (most recent first) to find current candidate
-      const byRecency = [...availableConnections].sort((a, b) => {
-        if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
-        if (!a.lastUsedAt) return 1;
-        if (!b.lastUsedAt) return -1;
-        return new Date(b.lastUsedAt) - new Date(a.lastUsedAt);
-      });
-
-      const current = byRecency[0];
-      const currentCount = current?.consecutiveUseCount || 0;
-
-      if (current && current.lastUsedAt && currentCount < stickyLimit) {
-        // Stay with current account
-        connection = current;
-        // Update lastUsedAt and increment count (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
-          lastUsedAt: new Date().toISOString(),
-          consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
-        });
+      if (isSqliteMulticoreWorker()) {
+        // Multicore: atomic Redis rotation over eligible IDs. No local fallback;
+        // Redis failure rejects and fails the selection closed. The returned ID
+        // is revalidated against a fresh read of the committed connection list
+        // before dispatch: another process may have deactivated, locked or
+        // deleted the account between our snapshot and now.
+        const routing = await getSharedRoutingState();
+        const eligibleIds = availableConnections.map((c) => c.id);
+        const scope = `account:${providerId}:${model || "all"}`;
+        const idx = await routing.rotateSticky(scope, eligibleIds, stickyLimit);
+        const pickedId = eligibleIds[idx];
+        // Revalidation: re-read current committed state and confirm the picked
+        // account is still present, active and eligible for this model.
+        const currentConnections = await getProviderConnections({ provider: providerId, isActive: true });
+        const stillEligible = currentConnections.filter((c) =>
+          !excludeSet.has(c.id) && !isModelLockActive(c, model),
+        );
+        connection = stillEligible.find((c) => c.id === pickedId);
+        if (connection) {
+          log.info("AUTH", `${provider} | redis round-robin → ${connection.id?.slice(0, 8)}`);
+          await updateProviderConnection(connection.id, {
+            lastUsedAt: new Date().toISOString(),
+            consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1,
+          });
+        } else {
+          throw new Error("selected provider account no longer eligible");
+        }
       } else {
-        // Pick the least recently used (excluding current if possible)
-        const sortedByOldest = [...availableConnections].sort((a, b) => {
+        // Sort by lastUsed (most recent first) to find current candidate
+        const byRecency = [...availableConnections].sort((a, b) => {
           if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
-          if (!a.lastUsedAt) return -1;
-          if (!b.lastUsedAt) return 1;
-          return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
+          if (!a.lastUsedAt) return 1;
+          if (!b.lastUsedAt) return -1;
+          return new Date(b.lastUsedAt) - new Date(a.lastUsedAt);
         });
 
-        connection = sortedByOldest[0];
+        const current = byRecency[0];
+        const currentCount = current?.consecutiveUseCount || 0;
 
-        // Update lastUsedAt and reset count to 1 (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
-          lastUsedAt: new Date().toISOString(),
-          consecutiveUseCount: 1
-        });
+        if (current && current.lastUsedAt && currentCount < stickyLimit) {
+          // Stay with current account
+          connection = current;
+          // Update lastUsedAt and increment count (await to ensure persistence)
+          await updateProviderConnection(connection.id, {
+            lastUsedAt: new Date().toISOString(),
+            consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
+          });
+        } else {
+          // Pick the least recently used (excluding current if possible)
+          const sortedByOldest = [...availableConnections].sort((a, b) => {
+            if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
+            if (!a.lastUsedAt) return -1;
+            if (!b.lastUsedAt) return 1;
+            return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
+          });
+
+          connection = sortedByOldest[0];
+
+          // Update lastUsedAt and reset count to 1 (await to ensure persistence)
+          await updateProviderConnection(connection.id, {
+            lastUsedAt: new Date().toISOString(),
+            consecutiveUseCount: 1
+          });
+        }
       }
     } else {
       // Default: fill-first (already sorted by priority in getProviderConnections)

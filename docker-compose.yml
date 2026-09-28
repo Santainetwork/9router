@@ -21,6 +21,11 @@ services:
       postgres:
         condition: service_healthy
         required: false
+      # Only meaningful under the sqlite-multicore profile; optional so the
+      # default single-process SQLite stack starts without Redis.
+      redis:
+        condition: service_healthy
+        required: false
     environment:
       - APP_NAME=${APP_NAME:-SantaiNetwork}
       - DATA_DIR=/app/data
@@ -39,7 +44,52 @@ services:
       - DB_TYPE=${DB_TYPE:-}
       - WORKER_ROLE=${WORKER_ROLE:-control}
       - API_WORKERS=${API_WORKERS:-${BUNDLED_API_WORKERS:-1}}
+      - SQLITE_MULTICORE=${SQLITE_MULTICORE:-}
+      - REDIS_URL=${REDIS_URL:-}
+      - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-}
+      - SQLITE_QUEUE_ENCRYPTION_KEY=${SQLITE_QUEUE_ENCRYPTION_KEY:-}
       - HEADROOM_URL=${HEADROOM_URL:-}
+
+  # Optional private Redis for SQLite multicore workers
+  # (enable via: docker compose --profile sqlite-multicore up -d).
+  # No host port: workers reach it only over the Compose network.
+  redis:
+    image: redis:7-alpine
+    container_name: 9router-redis
+    restart: unless-stopped
+    profiles: ["sqlite-multicore"]
+    # Compose stops dependents first, so the app drains accepted commands and
+    # exits before Redis is signalled. Give Redis room to flush AOF on SIGTERM.
+    stop_grace_period: 60s
+    # Refuse to start an unauthenticated broker: the ACL password must be
+    # supplied (the installer writes it to .env). RDB snapshots stay disabled
+    # because AOF is the durability mechanism.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ -z "$$REDIS_PASSWORD" ]; then
+          echo "[9router-redis] REDIS_PASSWORD is required for the sqlite-multicore profile" >&2
+          exit 1
+        fi
+        exec redis-server \
+          --appendonly yes \
+          --appendfsync everysec \
+          --maxmemory "$$REDIS_MAXMEMORY" \
+          --maxmemory-policy noeviction \
+          --requirepass "$$REDIS_PASSWORD" \
+          --save ""
+    volumes:
+      - 9router-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-256mb}
 
   # Optional PostgreSQL database (enable via: docker compose --profile postgres up -d)
   postgres:
@@ -73,5 +123,7 @@ services:
 volumes:
   9router-data:
     name: 9router-data
+  9router-redis-data:
+    name: 9router-redis-data
   9router-postgres-data:
     name: 9router-postgres-data

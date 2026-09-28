@@ -151,7 +151,7 @@ func TestAPIWorkersFallbackToControlWhenUnhealthy(t *testing.T) {
 	defer worker.Close()
 	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "control") }))
 	defer control.Close()
-	s, err := NewServer(Config{UpstreamURL: control.URL, APIWorkerURLs: []string{worker.URL}, AllowAllPaths: true})
+	s, err := NewServer(Config{UpstreamURL: control.URL, APIWorkerURLs: []string{worker.URL}, ControlFallback: true, AllowAllPaths: true})
 	if err != nil {
 		t.Fatal(err)
 	}

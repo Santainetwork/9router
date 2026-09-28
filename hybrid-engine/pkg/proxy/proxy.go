@@ -1,10 +1,12 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +21,12 @@ import (
 	"time"
 
 	"github.com/santainetwork/9router-hybrid/pkg/limiter"
+)
+
+const (
+	maxControlFallbackBodyBytes = 4 << 20 // 4 MiB cap before refusing oversized requests
+	workerRefusalHeader         = "X-9Router-Worker-Refusal"
+	workerRefusalCode           = "PROVIDER_NOT_WORKER_SAFE"
 )
 
 // AllowedPrefixes lists paths permitted through the front-door reverse proxy.
@@ -45,6 +53,11 @@ type Config struct {
 	Scope          string
 	AllowAllPaths  bool // When true (gateway mode), forwards all paths (e.g. /dashboard, /_next, /api)
 	APIWorkerURLs  []string
+	// ControlFallback, when true, allows API requests to fall back to the
+	// control upstream only when control is explicitly healthy. Default false:
+	// unready workers fail closed with 503. Non-worker/single-process behavior
+	// is unaffected when APIWorkerURLs is empty.
+	ControlFallback bool
 }
 
 type apiWorker struct {
@@ -58,9 +71,79 @@ type Server struct {
 	upstreamURL  *url.URL
 	reverseProxy *httputil.ReverseProxy
 	apiWorkers   []*apiWorker
+	controlReady atomic.Bool
 	nextWorker   atomic.Uint64
 	stopHealth   chan struct{}
 	closeOnce    sync.Once
+}
+
+type workerFallbackTransport struct {
+	base   http.RoundTripper
+	server *Server
+}
+
+func (t *workerFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil || resp == nil || resp.StatusCode != http.StatusConflict || resp.Header.Get(workerRefusalHeader) != workerRefusalCode {
+		return resp, err
+	}
+
+	if !t.server.cfg.ControlFallback || !t.server.controlReady.Load() || req.GetBody == nil {
+		return failClosedResponse(resp, req), nil
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	replayBody, err := req.GetBody()
+	if err != nil {
+		return failClosedResponse(resp, req), nil
+	}
+	controlReq := req.Clone(req.Context())
+	controlReq.URL = &url.URL{Scheme: t.server.upstreamURL.Scheme, Host: t.server.upstreamURL.Host, Path: req.URL.Path, RawPath: req.URL.RawPath, RawQuery: req.URL.RawQuery}
+	controlReq.Host = t.server.upstreamURL.Host
+	controlReq.RequestURI = ""
+	controlReq.Body = replayBody
+	controlReq.ContentLength = req.ContentLength
+	controlResp, controlErr := t.base.RoundTrip(controlReq)
+	if controlErr != nil {
+		return failClosedResponse(resp, req), nil
+	}
+	controlResp.Header.Del(workerRefusalHeader)
+	return controlResp, nil
+}
+
+func failClosedResponse(rejected *http.Response, req *http.Request) *http.Response {
+	_, _ = io.Copy(io.Discard, rejected.Body)
+	_ = rejected.Body.Close()
+	body := io.NopCloser(strings.NewReader(`{"error":{"message":"provider unavailable in worker mode","type":"server_error","code":"worker_unavailable"}}`))
+	return &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Status:     "503 Service Unavailable",
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "Cache-Control": []string{"no-store"}},
+		Body:       body,
+		Request:    req,
+	}
+}
+
+func bufferFallbackRequestBody(w http.ResponseWriter, r *http.Request) bool {
+	if r.Body == nil || r.Body == http.NoBody {
+		r.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(nil)), nil }
+		return true
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxControlFallbackBodyBytes+1))
+	_ = r.Body.Close()
+	if err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return false
+	}
+	if len(body) > maxControlFallbackBodyBytes {
+		http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
+	r.ContentLength = int64(len(body))
+	r.TransferEncoding = nil
+	return true
 }
 
 func (s *Server) proxyGatingEnabled() bool {
@@ -245,6 +328,7 @@ func NewServer(cfg Config) (*Server, error) {
 		apiWorkers:   workers,
 		stopHealth:   make(chan struct{}),
 	}
+	rp.Transport = &workerFallbackTransport{base: rp.Transport, server: s}
 	originalDirector := rp.Director
 	rp.Director = func(req *http.Request) {
 		originalDirector(req)
@@ -287,33 +371,74 @@ func NewServer(cfg Config) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) nextHealthyWorker(r *http.Request) *apiWorker {
-	if !isAPIWorkerRequest(r) || len(s.apiWorkers) == 0 {
-		return nil
-	}
-	start := s.nextWorker.Add(1) - 1
+func (s *Server) healthyWorkers() []*apiWorker {
 	healthy := make([]*apiWorker, 0, len(s.apiWorkers))
 	for _, worker := range s.apiWorkers {
 		if worker.healthy.Load() {
 			healthy = append(healthy, worker)
 		}
 	}
+	return healthy
+}
+
+func (s *Server) nextHealthyWorker(r *http.Request) *apiWorker {
+	if !isAPIWorkerRequest(r) || len(s.apiWorkers) == 0 {
+		return nil
+	}
+	healthy := s.healthyWorkers()
 	if len(healthy) == 0 {
 		return nil
 	}
+	start := s.nextWorker.Add(1) - 1
 	return healthy[int(start%uint64(len(healthy)))]
+}
+
+// workerGateBlocked reports whether an API request must fail closed: it is
+// eligible for worker routing, no worker is healthy, and control fallback is
+// either disabled or control is not explicitly healthy.
+func (s *Server) workerGateBlocked(r *http.Request) bool {
+	if !isAPIWorkerRequest(r) || len(s.apiWorkers) == 0 {
+		return false
+	}
+	if len(s.healthyWorkers()) > 0 {
+		return false
+	}
+	if s.cfg.ControlFallback && s.controlReady.Load() {
+		return false
+	}
+	return true
+}
+
+// probeReady returns true when healthURL responds 2xx. Any error or non-2xx
+// status is unready. The response body is always closed.
+func probeReady(client *http.Client, healthURL string) bool {
+	resp, err := client.Get(healthURL)
+	healthy := err == nil && resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	return healthy
 }
 
 func (s *Server) checkAPIWorkers() {
 	client := &http.Client{Timeout: 2 * time.Second}
 	for _, worker := range s.apiWorkers {
-		resp, err := client.Get(workerHealthURL(worker.url))
-		healthy := err == nil && resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-		worker.healthy.Store(healthy)
+		worker.healthy.Store(probeReady(client, workerHealthURL(worker.url)))
 	}
+	if s.cfg.ControlFallback {
+		s.controlReady.Store(probeReady(client, s.controlReadyURL()))
+	}
+}
+
+// controlReadyURL builds the control readiness probe URL from the validated
+// upstream origin, always resolving the path to /api/ready.
+func (s *Server) controlReadyURL() string {
+	u := *s.upstreamURL
+	u.Path = "/api/ready"
+	u.RawPath = ""
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }
 
 // workerHealthURL builds the readiness probe URL from a validated worker origin,
@@ -366,7 +491,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Readiness is internal-only. Both the master gateway and the public proxy
 	// deny it up front, before any static serving, gating, or upstream forward.
-	if reqPath == "/api/ready" || strings.HasPrefix(reqPath, "/api/ready/") {
+	if reqPath == "/ready" || strings.HasPrefix(reqPath, "/ready/") || reqPath == "/api/ready" || strings.HasPrefix(reqPath, "/api/ready/") {
 		http.Error(w, "404 Not Found", http.StatusNotFound)
 		return
 	}
@@ -442,6 +567,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. Forward request to upstream Next.js
+	// 4. Worker failover gate: no healthy worker and no explicit healthy
+	//    control fallback means fail closed with 503. Never replay started
+	//    streams; this gate runs before any bytes reach the client.
+	if s.workerGateBlocked(r) {
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if s.cfg.ControlFallback && len(s.apiWorkers) > 0 && isAPIWorkerRequest(r) && !bufferFallbackRequestBody(w, r) {
+		return
+	}
+
+	// 5. Forward request to upstream Next.js
 	s.reverseProxy.ServeHTTP(w, r)
 }

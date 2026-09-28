@@ -1,5 +1,6 @@
 import { validateMutation, MutationValidationError } from "./mutationProtocol.js";
 import { getQueueEncryptionKey, decryptQueuePayload } from "./queueEncryption.js";
+import { resetHealthStateOnActivation, rowToConn, upsert, reorderInTx } from "./repos/connectionRow.js";
 
 const MAX_LOGS = 200;
 
@@ -220,7 +221,7 @@ function applyConnectionUpdate(db, payload) {
   const { connectionId, updates, ciphertext } = payload;
   const row = db.get("SELECT * FROM providerConnections WHERE id = ?", [connectionId]);
   if (!row) return { updated: false };
-  const existing = parseJson(row.data, {});
+  const existing = rowToConn(row);
 
   // Decrypt token-bearing credential fields in the control process before merge.
   // Never accepts plaintext credential keys: the protocol deep scan rejects them
@@ -232,11 +233,11 @@ function applyConnectionUpdate(db, payload) {
     mergedUpdates = { ...mergedUpdates, ...decrypted };
   }
 
-  const merged = { ...existing, ...mergedUpdates, updatedAt: new Date().toISOString() };
-  db.run(
-    "UPDATE providerConnections SET data = ?, updatedAt = ? WHERE id = ?",
-    [stringifyJson(merged), merged.updatedAt, connectionId],
-  );
+  const normalized = resetHealthStateOnActivation(existing, mergedUpdates);
+  const merged = { ...existing, ...normalized, updatedAt: new Date().toISOString() };
+  upsert(db, merged);
+  if (mergedUpdates.priority !== undefined) reorderInTx(db, existing.provider);
+
   // Synchronous correctness mutation: bump the monotonic database version in the
   // same transaction so workers reread versioned state, never a stale cache.
   const cur = db.get("SELECT version FROM dbVersion WHERE id = 1");

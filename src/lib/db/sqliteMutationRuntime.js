@@ -2,6 +2,7 @@ import { getDatabaseType, isSqliteMulticoreWorker } from "./driver.js";
 import { createMutationWriter } from "./sqliteMutationWriter.js";
 import { applyMutation } from "./sqliteMutationHandlers.js";
 import { getRedisManager } from "../redis/client.js";
+import { checkRedisServerConfig } from "../redis/serverConfig.js";
 
 const state = global.__sqliteMutationRuntime ??= { writer: null, promise: null };
 
@@ -20,6 +21,15 @@ export async function startSqliteMutationWriter() {
       Promise.resolve(getRedisManager()),
     ]);
     const [db, redis] = await Promise.all([getAdapter(), manager.command()]);
+    // External Redis preflight: refuse to start the single writer against a
+    // server that could silently lose or evict queued mutations. The bundled
+    // Compose profile enforces this via flags; external REDIS_URL is probed.
+    const preflight = await checkRedisServerConfig(redis);
+    if (!preflight.ok) {
+      const error = new Error(`[SQLiteMutationWriter] refusing unsafe Redis: ${preflight.issues.join("; ")}`);
+      error.code = "REDIS_PREFLIGHT_FAILED";
+      throw error;
+    }
     const writer = createMutationWriter({ redis, db, applyMutation });
     state.writer = writer;
     global.__stopSqliteMutationWriter = stopSqliteMutationWriter;

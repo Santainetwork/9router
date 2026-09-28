@@ -51,6 +51,13 @@ const FORBIDDEN_KEY_PARTS = ["secret", "password", "credential", "authorization"
 const SECRET_VALUE_PATTERNS = [
   /bearer\s+[a-z0-9._~+/=-]{8,}/i,
   /sk-[a-z0-9]{20,}/i,
+  // JWT/JWS/JWE: base64url header segment starting with eyJ. Catches token
+  // material smuggled under an unlisted key name (opaque to the key scan).
+  /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}/,
+  // Well-known opaque token prefixes (GitHub, Slack, and friends).
+  /(?:ghp|gho|ghu|ghs|github_pat|xox[abposr])[-_][A-Za-z0-9-]{20,}/,
+  // Slack tokens use xoxb-<digits>-<digits>-<opaque>.
+  /xox[abposr]-\d{8,}-\d{8,}-[A-Za-z0-9-]{16,}/,
 ];
 
 // Closed allowlist. `required` fields are what the control-side handler needs to

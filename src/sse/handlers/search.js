@@ -21,6 +21,8 @@ import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo
  *
  * @param {Request} request
  */
+import { providerNotWorkerSafeResponse } from "@/lib/db/providerEligibility.js";
+
 export async function handleSearch(request) {
   let body;
   try {
@@ -69,6 +71,10 @@ export async function handleSearch(request) {
 
   try {
     return await doHandleSearch(request, apiKey, settings, url, providerInput, query, count);
+  } catch (err) {
+    const refusal = providerNotWorkerSafeResponse(err);
+    if (refusal) return refusal;
+    throw err;
   } finally {
     try { releaseApiKey(); } catch {}
   }

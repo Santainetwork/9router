@@ -25,6 +25,7 @@ function okDeps(overrides = {}) {
     getAdapter: async () => ({ readOnly: true }),
     redis: {
       async ping() { return "PONG"; },
+      async eval() { return 1; },
       async pTTL() { return 15_000; },
       async xLen() { return 5; },
       async xPending() { return { pending: 1, firstId: `${Date.now()}-0`, lastId: `${Date.now()}-0` }; },
