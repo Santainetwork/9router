@@ -33,6 +33,10 @@ const statsEmitTimers = global._statsEmitTimers;
 const connectionMapCache = createVersionedCache({ ttlMs: CONN_CACHE_TTL_MS });
 const connectionListCache = createVersionedCache({ ttlMs: CONN_CACHE_TTL_MS });
 const nodePrefixCache = createVersionedCache({ ttlMs: CONN_CACHE_TTL_MS });
+// Sync mirror of the cached map for resolveProviderPrefix(): createVersionedCache
+// exposes only { get, invalidate } — reading nodePrefixCache.map always missed and
+// every openai-compatible-*/custom-* node fell through to the "custom" fallback.
+let nodePrefixMap = {};
 
 export const statsEmitter = global._statsEmitter;
 
@@ -123,7 +127,7 @@ async function getConnectionListCached() {
 export async function getNodePrefixMapCached() {
   try {
     const db = await getAdapter();
-    return await nodePrefixCache.get(db, async () => {
+    nodePrefixMap = await nodePrefixCache.get(db, async () => {
       const rows = db.all(`SELECT id, data FROM providerNodes`);
       const map = {};
       for (const r of rows) {
@@ -134,6 +138,7 @@ export async function getNodePrefixMapCached() {
       }
       return map;
     });
+    return nodePrefixMap;
   } catch {}
   return {};
 }
@@ -201,7 +206,7 @@ export function resolveProviderPrefix(provider) {
     return PROVIDER_SHORT_PREFIXES[provLower];
   }
 
-  const customPrefix = nodePrefixCache?.map?.[provider];
+  const customPrefix = nodePrefixMap[provider];
   if (customPrefix) return customPrefix;
 
   if (provLower.startsWith("openai-compatible-") || provLower.startsWith("custom-")) {
@@ -439,6 +444,8 @@ export async function saveRequestUsage(entry) {
 // typed usage.save mutation. The raw key never enters the payload.
 async function saveRequestUsageViaMutation(entry) {
   if (!entry.timestamp) entry.timestamp = new Date().toISOString();
+
+  await getNodePrefixMapCached();
 
   const displayModel = formatModelWithProviderPrefix(entry.model, entry.provider, {
     requestedModel: entry.requestedModel,

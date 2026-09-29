@@ -188,6 +188,7 @@ export async function saveRequestDetail(detail) {
 
 export async function getRequestDetails(filter = {}) {
   const db = await getAdapter();
+  await import('./usageRepo.js').then(m => m.getNodePrefixMapCached()).catch(() => {});
   const conds = [];
   const params = [];
 

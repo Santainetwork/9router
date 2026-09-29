@@ -8,9 +8,13 @@ process.env.WORKER_ROLE = "api";
 process.env.SQLITE_MULTICORE = "redis";
 
 const queued = [];
+const mutations = [];
 global.__workerMutationState = {
   queue: {
-    enqueueMutation: async () => queued.shift() ?? { enqueued: true, receiptId: "r1" },
+    enqueueMutation: async (mutation) => {
+      mutations.push(mutation);
+      return queued.shift() ?? { enqueued: true, receiptId: "r1" };
+    },
     status: () => ({}),
   },
 };
@@ -29,6 +33,18 @@ function nextEvent(event, timeoutMs = 1500) {
     statsEmitter.on(event, onEvent);
   });
 }
+
+test("worker usage mutation loads configured provider prefix before persisting model", async () => {
+  const provider = "openai-compatible-chat-123";
+  global._dbAdapter.instance = {
+    get: () => ({ version: 1 }),
+    all: () => [{ id: provider, data: JSON.stringify({ prefix: "myr" }) }],
+  };
+
+  await saveRequestUsage({ provider, model: "deepseek-v4-flash" });
+
+  assert.equal(mutations.at(-1).payload.model, "myr/deepseek-v4-flash");
+});
 
 test("worker usage mutation path fires the same stats update event as the direct path", async () => {
   assert.equal(isSqliteMulticoreWorker(), true, "test must exercise the worker branch");

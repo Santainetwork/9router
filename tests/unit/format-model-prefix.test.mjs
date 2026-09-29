@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatModelWithProviderPrefix } from '../../src/lib/db/repos/usageRepo.js';
+import { formatModelWithProviderPrefix, getNodePrefixMapCached } from '../../src/lib/db/repos/usageRepo.js';
+
+test('formatModelWithProviderPrefix uses configured custom provider prefix lookup from cache', async () => {
+  const provider = 'openai-compatible-chat-123';
+  const state = global._dbAdapter;
+  const original = state.instance;
+  state.instance = {
+    get: () => ({ version: 1 }),
+    all: () => [{ id: provider, data: JSON.stringify({ prefix: 'myr' }) }],
+  };
+  try {
+    const map = await getNodePrefixMapCached();
+    assert.equal(map[provider], 'myr');
+    assert.equal(formatModelWithProviderPrefix('deepseek-v4-flash', provider, {}), 'myr/deepseek-v4-flash');
+  } finally {
+    state.instance = original;
+  }
+});
 
 test('formatModelWithProviderPrefix respects pre-existing slash in requestedModel or upstreamModel', () => {
   assert.equal(
