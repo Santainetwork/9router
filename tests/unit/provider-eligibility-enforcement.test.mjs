@@ -56,7 +56,7 @@ test("worker refusal helper ignores unrelated errors", async () => {
 
 test("chat HTTP boundary converts provider refusal before generic exception handling", () => {
   assert.match(CHAT_HANDLER_SOURCE, /providerNotWorkerSafeResponse\(err\)/);
-  assert.match(CHAT_HANDLER_SOURCE, /const refusal = providerNotWorkerSafeResponse\(err\);[\s\S]*if \(refusal\) return refusal;/);
+  assert.match(CHAT_HANDLER_SOURCE, /const refusal = providerNotWorkerSafeResponse\(err\);[\s\S]*if \(refusal\) \{[\s\S]*log\.warn\("CHAT", "worker refusal[\s\S]*return refusal;[\s\S]*\}/);
 });
 
 test("isProviderWorkerSafe is strict: only explicit allowlist entries pass", () => {

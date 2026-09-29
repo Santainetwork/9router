@@ -106,7 +106,11 @@ export async function checkWorkerReady(deps = {}) {
   //    and an expired/missing key (or one with no TTL) fails closed.
   let heartbeatLive = false;
   try {
-    const pttl = await (redis.pTTL ?? redis.pttl)?.(heartbeatKey);
+    // Bind the call back onto the client: node-redis v6 commands read
+    // this._self, so a detached optional call always throws and the gate
+    // would 503 forever even while the heartbeat TTL is live.
+    const readTtl = redis.pTTL ?? redis.pttl;
+    const pttl = typeof readTtl === "function" ? await readTtl.call(redis, heartbeatKey) : null;
     heartbeatLive = Number.isFinite(Number(pttl)) && Number(pttl) > 0;
   } catch {}
   if (!heartbeatLive) return fail(db.database ?? database, WORKER_READY_REASONS.heartbeatStale);

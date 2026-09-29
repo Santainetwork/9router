@@ -165,6 +165,23 @@ test("live writer heartbeat TTL survives severe worker clock skew", async () => 
   }
 });
 
+test("heartbeat pTTL must be called on the redis object itself (no this-detachment)", async () => {
+  // node-redis v6 commands read this._self internally. An optional call like
+  // (redis.pTTL ?? redis.pttl)?.(key) detaches `this`, so every real client
+  // throws synchronously and the gate 503s forever with writer_heartbeat_stale
+  // even while the heartbeat TTL is alive. A mock with no this-dependence masks
+  // it, so the mock here throws exactly like the real client.
+  const redis = okRedis();
+  const original = redis.pTTL;
+  redis.pTTL = function (key) {
+    if (this !== redis) throw new Error("detached this: real node-redis would throw");
+    return original(key);
+  };
+  const result = await checkWorkerReady(okDeps({ redis }));
+  assert.equal(result.ready, true, JSON.stringify(result));
+  assert.equal(result.reason, undefined);
+});
+
 test("heartbeat without a live TTL is stale: missing or expired or no expiry", async () => {
   // -2 = key missing or already expired, -1 = key exists but never expires.
   for (const pttl of [-2, -1, 0, null, undefined, "not-a-number"]) {

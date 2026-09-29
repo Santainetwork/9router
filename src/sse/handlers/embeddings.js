@@ -76,13 +76,13 @@ async function doHandleEmbeddings(request) {
   }
 
   try {
-    return await doHandleEmbeddings(request, body, apiKey, modelStr, settings, url);
+    return await doHandleEmbeddingsInner(request, body, apiKey, modelStr, settings, url);
   } finally {
     try { releaseApiKey(); } catch {}
   }
 }
 
-async function doHandleEmbeddings(request, body, apiKey, modelStr, settings, url) {
+async function doHandleEmbeddingsInner(request, body, apiKey, modelStr, settings, url) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {

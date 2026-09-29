@@ -80,7 +80,11 @@ export async function handleChat(request, clientRawRequest = null) {
     // Typed worker refusal: convert to a 409 the gateway can identify and route
     // back to a healthy direct-write control instead of a generic Next 500.
     const refusal = providerNotWorkerSafeResponse(err);
-    if (refusal) return refusal;
+    if (refusal) {
+      // Emit a log line so operators (and smoke tests) can see the refusal.
+      log.warn("CHAT", "worker refusal: provider not worker-safe (409 reroute)");
+      return refusal;
+    }
     throw err;
   }
 }
