@@ -2,12 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatModelWithProviderPrefix, getNodePrefixMapCached } from '../../src/lib/db/repos/usageRepo.js';
 
+test('formatModelWithProviderPrefix strips legacy custom/ prefix and re-resolves to configured node prefix', async () => {
+  const provider = 'openai-compatible-chat-c08f150d-03c0-44c3-834e-5fa74486d920';
+  const state = global._dbAdapter;
+  const original = state.instance;
+  state.instance = {
+    get: () => ({ version: 1 }),
+    all: () => [{ id: provider, data: JSON.stringify({ prefix: 'oni' }) }],
+  };
+  try {
+    await getNodePrefixMapCached();
+    // Case 1: rawModel has legacy custom/
+    assert.equal(
+      formatModelWithProviderPrefix('custom/glm-5.3', provider, { requestedModel: 'glm-5.3', upstreamModel: 'glm-5.3' }),
+      'oni/glm-5.3'
+    );
+    // Case 2: upstreamModel has legacy custom/
+    assert.equal(
+      formatModelWithProviderPrefix('glm-5.3', provider, { requestedModel: 'glm-5.3', upstreamModel: 'custom/glm-5.3' }),
+      'oni/glm-5.3'
+    );
+  } finally {
+    state.instance = original;
+  }
+});
+
 test('formatModelWithProviderPrefix uses configured custom provider prefix lookup from cache', async () => {
   const provider = 'openai-compatible-chat-123';
   const state = global._dbAdapter;
   const original = state.instance;
   state.instance = {
-    get: () => ({ version: 1 }),
+    get: () => ({ version: 2 }),
     all: () => [{ id: provider, data: JSON.stringify({ prefix: 'myr' }) }],
   };
   try {

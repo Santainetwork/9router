@@ -220,13 +220,17 @@ export function formatModelWithProviderPrefix(rawModel, provider = "", meta = {}
   const reqModel = meta?.requestedModel;
 
   // 1. If upstreamModel already contains a provider prefix (e.g. "ag/gemini-3.8-flash-high", "myr/deepseek-v4.1-flash"), use as primary.
-  if (upModel && String(upModel).includes("/")) return String(upModel);
+  // Note: Ignore legacy "custom/" placeholder prefixes so they get re-resolved to the actual node prefix.
+  if (upModel && String(upModel).includes("/") && !String(upModel).startsWith("custom/")) return String(upModel);
 
-  // 2. If rawModel already contains a provider prefix, keep it.
-  if (rawModel && String(rawModel).includes("/")) return String(rawModel);
+  // 2. If rawModel already contains a provider prefix (not legacy custom/), keep it.
+  if (rawModel && String(rawModel).includes("/") && !String(rawModel).startsWith("custom/")) return String(rawModel);
 
   // 3. The target model sent to provider is upstreamModel || rawModel, falling back to requestedModel.
-  const candidate = upModel || rawModel || reqModel || "unknown";
+  let candidate = upModel || rawModel || reqModel || "unknown";
+  if (String(candidate).startsWith("custom/")) {
+    candidate = String(candidate).slice("custom/".length);
+  }
   if (String(candidate).includes("/")) return String(candidate);
 
   if (provider) {
