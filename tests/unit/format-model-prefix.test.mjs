@@ -1,6 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatModelWithProviderPrefix, getNodePrefixMapCached } from '../../src/lib/db/repos/usageRepo.js';
+import { formatModelWithProviderPrefix, getNodePrefixMapCached, normalizeModelDisplay } from '../../src/lib/db/repos/usageRepo.js';
+
+test('normalizeModelDisplay resolves internal provider ID to configured node prefix', async () => {
+  const provider = 'openai-compatible-chat-c08f150d-03c0-44c3-834e-5fa74486d920';
+  const state = global._dbAdapter;
+  const original = state.instance;
+  state.instance = {
+    get: () => ({ version: 10 }),
+    all: () => [{ id: provider, data: JSON.stringify({ prefix: 'oni' }) }],
+  };
+  try {
+    await getNodePrefixMapCached();
+    // Resolves internal ID to node prefix
+    assert.equal(
+      normalizeModelDisplay('openai-compatible-chat-c08f150d-03c0-44c3-834e-5fa74486d920/Hack-Nasa-MODEL-NURUT'),
+      'oni/Hack-Nasa-MODEL-NURUT'
+    );
+    // When passed to formatModelWithProviderPrefix
+    assert.equal(
+      formatModelWithProviderPrefix('openai-compatible-chat-c08f150d-03c0-44c3-834e-5fa74486d920/Hack-Nasa-MODEL-NURUT', provider, {}),
+      'oni/Hack-Nasa-MODEL-NURUT'
+    );
+  } finally {
+    state.instance = original;
+  }
+});
 
 test('formatModelWithProviderPrefix strips legacy custom/ prefix and re-resolves to configured node prefix', async () => {
   const provider = 'openai-compatible-chat-c08f150d-03c0-44c3-834e-5fa74486d920';

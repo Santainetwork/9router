@@ -128,12 +128,13 @@ export async function getNodePrefixMapCached() {
   try {
     const db = await getAdapter();
     nodePrefixMap = await nodePrefixCache.get(db, async () => {
-      const rows = db.all(`SELECT id, data FROM providerNodes`);
+      const rows = db.all(`SELECT id, name, data FROM providerNodes`);
       const map = {};
       for (const r of rows) {
         try {
           const d = parseJson(r.data, {});
-          if (d?.prefix) map[r.id] = d.prefix;
+          const prefix = d?.prefix || r.name || d?.name;
+          if (prefix) map[r.id] = prefix;
         } catch {}
       }
       return map;
@@ -215,23 +216,59 @@ export function resolveProviderPrefix(provider) {
   return provLower;
 }
 
+export function normalizeModelDisplay(modelStr, provider = "") {
+  if (!modelStr || typeof modelStr !== "string") return modelStr;
+
+  let candidate = modelStr;
+  if (candidate.startsWith("custom/")) {
+    candidate = candidate.slice("custom/".length);
+  }
+
+  if (candidate.includes("/")) {
+    const slashIdx = candidate.indexOf("/");
+    const prefixPart = candidate.slice(0, slashIdx);
+    const modelPart = candidate.slice(slashIdx + 1);
+
+    const resolvedPrefix = resolveProviderPrefix(prefixPart);
+    if (resolvedPrefix && resolvedPrefix !== prefixPart && resolvedPrefix !== "custom") {
+      return `${resolvedPrefix}/${modelPart}`;
+    }
+    if (provider && (prefixPart.startsWith("openai-compatible-") || prefixPart.startsWith("anthropic-compatible-") || prefixPart.startsWith("custom-"))) {
+      const shortPrefix = resolveProviderPrefix(provider);
+      return `${shortPrefix}/${modelPart}`;
+    }
+    return candidate;
+  } else if (provider) {
+    const shortPrefix = resolveProviderPrefix(provider);
+    return `${shortPrefix}/${candidate}`;
+  }
+
+  return candidate;
+}
+
 export function formatModelWithProviderPrefix(rawModel, provider = "", meta = {}) {
   const upModel = meta?.upstreamModel;
   const reqModel = meta?.requestedModel;
 
   // 1. If upstreamModel already contains a provider prefix (e.g. "ag/gemini-3.8-flash-high", "myr/deepseek-v4.1-flash"), use as primary.
   // Note: Ignore legacy "custom/" placeholder prefixes so they get re-resolved to the actual node prefix.
-  if (upModel && String(upModel).includes("/") && !String(upModel).startsWith("custom/")) return String(upModel);
+  if (upModel && String(upModel).includes("/") && !String(upModel).startsWith("custom/")) {
+    return normalizeModelDisplay(String(upModel), provider);
+  }
 
   // 2. If rawModel already contains a provider prefix (not legacy custom/), keep it.
-  if (rawModel && String(rawModel).includes("/") && !String(rawModel).startsWith("custom/")) return String(rawModel);
+  if (rawModel && String(rawModel).includes("/") && !String(rawModel).startsWith("custom/")) {
+    return normalizeModelDisplay(String(rawModel), provider);
+  }
 
   // 3. The target model sent to provider is upstreamModel || rawModel, falling back to requestedModel.
   let candidate = upModel || rawModel || reqModel || "unknown";
   if (String(candidate).startsWith("custom/")) {
     candidate = String(candidate).slice("custom/".length);
   }
-  if (String(candidate).includes("/")) return String(candidate);
+  if (String(candidate).includes("/")) {
+    return normalizeModelDisplay(String(candidate), provider);
+  }
 
   if (provider) {
     const shortPrefix = resolveProviderPrefix(provider);
@@ -257,7 +294,7 @@ function getRecentRequestsFromDb(db) {
         completionTokens: tokens.completion_tokens || tokens.output_tokens || 0,
         cachedTokens: tokens.cached_tokens || tokens.cache_read_input_tokens || 0,
         status: r.status || "ok",
-        requestedModel: meta.requestedModel || undefined,
+        requestedModel: normalizeModelDisplay(meta.requestedModel, r.provider) || undefined,
         upstreamModel: meta.upstreamModel || undefined,
       };
     })
@@ -368,6 +405,9 @@ export async function saveRequestUsage(entry) {
       requestedModel: entry.requestedModel,
       upstreamModel: entry.upstreamModel
     });
+    if (entry.requestedModel) {
+      entry.requestedModel = normalizeModelDisplay(entry.requestedModel, entry.provider);
+    }
     const originalRawModel = entry.model;
     entry.model = displayModel;
 
@@ -455,6 +495,9 @@ async function saveRequestUsageViaMutation(entry) {
     requestedModel: entry.requestedModel,
     upstreamModel: entry.upstreamModel,
   });
+  if (entry.requestedModel) {
+    entry.requestedModel = normalizeModelDisplay(entry.requestedModel, entry.provider);
+  }
   const originalRawModel = entry.model;
   entry.model = displayModel;
 
@@ -501,7 +544,7 @@ export async function getUsageHistory(filter = {}) {
       timestamp: r.timestamp,
       provider: r.provider,
       model: displayModel,
-      requestedModel: meta.requestedModel || undefined,
+      requestedModel: normalizeModelDisplay(meta.requestedModel, r.provider) || undefined,
       upstreamModel: meta.upstreamModel || undefined,
       connectionId: r.connectionId,
       apiKeyMasked: maskApiKey(r.apiKey),
@@ -958,8 +1001,9 @@ export async function getRecentLogs(limit = 200) {
       const p = r.provider?.toUpperCase() || "-";
       const meta = parseJson(r.meta, {});
       const actualModel = formatModelWithProviderPrefix(r.model, r.provider, meta);
-      const displayModel = meta?.requestedModel && meta.requestedModel !== actualModel
-        ? `${actualModel} [via ${meta.requestedModel}]`
+      const reqModel = normalizeModelDisplay(meta?.requestedModel, r.provider);
+      const displayModel = reqModel && reqModel !== actualModel
+        ? `${actualModel} [via ${reqModel}]`
         : actualModel;
       const account = connMap[r.connectionId] || (r.connectionId ? r.connectionId.slice(0, 8) : "-");
       const tk = r.tokens ? parseJson(r.tokens, {}) : {};

@@ -13,10 +13,19 @@ export function renderFooterText(template, ctx = {}) {
   const completion = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0;
   const total = Number(usage.total_tokens ?? (prompt + completion)) || 0;
   const durationMs = Number(ctx.durationMs || 0) || 0;
+
+  let modelName = ctx.requestedModel || ctx.model || "";
+  if (typeof modelName === "string" && (modelName.startsWith("openai-compatible-") || modelName.startsWith("anthropic-compatible-") || modelName.startsWith("custom-"))) {
+    const slash = modelName.indexOf("/");
+    if (slash !== -1) {
+      modelName = modelName.slice(slash + 1);
+    }
+  }
+
   const map = {
     provider: ctx.provider || "",
-    model: ctx.requestedModel || ctx.model || "",
-    requestedModel: ctx.requestedModel || ctx.model || "",
+    model: modelName,
+    requestedModel: modelName,
     promptTokens: String(prompt),
     completionTokens: String(completion),
     totalTokens: String(total),

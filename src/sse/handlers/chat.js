@@ -330,10 +330,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+  let cleanReportModel = reportModel;
+  if (typeof cleanReportModel === "string" && (cleanReportModel.startsWith("openai-compatible-") || cleanReportModel.startsWith("anthropic-compatible-") || cleanReportModel.startsWith("custom-"))) {
+    try {
+      const { normalizeModelDisplay } = await import("@/lib/db/repos/usageRepo.js");
+      cleanReportModel = normalizeModelDisplay(cleanReportModel, provider);
+    } catch {}
+  }
   const responseMetadata = isBasicChatRequest(clientRawRequest)
     ? (clientRawRequest.responseMetadata ||= {})
     : null;
-  if (responseMetadata) Object.assign(responseMetadata, { provider, model, requestedModel: reportModel });
+  if (responseMetadata) Object.assign(responseMetadata, { provider, model, requestedModel: cleanReportModel });
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 
@@ -484,7 +491,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           return scope === ver;
         })(),
       responseFooterText: chatSettings.responseFooterText || "",
-      requestedModel: reportModel,
+      requestedModel: cleanReportModel,
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onRelease: () => {

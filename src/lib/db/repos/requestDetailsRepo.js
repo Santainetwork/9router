@@ -1,6 +1,6 @@
 import { getAdapter, isSqliteMulticoreWorker } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { formatModelWithProviderPrefix } from "./usageRepo.js";
+import { formatModelWithProviderPrefix, normalizeModelDisplay } from "./usageRepo.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
@@ -226,6 +226,12 @@ export async function getRequestDetails(filter = {}) {
       requestedModel: detailObj.requestedModel,
       upstreamModel: detailObj.upstreamModel
     });
+    if (detailObj.requestedModel) {
+      detailObj.requestedModel = normalizeModelDisplay(detailObj.requestedModel, r.provider);
+    }
+    if (detailObj.upstreamModel) {
+      detailObj.upstreamModel = normalizeModelDisplay(detailObj.upstreamModel, r.provider);
+    }
     
     // If we have a connectionId, try to fetch connection name for display
     // This allows UI to show "called Anthropic/Claude vs OpenAI/Gemini" rather than just "/api/v1/chat/completions"
@@ -258,8 +264,24 @@ export async function getDistinctProviders() {
 
 export async function getRequestDetailById(id) {
   const db = await getAdapter();
-  const row = db.get(`SELECT data FROM requestDetails WHERE id = ?`, [id]);
-  return row ? parseJson(row.data, null) : null;
+  await import('./usageRepo.js').then(m => m.getNodePrefixMapCached()).catch(() => {});
+  const row = db.get(`SELECT data, provider, model FROM requestDetails WHERE id = ?`, [id]);
+  if (!row) return null;
+  const detailObj = parseJson(row.data, null);
+  if (detailObj) {
+    const prov = detailObj.provider || row.provider;
+    detailObj.model = formatModelWithProviderPrefix(detailObj.model || row.model, prov, {
+      requestedModel: detailObj.requestedModel,
+      upstreamModel: detailObj.upstreamModel,
+    });
+    if (detailObj.requestedModel) {
+      detailObj.requestedModel = normalizeModelDisplay(detailObj.requestedModel, prov);
+    }
+    if (detailObj.upstreamModel) {
+      detailObj.upstreamModel = normalizeModelDisplay(detailObj.upstreamModel, prov);
+    }
+  }
+  return detailObj;
 }
 
 const _shutdownHandler = async () => {
