@@ -403,12 +403,23 @@ if [ "$ASSUME_YES" -eq 0 ] && [ "$UPGRADE" -eq 0 ] && [ ! -f "$ENV_FILE" ]; then
 
   # Database selection
   echo ""
-  echo "Select Database:"
-  echo "  1) SQLite (Default, embedded in volume, zero-configuration)"
-  echo "  2) PostgreSQL (External DATABASE_URL)"
+  echo "Select Database & Architecture:"
+  echo "  1) SQLite (Default single-process, embedded in volume, zero-configuration)"
+  echo "  2) SQLite Multicore + Bundled Redis (High-concurrency, 2+ workers)"
+  echo "  3) PostgreSQL (Bundled container, 3+ workers)"
+  echo "  4) PostgreSQL (External DATABASE_URL)"
   printf "Choice [1]: "
   read -r db_choice
   if [ "$db_choice" = "2" ]; then
+    USE_SQLITE_REDIS=1
+    USE_BUNDLED_REDIS=1
+    [ "$API_WORKERS_EXPLICIT" -eq 1 ] || API_WORKERS=2
+  elif [ "$db_choice" = "3" ]; then
+    USE_POSTGRES=1
+    USE_BUNDLED_POSTGRES=1
+    [ "$API_WORKERS_EXPLICIT" -eq 1 ] || API_WORKERS=3
+  elif [ "$db_choice" = "4" ]; then
+    USE_POSTGRES=1
     printf "Enter PostgreSQL DATABASE_URL: "
     read -r input_db_url
     DATABASE_URL="$input_db_url"

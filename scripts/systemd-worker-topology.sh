@@ -148,8 +148,14 @@ worker_env_prepare() {
   # worker its own database file.
   if [ "$total" -gt 1 ] && [ "$selected_pg" != 1 ] &&
      [ "$(printf '%s' "${DB_TYPE:-}" | tr '[:upper:]' '[:lower:]')" != "postgres" ]; then
-    worker_topology_error "API_WORKERS>1 requires PostgreSQL. Set DATABASE_URL=postgres://user:pass@host:5432/9router (or DB_TYPE=postgres), or keep API_WORKERS=1 for the SQLite default."
-    return 1
+    if [ "$(printf '%s' "${SQLITE_MULTICORE:-}" | tr '[:upper:]' '[:lower:]')" != "redis" ]; then
+      worker_topology_error "API_WORKERS>1 requires PostgreSQL or SQLITE_MULTICORE=redis. Set DATABASE_URL=postgres://user:pass@host:5432/9router (or DB_TYPE=postgres), or keep API_WORKERS=1 for the SQLite default."
+      return 1
+    fi
+    case "${REDIS_URL:-}" in
+      redis://*|rediss://*) ;;
+      *) worker_topology_error "SQLITE_MULTICORE=redis requires a valid redis:// or rediss:// REDIS_URL"; return 1 ;;
+    esac
   fi
 
   # Refuse to invoke a role that starts Node (and its bootstrap migrations) just

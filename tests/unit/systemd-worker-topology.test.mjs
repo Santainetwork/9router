@@ -89,6 +89,25 @@ test("prepare requires PostgreSQL for multi-worker mode", () => {
   }
   // Single worker keeps SQLite.
   assert.equal(bash("worker_env_prepare 20127 1", { DATABASE_URL: "", DB_TYPE: "" }).code, 0);
+
+  // Multi-worker SQLite allowed with SQLITE_MULTICORE=redis and valid REDIS_URL
+  const redisOk = bash("worker_env_prepare 20127 3", {
+    DATABASE_URL: "",
+    DB_TYPE: "",
+    SQLITE_MULTICORE: "redis",
+    REDIS_URL: "redis://127.0.0.1:6379",
+  });
+  assert.equal(redisOk.code, 0, redisOk.err);
+  assert.equal(redisOk.out.trim(), "3");
+
+  const redisMissingUrl = bash("worker_env_prepare 20127 3", {
+    DATABASE_URL: "",
+    DB_TYPE: "",
+    SQLITE_MULTICORE: "redis",
+    REDIS_URL: "",
+  });
+  assert.notEqual(redisMissingUrl.code, 0);
+  assert.match(redisMissingUrl.err, /REDIS_URL/i);
 });
 
 test("worker_env_write derives deterministic loopback ports for instances 1..N-1", () => {
