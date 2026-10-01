@@ -347,6 +347,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
 
+  // For Codex extended-context variants (e.g. gpt-6-astra[1m]), displayModel holds the
+  // requested model with context marker. For combos, displayModel is the combo name,
+  // so we fall back to modelInfo.model for provider account selection.
+  const requestedModel = (displayModel && /\[.+\]$/.test(displayModel)) ? displayModel : model;
+
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
   let lastError = null;
