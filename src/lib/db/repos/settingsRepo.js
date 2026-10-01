@@ -65,6 +65,8 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  // Per-provider user header overrides applied at dispatch: { [providerId]: { headers: {..} } }
+  providerOverrides: {},
   // Response footer: append a footer to assistant reply text for ALL API
   // clients. Default off so it has zero effect until enabled.
   responseFooterEnabled: false,

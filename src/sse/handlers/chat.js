@@ -259,7 +259,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
     });
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, safeReleaseApiKey);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null, safeReleaseApiKey);
 }
 
 /**
@@ -354,7 +354,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastHeaders = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -472,6 +472,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
       onPxpipeEvent: appendPxpipeEvent,
       providerThinking,
+      // Per-provider user overrides (custom headers / connect timeout) from settings
+      providerOverrides: (chatSettings.providerOverrides || {})[provider] || null,
       // Basic Chat renders its own footer under each reply (per-browser field
       // toggles + custom note), so injecting the server footer into the text
       // as well would show it twice. Server footer is for external API clients.
