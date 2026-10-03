@@ -224,6 +224,11 @@ export function normalizeModelDisplay(modelStr, provider = "") {
     candidate = candidate.slice("custom/".length);
   }
 
+  // Provider prefix is a routing detail, not part of the model id the client
+  // sent. Bare names (client aliases, combo names, upstream ids) must stay
+  // as-is: a prefix would make the dashboard report `sr/gpt-5.6-sol` for a
+  // request the client made with `gpt-5.6-sol`. Prefix resolution applies
+  // only when the model already carries a slash (internal id → node prefix).
   if (candidate.includes("/")) {
     const slashIdx = candidate.indexOf("/");
     const prefixPart = candidate.slice(0, slashIdx);
@@ -238,9 +243,6 @@ export function normalizeModelDisplay(modelStr, provider = "") {
       return `${shortPrefix}/${modelPart}`;
     }
     return candidate;
-  } else if (provider) {
-    const shortPrefix = resolveProviderPrefix(provider);
-    return `${shortPrefix}/${candidate}`;
   }
 
   return candidate;
