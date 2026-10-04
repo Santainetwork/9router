@@ -28,11 +28,12 @@ test("Request logs route exists", () => {
   assert.match(page, /Request Logs/i, "must have request logs title");
 });
 
-test("Request logs navigation is Friend-only", () => {
+test("Request logs navigation appears in both dashboard themes", () => {
   const sidebar = source("shared/components/Sidebar.js");
   const sidebarAlt = source("shared/components/SidebarAlt.js");
 
-  assert.doesNotMatch(sidebar, /\/dashboard\/request-logs/, "Santai sidebar stays unchanged");
+  assert.match(sidebar, /\/dashboard\/request-logs/, "Santai sidebar links request-logs");
+  assert.match(sidebar, /Request Logs/, "Santai sidebar labels request-logs");
   assert.match(sidebarAlt, /\/dashboard\/request-logs/, "Friend sidebar links request-logs");
   assert.match(sidebarAlt, /Request Logs/, "Friend sidebar labels request-logs");
 });
