@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -179,6 +179,36 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_provider ON requestDetails(provider)",
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
+    ],
+  },
+  requestLogs: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      timestamp: "TEXT NOT NULL",
+      apiKeyId: "TEXT",
+      apiKeyName: "TEXT",
+      apiKeyMasked: "TEXT",
+      ip: "TEXT",
+      method: "TEXT NOT NULL",
+      path: "TEXT NOT NULL",
+      endpointKind: "TEXT",
+      model: "TEXT",
+      provider: "TEXT",
+      resolvedModel: "TEXT",
+      status: "INTEGER",
+      stream: "INTEGER DEFAULT 0",
+      promptTokens: "INTEGER DEFAULT 0",
+      completionTokens: "INTEGER DEFAULT 0",
+      durationMs: "INTEGER DEFAULT 0",
+      ttftMs: "INTEGER DEFAULT 0",
+      tps: "REAL DEFAULT 0",
+      userAgent: "TEXT",
+      error: "TEXT",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_rl_ts ON requestLogs(timestamp DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_rl_key ON requestLogs(apiKeyId)",
+      "CREATE INDEX IF NOT EXISTS idx_rl_status ON requestLogs(status)",
     ],
   },
   // Single-writer bridge (docs/superpowers/plans/2026-09-24-sqlite-redis-multicore.md,

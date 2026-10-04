@@ -86,6 +86,11 @@ export const MUTATION_SPECS = Object.freeze({
       "pxpipe", "truncated", "bytesIn", "bytesOut",
     ],
   },
+  "requestLog.save": {
+    consistency: "async",
+    required: ["timestamp", "method", "path"],
+    allowed: ["timestamp", "apiKeyId", "apiKeyName", "apiKeyMasked", "ip", "method", "path", "endpointKind", "model", "provider", "resolvedModel", "status", "stream", "promptTokens", "completionTokens", "durationMs", "ttftMs", "tps", "userAgent", "error"],
+  },
   "footerLog.add": {
     consistency: "async",
     required: ["provider", "model", "referralText"],

@@ -1,3 +1,4 @@
+import { withRequestLog } from "@/lib/requestLog.js";
 import { handleTts } from "@/sse/handlers/tts.js";
 
 export async function OPTIONS() {
@@ -11,6 +12,8 @@ export async function OPTIONS() {
 }
 
 /** POST /v1/audio/speech - OpenAI-compatible TTS endpoint */
-export async function POST(request) {
+async function handlePost(request) {
   return await handleTts(request);
 }
+
+export const POST = withRequestLog("tts", handlePost);

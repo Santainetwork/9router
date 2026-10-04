@@ -220,7 +220,7 @@ test("driver: multicore api worker rejects sql.js when no native adapter opens",
 // ─── Schema: receipt ledger, monotonic version, single bump ──────────────
 
 test("schema: receipt ledger and dbVersion tables are declared at one bumped version", () => {
-  assert.equal(SCHEMA_VERSION, 4, "Task 2 bumps the schema version exactly once");
+  assert.equal(SCHEMA_VERSION, 5, "requestLogs table bumps schema version once");
   assert.deepEqual(Object.keys(TABLES.sqliteMutationReceipts.columns), ["receiptId", "type", "workerId", "appliedAt", "result"]);
   assert.match(TABLES.sqliteMutationReceipts.columns.receiptId, /PRIMARY KEY/);
   assert.deepEqual(Object.keys(TABLES.dbVersion.columns), ["id", "version", "updatedAt"]);
@@ -236,6 +236,7 @@ test("schema: migrated database carries the receipt ledger and a duplicate recei
     const tableNames = new Set(adapter.all("SELECT name FROM sqlite_master WHERE type = 'table'").map((r) => r.name));
     assert.ok(tableNames.has("sqliteMutationReceipts"));
     assert.ok(tableNames.has("dbVersion"));
+    assert.ok(tableNames.has("requestLogs"));
     assert.equal(adapter.get("SELECT value FROM _meta WHERE key = 'schemaVersion'").value, String(SCHEMA_VERSION));
 
     const insert = "INSERT INTO sqliteMutationReceipts(receiptId, type, workerId, appliedAt, result) VALUES(?, ?, ?, ?, ?)";

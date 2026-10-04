@@ -1,3 +1,4 @@
+import { withRequestLog } from "@/lib/requestLog.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 
@@ -26,10 +27,11 @@ export async function OPTIONS() {
   });
 }
 
-export async function POST(request) {  
+async function handlePost(request) {
   // Fallback to local handling
   await ensureInitialized();
   
   return await handleChat(request);
 }
 
+export const POST = withRequestLog("chat", handlePost);

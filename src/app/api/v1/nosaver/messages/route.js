@@ -1,3 +1,4 @@
+import { withRequestLog } from "@/lib/requestLog.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { HTTP_STATUS, TOKEN_SAVER_HEADER } from "open-sse/config/runtimeConfig.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -22,7 +23,7 @@ export async function OPTIONS() {
   });
 }
 
-export async function POST(request) {
+async function handlePost(request) {
   try {
     await ensureInitialized();
 
@@ -60,3 +61,5 @@ export async function POST(request) {
     return errorResponse(HTTP_STATUS.INTERNAL_SERVER_ERROR, e.message);
   }
 }
+
+export const POST = withRequestLog("chat", handlePost);

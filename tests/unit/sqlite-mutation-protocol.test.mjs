@@ -52,6 +52,7 @@ const valid = {
     bytesOut: 2048,
     truncated: false,
   },
+  "requestLog.save": { timestamp: "2026-09-25T00:00:00.000Z", method: "POST", path: "/v1/chat/completions" },
   "footerLog.add": {
     timestamp: "2026-09-25T00:00:00.000Z",
     provider: "antigravity",
@@ -85,7 +86,7 @@ function expectReject(mutation, pattern, message) {
 }
 
 test("command union is exactly the four allowlisted types", () => {
-  assert.deepEqual([...MUTATION_TYPES].sort(), ["connection.update", "footerLog.add", "requestDetail.save", "usage.save"]);
+  assert.deepEqual([...MUTATION_TYPES].sort(), ["connection.update", "footerLog.add", "requestDetail.save", "requestLog.save", "usage.save"]);
   assert.ok(Object.isFrozen(MUTATION_TYPES) || Array.isArray(MUTATION_TYPES));
 });
 

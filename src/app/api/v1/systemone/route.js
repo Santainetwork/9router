@@ -1,3 +1,4 @@
+import { withRequestLog } from "@/lib/requestLog.js";
 import { handleSystemone } from "@/sse/handlers/systemone.js";
 
 /**
@@ -16,6 +17,8 @@ export async function OPTIONS() {
 /**
  * POST /v1/systemone - System One (Jev) decision endpoint
  */
-export async function POST(request) {
+async function handlePost(request) {
   return await handleSystemone(request);
 }
+
+export const POST = withRequestLog("systemone", handlePost);

@@ -1,3 +1,4 @@
+import { withRequestLog } from "@/lib/requestLog.js";
 import { handleFetch } from "@/sse/handlers/fetch.js";
 
 /**
@@ -16,6 +17,8 @@ export async function OPTIONS() {
 /**
  * POST /v1/web/fetch - Web URL fetch/extract endpoint
  */
-export async function POST(request) {
+async function handlePost(request) {
   return await handleFetch(request);
 }
+
+export const POST = withRequestLog("fetch", handlePost);

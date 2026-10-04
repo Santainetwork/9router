@@ -40,6 +40,13 @@ function createDb() {
       status TEXT,
       data TEXT NOT NULL
     );
+    CREATE TABLE requestLogs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL, apiKeyId TEXT, apiKeyName TEXT, apiKeyMasked TEXT, ip TEXT,
+      method TEXT NOT NULL, path TEXT NOT NULL, endpointKind TEXT, model TEXT, provider TEXT,
+      resolvedModel TEXT, status INTEGER, stream INTEGER, promptTokens INTEGER, completionTokens INTEGER,
+      durationMs INTEGER, ttftMs INTEGER, tps REAL, userAgent TEXT, error TEXT
+    );
     CREATE TABLE provider_footer_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp TEXT NOT NULL,
@@ -214,6 +221,27 @@ test("requestDetail.save is metadata-only, upserts, and retains max 200", () => 
   }
   const count = db.get("SELECT COUNT(*) AS c FROM requestDetails").c;
   assert.equal(count, 200);
+});
+
+test("requestLog.save persists bounded inbound metadata", () => {
+  const { db, adapter } = createDb();
+  applyMutation(adapter, {
+    schemaVersion: 1,
+    type: "requestLog.save",
+    receiptId: "m-request-log-123456",
+    workerId: "worker-1",
+    createdAt: "2026-09-25T00:00:00.000Z",
+    payload: {
+      timestamp: "2026-09-25T08:00:00.000Z", apiKeyId: "key-1", apiKeyMasked: "sk-test…1234",
+      method: "POST", path: "/v1/chat/completions", endpointKind: "chat", model: "m",
+      status: 200, stream: 0, promptTokens: 3, completionTokens: 5, durationMs: 20,
+    },
+    consistency: "async",
+  });
+  const row = db.get("SELECT * FROM requestLogs");
+  assert.equal(row.apiKeyMasked, "sk-test…1234");
+  assert.equal(row.status, 200);
+  assert.equal(row.completionTokens, 5);
 });
 
 test("footerLog.add redacts secrets in depth and retains max 200", () => {

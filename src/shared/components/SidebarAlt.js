@@ -30,6 +30,7 @@ const navItems = [
   { href: "/dashboard/combos", label: "Combo & Vision Adapter", icon: "layers" },
  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },
+  { href: "/dashboard/request-logs", label: "Request Logs", icon: "receipt_long" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/custom-credits", label: "Custom Credits", icon: "account_balance_wallet" },
   { href: "/dashboard/queue-monitor", label: "Request Queue", icon: "pending_actions" },

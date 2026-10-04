@@ -81,6 +81,15 @@ test("buildFooterLogAddPayload keeps only typed footer fields", () => {
   assert.equal(payload.referralText, "delivered by [REDACTED]");
 });
 
+test("buildRequestLogSavePayload carries masked inbound fields only", () => {
+  const payload = routing.buildRequestLogSavePayload({
+    timestamp: "2026-09-25T08:00:00.000Z", apiKeyId: "key-1", apiKeyMasked: "sk-test…1234",
+    method: "POST", path: "/v1/chat/completions", status: 200, promptTokens: 3, completionTokens: 5,
+  });
+  assert.equal(payload.apiKeyMasked, "sk-test…1234");
+  assert.doesNotThrow(() => buildMutation({ type: "requestLog.save", payload, workerId: "worker-1" }));
+});
+
 test("enqueueTelemetry resolves to {enqueued, dropped} and reports loss", async () => {
   const calls = [];
   const queue = {

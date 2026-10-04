@@ -1,3 +1,4 @@
+import { withRequestLog } from "@/lib/requestLog.js";
 import { handleVideoCreate } from "@/sse/handlers/videoGeneration.js";
 
 export async function OPTIONS() {
@@ -11,6 +12,8 @@ export async function OPTIONS() {
 }
 
 /** POST /v1/videos/generations - async video generation (xAI Grok Imagine) */
-export async function POST(request) {
+async function handlePost(request) {
   return await handleVideoCreate(request, "generations");
 }
+
+export const POST = withRequestLog("video", handlePost);

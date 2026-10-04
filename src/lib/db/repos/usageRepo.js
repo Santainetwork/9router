@@ -394,6 +394,8 @@ export async function getSharedActiveRequests() {
 
 export async function saveRequestUsage(entry) {
   try {
+    const { recordUsageForRequestLog } = await import("./requestLogsRepo.js");
+    recordUsageForRequestLog(entry);
     if (isSqliteMulticoreWorker()) {
       return await saveRequestUsageViaMutation(entry);
     }

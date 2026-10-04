@@ -1,3 +1,4 @@
+import { withRequestLog } from "@/lib/requestLog.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 
@@ -24,7 +25,7 @@ export async function OPTIONS() {
  * POST /v1/responses/compact - Compact conversation context
  * Reuses the same handleChat pipeline, signals compact via body._compact
  */
-export async function POST(request) {
+async function handlePost(request) {
   await ensureInitialized();
   const body = await request.json();
   body._compact = true;
@@ -35,3 +36,5 @@ export async function POST(request) {
   });
   return await handleChat(newRequest);
 }
+
+export const POST = withRequestLog("chat", handlePost);

@@ -188,6 +188,15 @@ function applyRequestDetailSave(db, payload) {
   return { id };
 }
 
+function applyRequestLogSave(db, payload) {
+  const cols = ["timestamp", "apiKeyId", "apiKeyName", "apiKeyMasked", "ip", "method", "path", "endpointKind", "model", "provider", "resolvedModel", "status", "stream", "promptTokens", "completionTokens", "durationMs", "ttftMs", "tps", "userAgent", "error"];
+  const values = cols.map((key) => payload[key] ?? null);
+  db.run(`INSERT INTO requestLogs(${cols.join(",")}) VALUES(${cols.map(() => "?").join(",")})`, values);
+  const maxRows = Math.max(100, parseInt(process.env.REQUEST_LOGS_MAX || "5000", 10));
+  db.run("DELETE FROM requestLogs WHERE id <= (SELECT id FROM requestLogs ORDER BY id DESC LIMIT 1 OFFSET ?)", [maxRows]);
+  return { inserted: true };
+}
+
 function redactFooterText(text) {
   if (!text || typeof text !== "string") return "";
   let redacted = text;
@@ -252,6 +261,7 @@ function applyConnectionUpdate(db, payload) {
 const HANDLERS = Object.freeze({
   "usage.save": applyUsageSave,
   "requestDetail.save": applyRequestDetailSave,
+  "requestLog.save": applyRequestLogSave,
   "footerLog.add": applyFooterLogAdd,
   "connection.update": applyConnectionUpdate,
 });
