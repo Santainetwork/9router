@@ -6,6 +6,7 @@ import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
 import useThemeStore, { THEME_PRESETS } from "@/store/themeStore";
+import useUiVariantStore from "@/store/uiVariantStore";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
@@ -32,6 +33,8 @@ export default function ProfilePage() {
   const setRadius = useThemeStore((s) => s.setRadius);
   const applyPreset = useThemeStore((s) => s.applyPreset);
   const resetCustomTheme = useThemeStore((s) => s.resetCustomTheme);
+  const uiVariant = useUiVariantStore((s) => s.variant);
+  const setUiVariant = useUiVariantStore((s) => s.setVariant);
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
@@ -991,6 +994,32 @@ export default function ProfilePage() {
                 {dbStatus.message}
               </p>
             )}
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="font-medium text-sm sm:text-base">Dashboard Style</p>
+              <p className="text-xs sm:text-sm text-text-muted">Choose dashboard appearance. Setting applies only to this browser.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="group" aria-label="Dashboard Style">
+              {[{ value: "santai", label: "SantaiNetwork", description: "Current interface" }, { value: "friend", label: "TailAdmin", description: "Friend bundle interface" }].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setUiVariant(option.value)}
+                  aria-pressed={uiVariant === option.value}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors",
+                    uiVariant === option.value ? "border-primary ring-1 ring-primary/40" : "border-border hover:border-primary/50"
+                  )}
+                >
+                  <span className="block text-sm font-medium">{option.label}</span>
+                  <span className="block text-xs text-text-muted mt-1">{option.description}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </Card>
 

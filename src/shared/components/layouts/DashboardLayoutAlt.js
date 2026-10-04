@@ -1,12 +1,14 @@
 "use client";
 
+// Adapted from friend 9Router v0.5.86 dashboard shell
+// Origin: /root/.jcode/scratch/9router-ui/src/shared/components/layouts/DashboardLayout.js
+// Changes: identical structure, uses friend-origin Sidebar/Header components
+
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useNotificationStore } from "@/store/notificationStore";
-import useUiVariantStore from "@/store/uiVariantStore";
-import Sidebar from "../Sidebar";
-import Header from "../Header";
-import DashboardLayoutAlt from "./DashboardLayoutAlt";
+import SidebarAlt from "../SidebarAlt";
+import HeaderAlt from "../HeaderAlt";
 
 function getToastStyle(type) {
   if (type === "success") {
@@ -33,19 +35,7 @@ function getToastStyle(type) {
   };
 }
 
-export default function DashboardLayout({ children }) {
-  const variant = useUiVariantStore((state) => state.variant);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => setHydrated(true), []);
-
-  if (hydrated && variant === "friend") {
-    return <DashboardLayoutAlt>{children}</DashboardLayoutAlt>;
-  }
-  return <DashboardLayoutCurrent>{children}</DashboardLayoutCurrent>;
-}
-
-function DashboardLayoutCurrent({ children }) {
+export default function DashboardLayoutAlt({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCompact, setSidebarCompact] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -107,24 +97,6 @@ function DashboardLayoutCurrent({ children }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [sidebarOpen]);
 
-  // Preload heavy usage charts in background when browser is idle
-  useEffect(() => {
-    const preload = () => {
-      import("@/shared/components/UsageStats").catch(() => {});
-      import("@/app/(dashboard)/dashboard/usage/components/UsageChart").catch(() => {});
-      import("@/app/(dashboard)/dashboard/usage/components/ProviderBarChart").catch(() => {});
-      import("@/app/(dashboard)/dashboard/usage/components/TopModelsChart").catch(() => {});
-    };
-    if (typeof window !== "undefined") {
-      if ("requestIdleCallback" in window) {
-        const id = window.requestIdleCallback(preload, { timeout: 4000 });
-        return () => window.cancelIdleCallback(id);
-      }
-      const timer = setTimeout(preload, 2500);
-      return () => clearTimeout(timer);
-    }
-  }, []);
-
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">
       <div className="fixed top-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite" aria-relevant="additions text">
@@ -159,7 +131,6 @@ function DashboardLayoutCurrent({ children }) {
       <a href="#dashboard-main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[90] focus:rounded focus:bg-surface focus:px-3 focus:py-2 focus:text-primary">
         Skip to main content
       </a>
-      {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 lg:hidden"
@@ -179,20 +150,18 @@ function DashboardLayoutCurrent({ children }) {
         role={!isDesktop && sidebarOpen ? "dialog" : undefined}
         aria-label={!isDesktop && sidebarOpen ? "Navigation" : undefined}
       >
-        <Sidebar compact={sidebarCompact} onClose={closeSidebar} />
+        <SidebarAlt compact={sidebarCompact} onClose={closeSidebar} />
       </div>
 
-      {/* Main content */}
       <main id="dashboard-main" tabIndex="-1" inert={!isDesktop && sidebarOpen ? true : undefined} aria-hidden={!isDesktop && sidebarOpen ? "true" : undefined} className="flex flex-col flex-1 h-full min-w-0 max-w-full relative transition-colors duration-300 isolate">
-        {/* Faint grid background */}
         <div className="landing-grid absolute inset-0 pointer-events-none -z-10" aria-hidden="true" />
-        <Header key={pathname} menuButtonRef={menuButtonRef} onMenuClick={() => setSidebarOpen(true)} onCompactToggle={() => setSidebarCompact((value) => {
+        <HeaderAlt key={pathname} menuButtonRef={menuButtonRef} onMenuClick={() => setSidebarOpen(true)} onCompactToggle={() => setSidebarCompact((value) => {
           const next = !value;
           try { globalThis.localStorage?.setItem("dashboard-sidebar-compact", String(next)); } catch {}
           return next;
         })} sidebarCompact={sidebarCompact} />
         <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "px-3 py-4 sm:p-5 lg:p-6"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
-          <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>{children}</div>
+          <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "w-full max-w-[1600px] mx-auto"}`}>{children}</div>
         </div>
       </main>
     </div>
