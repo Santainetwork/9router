@@ -42,6 +42,31 @@ test("postgres schema sync treats lowercase information_schema column names as e
   assert.deepEqual(alters, []);
 });
 
+test("postgres schema sync makes missing-column ALTER idempotent", async () => {
+  const alters = [];
+  const adapter = {
+    driver: "postgres",
+    exec(sql) {
+      if (/^ALTER TABLE/i.test(sql)) alters.push(sql);
+    },
+    all() {
+      return [];
+    },
+    get(sql, params = []) {
+      if (/SELECT COUNT\(\*\)/i.test(sql)) return { c: 1 };
+      if (params[0] === "migrationVersion") return { value: "1" };
+      if (params[0] === "backupSchemaVersion") return { value: String(SCHEMA_VERSION) };
+      return undefined;
+    },
+    run() {},
+    transaction(fn) { return fn(); },
+  };
+
+  await runMigrationOnce(adapter);
+
+  assert.ok(alters.some((sql) => /ALTER TABLE requestLogs ADD COLUMN IF NOT EXISTS id INTEGER/i.test(sql)));
+});
+
 test("postgres schema sync fails closed when a missing column cannot be added", async () => {
   const meta = new Map([
     ["migrationVersion", "1"],
