@@ -159,6 +159,21 @@
 
 ---
 
+### 14. Request Logs & Dashboard Navigation ✅ DEPLOYED
+**Purpose**: Provide authenticated request-level observability with searchable request history, model/provider metadata, status, latency, token counts, streaming state, and error details.
+
+**Implementation**:
+- `src/app/(dashboard)/dashboard/request-logs/page.js`: Request Logs dashboard page.
+- `src/app/api/request-logs/route.js`: Authenticated list and filter API.
+- `src/lib/db/repos/requestLogsRepo.js`: Request log persistence and queries.
+- `src/lib/db/schema.js`: `requestlogs` table schema and indexes.
+- `src/shared/components/Sidebar.js`: `/dashboard/request-logs` navigation entry in both SantaiNetwork and TailAdmin themes.
+- `tests/unit/friend-ui-request-logs.test.mjs`: Regression coverage for route and navigation visibility.
+
+**Operational note**: PostgreSQL startup may log a non-fatal duplicate `requestlogs.id` column warning during schema synchronization. Verify live schema before any repair. Expected state: 21 `requestlogs` columns, primary key `requestlogs_pkey`, indexes `idx_rl_key`, `idx_rl_status`, and `idx_rl_ts`.
+
+---
+
 ## 🔧 Verification & Testing
 
 ```bash
