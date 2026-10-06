@@ -77,6 +77,11 @@ SERVICE_WORKER_ENV="9router-worker-env"
 SERVICE_WORKERS_TARGET="9router-workers.target"
 WORKER_ENV_DIR="${WORKER_ENV_DIR:-/run/9router-workers}"
 
+# Build output dir. next.config.mjs resolves distDir from NEXT_DIST_DIR, defaulting
+# to .next, so this must match whatever the build produced or the swap below ships
+# a stale bundle silently.
+DIST_DIR_NAME="${NEXT_DIST_DIR:-.next}"
+
 ASSUME_YES=0
 DO_UNINSTALL=0
 DO_PURGE=0
@@ -900,11 +905,15 @@ fi
 step "Building Next.js standalone bundle"
 if [ "$SKIP_BUILD" = 1 ]; then
   info "Skipped (--skip-build)"
-  [ -d "$REPO_DIR/.next/standalone" ] || fail "--skip-build needs an existing .next/standalone build in $REPO_DIR"
 else
   npm run build
   ok "Next.js build complete"
 fi
+
+# The bundle never gets copied below unless this exists, and without a matching
+# distDir here the release keeps whatever the host last had in it.
+[ -d "$REPO_DIR/$DIST_DIR_NAME/standalone" ] \
+  || fail "expected a standalone build at $REPO_DIR/$DIST_DIR_NAME/standalone after the build"
 
 # ─── 2b. Lay out the install dir (engine binary + deploy assets) ─────────────
 step "Staging install directory"
@@ -934,14 +943,46 @@ mkdir -p "$DATA_DIR"
 STAGE_DIR="${RELEASE_DIR}.staging.$$"
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
-cp -a "$REPO_DIR/.next/standalone/." "$STAGE_DIR/"
-mkdir -p "$STAGE_DIR/.next"
-cp -a "$REPO_DIR/.next/static" "$STAGE_DIR/.next/static"
+cp -a "$REPO_DIR/$DIST_DIR_NAME/standalone/." "$STAGE_DIR/"
+mkdir -p "$STAGE_DIR/$DIST_DIR_NAME"
+cp -a "$REPO_DIR/$DIST_DIR_NAME/static" "$STAGE_DIR/$DIST_DIR_NAME/static"
 cp -a "$REPO_DIR/public" "$STAGE_DIR/public"
 cp -a "$REPO_DIR/custom-server.js" "$STAGE_DIR/custom-server.js"
 mkdir -p "$STAGE_DIR/scripts"
 cp -a "$REPO_DIR/scripts/systemd-worker-topology.sh" "$STAGE_DIR/scripts/systemd-worker-topology.sh"
+
+# Provenance: the exact tree the stage was cut from, so a later BUILD_ID drift can
+# be traced to a build vs. a copy instead of being guessed at from the host.
+printf '%s\n' "$DIST_DIR_NAME" > "$STAGE_DIR/.dist-dir"
+
+# Every file the boot path resolves, plus the deps the traced build needs but
+# never bundles. A release missing any of these crash-loops the unit instead of
+# failing the copy, which is how the last outage looked from outside.
 [ -f "$STAGE_DIR/custom-server.js" ] || fail "custom-server.js missing from the staged release"
+[ -f "$STAGE_DIR/server.js" ] || fail "server.js missing from the staged release"
+[ -f "$STAGE_DIR/package.json" ] || fail "package.json missing from the staged release"
+[ -d "$STAGE_DIR/$DIST_DIR_NAME/static" ] || fail "$DIST_DIR_NAME/static missing from the staged release"
+[ -d "$STAGE_DIR/node_modules/next" ] || fail "node_modules/next missing from the staged release"
+
+# The traced deps (better-sqlite3, pg, sql.js, open) arrive with the standalone
+# copy as relative symlinks into node_modules/.pnpm. Keep them linked rather than
+# dereferenced: a half-materialized tree resolves some packages and not others,
+# which surfaces as a driver load failure long after the deploy looks fine.
+[ -L "$STAGE_DIR/node_modules/next" ] || [ -d "$STAGE_DIR/node_modules/next" ] \
+  || fail "node_modules/next did not reach the staged release"
+if [ -d "$REPO_DIR/$DIST_DIR_NAME/standalone/node_modules/.pnpm" ]; then
+  [ -d "$STAGE_DIR/node_modules/.pnpm" ] \
+    || fail "node_modules/.pnpm missing; the traced deps would not resolve"
+fi
+
+# Fail on a release that could serve no requests at all, rather than restart-looping.
+if [ ! -d "$STAGE_DIR/node_modules" ] || [ -z "$(ls -A "$STAGE_DIR/node_modules" 2>/dev/null)" ]; then
+  fail "staged release has an empty node_modules"
+fi
+
+# Resolve the boot path from the staged dir itself, before anything is swapped.
+(cd "$STAGE_DIR" && node -e 'require.resolve("next")') \
+  || fail "cannot resolve next from the staged release"
 
 # Atomic swap; keep the previous release so rollback has something to restore.
 rm -rf "${RELEASE_DIR}.previous"
