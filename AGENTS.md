@@ -33,6 +33,8 @@
 - `systemd`:
   - `9router-hybrid-engine.service`: Go binary managing `:20128` (master gateway), `:20129` (limiter), and `:20140` (public proxy).
   - `9router.service`: Next.js App Router on internal loopback `127.0.0.1:20127` with `NODE_OPTIONS="--max-old-space-size=512"`.
+  - `9router-worker@.service` / `9router-worker-env@.service` / `9router-workers.target`: stateless API worker instances fronted by the gateway.
+  - **Propagation**: the worker template and the engine unit carry `PartOf=9router.service`, and `9router.service` carries `Wants=9router-workers.target 9router-hybrid-engine.service` (with no `After=`). `systemctl restart 9router` therefore restarts the workers and the gateway, `stop` drains them, and `start` brings them back. Do NOT add `After=` on `9router.service` toward the worker target or the engine: that closes an unbreakable ordering cycle (`9router.service -> 9router-worker@ -> 9router-worker-env@ -> 9router.service`).
 - Telemetry & UI: Real-time engine indicators in Dashboard (`/dashboard`), Queue Monitor (`/dashboard/queue-monitor`), and Usage Check (`/usage-check` and `:20140`).
 
 ---
