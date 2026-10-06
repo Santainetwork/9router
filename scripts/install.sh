@@ -547,6 +547,19 @@ if [ -n "$RESTORE_FROM" ]; then
   [ -f "$RESTORE_FROM/env/9router.env" ] || [ -d "$RESTORE_FROM/release-live" ] || \
     warn "Backup looks incomplete (no env and no release snapshot)"
 
+  # The restore path mutates $ENV_FILE, the systemd unit dir and $RELEASE_DIR
+  # with raw cp/mv/rm, so it needs its own dry-run exit (mirrors the uninstall
+  # path). Without this, --dry-run silently performs a real restore.
+  if [ "$DRY_RUN" = 1 ]; then
+    info "[dry-run] would restore $ENV_FILE from $RESTORE_FROM/env/9router.env"
+    info "[dry-run] would restore systemd units from $RESTORE_FROM/systemd"
+    for src in "$RESTORE_FROM/release-live" "$RESTORE_FROM/release"; do
+      [ -d "$src" ] && info "[dry-run] would replace $RELEASE_DIR with $src (current kept at ${RELEASE_DIR}.failed)"
+    done
+    info "[dry-run] would restart $SERVICE_MAIN and $SERVICE_ENGINE, then apply the worker topology"
+    exit 0
+  fi
+
   if ! require_typed_confirmation \
       "This REPLACES the live config, systemd units and release dir with the contents of $RESTORE_FROM, then restarts the services." \
       "$CONFIRM_PHRASE"; then
