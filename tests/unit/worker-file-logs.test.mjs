@@ -171,6 +171,35 @@ test("append caps each worker file instead of growing unbounded", () => {
   assert.ok(lines.length > 0, "keep some tail");
 });
 
+test("unterminated oversized line is dropped, not buffered", () => {
+  const dataDir = tmpDir();
+  const file = workerLogFilePath(dataDir, 1);
+  const received = [];
+  const collector = createWorkerFileCollector({
+    dataDir,
+    appendLine: (e) => received.push(e.message),
+    backlogBytes: 1024 * 1024,
+  });
+
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "good line\n");
+  collector.pollAll();
+  // A statement with no newline yet: held, not published, and capped.
+  fs.appendFileSync(file, "z".repeat(200 * 1024));
+  collector.pollAll();
+  assert.deepEqual(received, ["good line"], "unterminated run stays pending");
+
+  // The run closes with its own newline, then a normal line follows.
+  fs.appendFileSync(file, "\nafter\n");
+  collector.pollAll();
+  assert.equal(received[0], "good line");
+  assert.equal(received.at(-1), "after", "normal line after the oversized one still arrives");
+  for (const line of received) {
+    assert.ok(line.length < 64 * 1024, `oversized line emitted (${line.length})`);
+  }
+  collector.stop();
+});
+
 test("MAX_WORKER_INDEX matches consoleLogBuffer", async () => {
   assert.equal(MAX_WORKER_INDEX, 8);
   // sink through the real buffer to prove the entry shape is accepted

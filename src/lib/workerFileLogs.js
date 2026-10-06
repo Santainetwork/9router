@@ -26,6 +26,10 @@ const BUILD_PHASES = new Set(["phase-production-build", "phase-export", "phase-s
 // scripts/systemd-worker-topology.sh / custom-server.js MAX_API_WORKERS.
 export const MAX_WORKER_INDEX = 8;
 export const POLL_INTERVAL_MS = 1000;
+// A line with no newline is held in memory until its terminator arrives. Cap
+// it the same way the journald follower does, so one pathological worker
+// statement cannot grow the control process without bound.
+const MAX_PENDING_CHARS = 65536;
 // Per-file ceiling. The dashboard ring is CONSOLE_LOG_CONFIG.maxLines = 200, so a
 // window this large is far more than the UI can ever show; it exists so a worker
 // running for weeks does not fill the data volume.
@@ -184,14 +188,19 @@ export function createWorkerFileCollector({
   const consume = (index, chunk) => {
     if (!chunk) return;
     let text = (pending.get(index) ?? "") + chunk;
+    if (!text.includes("\n") && text.length > MAX_PENDING_CHARS) {
+      // Unterminated garbage, not a slow line. Drop it rather than buffer it.
+      pending.set(index, "");
+      return;
+    }
     let newline = text.indexOf("\n");
     while (newline !== -1) {
-      const line = text.slice(0, newline).replace(/\r$/, "").trim();
+      const line = newline <= MAX_PENDING_CHARS ? text.slice(0, newline).replace(/\r$/, "").trim() : "";
       if (line) appendLine({ source: "worker", index, message: line });
       text = text.slice(newline + 1);
       newline = text.indexOf("\n");
     }
-    pending.set(index, text);
+    pending.set(index, text.length > MAX_PENDING_CHARS ? "" : text);
   };
 
   const pollWorker = (index) => {
