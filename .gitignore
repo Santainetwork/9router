@@ -63,6 +63,8 @@ Thanks.md
 PUBLIC.en.md
 PR/*
 package-lock.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 
 #Ignore vscode AI rules
