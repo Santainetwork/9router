@@ -1010,6 +1010,14 @@ fi
 # builds, every cheap individual check still passing). RELEASE_DIR points the
 # gate at the stage; the repo build stays the reference. Not run on the restore
 # path: a restore intentionally ships an older build than the repo.
+#
+# Disarm the rollback across the gate. At this point nothing that serves traffic
+# has been touched: the work so far is the backup dir, the install dir and
+# $STAGE_DIR, all of which a failure can simply discard. Leaving the rollback
+# armed here turns a bad build into a live-to-.failed swap plus service
+# restarts, on top of a release that was never modified. Re-armed below, once
+# the swap has actually put the new release in place.
+ROLLBACK_ARMED=0
 RELEASE_DIR="$STAGE_DIR" "$REPO_DIR/scripts/verify-release.sh" \
   || fail "staged release failed verify-release.sh; keeping the current release"
 
@@ -1019,6 +1027,7 @@ if [ -d "$RELEASE_DIR" ] && [ -n "$(ls -A "$RELEASE_DIR" 2>/dev/null)" ]; then
   mv "$RELEASE_DIR" "${RELEASE_DIR}.previous"
 fi
 mv "$STAGE_DIR" "$RELEASE_DIR"
+[ -n "$BACKUP_DIR" ] && ROLLBACK_ARMED=1
 ok "Release staged at $RELEASE_DIR"
 info "Data dir: $DATA_DIR"
 

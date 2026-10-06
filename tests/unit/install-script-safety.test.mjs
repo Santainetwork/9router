@@ -401,6 +401,24 @@ test("release staging is atomic and keeps a rollback copy", () => {
     SRC.slice(gate, gate + 300).includes("|| fail"),
     "a gate failure must abort the install before the swap",
   );
+  // The gate runs before anything that serves traffic has been replaced, so the
+  // armed rollback must not fire on a bad build: it would move an untouched
+  // live release to .failed and restart every service for no reason. Disarm
+  // immediately before the gate, re-arm only after the swap. Anchor on the
+  // window right before the gate: a bare indexOf would match the initial
+  // ROLLBACK_ARMED=0 declaration and pass even with the disarm deleted.
+  const preGate = SRC.slice(Math.max(0, gate - 400), gate);
+  assert.match(
+    preGate,
+    /^ROLLBACK_ARMED=0$/m,
+    "rollback must be disarmed in the block immediately before the gate",
+  );
+  const rearm = SRC.indexOf("ROLLBACK_ARMED=1", gate);
+  assert.ok(rearm > swap, "the rollback must be re-armed after the swap, not before");
+  assert.ok(
+    SRC.slice(swap, rearm).includes('mv "$STAGE_DIR" "$RELEASE_DIR"'),
+    "re-arming must follow the swap that puts the new release in place",
+  );
 });
 
 test("secrets survive an upgrade", () => {
