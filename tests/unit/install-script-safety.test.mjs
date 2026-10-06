@@ -451,6 +451,42 @@ test("native worker supervisor has ordered lifecycle and loopback health checks"
   assert.match(engine, /After=.*\$\{SERVICE_WORKERS_TARGET\}/, "on reboot the gateway must wait for an enabled worker target");
 });
 
+test("restarting the control process propagates to workers and the gateway", () => {
+  // Regression guard for a real complaint: a restart/redeploy of the control
+  // process left the stateless workers on the previous build. The propagation is
+  // PartOf= (restart/stop) plus a matching Wants= on the control unit (start).
+  const worker = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER_ENV}@.service"'),
+  );
+  assert.match(worker, /PartOf=.*\$\{SERVICE_MAIN\}\.service/, "worker must restart when the control process restarts");
+
+  const engine = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_ENGINE}.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'),
+  );
+  assert.match(engine, /PartOf=\$\{SERVICE_MAIN\}\.service/, "gateway must restart when the control process restarts");
+
+  const main = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service"'),
+  );
+  assert.match(main, /Wants=.*\$\{SERVICE_WORKERS_TARGET\}/, "starting the control process must start the workers");
+  assert.match(main, /Wants=.*\$\{SERVICE_ENGINE\}/, "starting the control process must start the gateway");
+});
+
+test("control unit must not order itself against the worker target (ordering cycle)", () => {
+  // A live experiment proved that `After=` on the control unit naming the worker
+  // target creates an unbreakable cycle: control -> worker@ -> worker-env@ ->
+  // control. Start propagation must therefore use Wants= WITHOUT After=.
+  const main = SRC.slice(
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service"'),
+    SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service"'),
+  );
+  assert.doesNotMatch(main, /After=.*\$\{SERVICE_WORKERS_TARGET\}/, "After= on the control unit toward the worker target closes a cycle");
+  assert.doesNotMatch(main, /After=.*\$\{SERVICE_ENGINE\}/, "After= on the control unit toward the gateway closes a cycle");
+});
+
 test("worker instance env overrides shared control env and is regenerated before start", () => {
   const worker = SRC.slice(
     SRC.indexOf('cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_WORKER}@.service"'),

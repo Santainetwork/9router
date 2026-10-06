@@ -1094,6 +1094,8 @@ Documentation=file://${INSTALL_DIR}/README.md
 After=network-online.target ${SERVICE_MAIN}.service ${SERVICE_WORKERS_TARGET}
 Wants=network-online.target
 Requires=${SERVICE_MAIN}.service
+# PartOf propagates restart/stop of the control process to the gateway; the
+# matching Wants=${SERVICE_ENGINE} on the control unit re-attaches a start.
 PartOf=${SERVICE_MAIN}.service
 
 [Service]
@@ -1131,8 +1133,12 @@ cat > "${SYSTEMD_UNIT_DIR}/${SERVICE_MAIN}.service" <<EOF
 [Unit]
 Description=9Router Next.js backend (internal :${BACKEND_PORT})
 Documentation=file://${INSTALL_DIR}/README.md
+# Wants= (with no After=) makes a start of this control process also start the
+# API worker target and the Go gateway, and the PartOf= in those units makes a
+# stop/restart propagate back to them. Pairing Wants= with After= here closes an
+# ordering cycle through ${SERVICE_WORKER_ENV}@.service -> ${SERVICE_MAIN}.service.
 After=network-online.target
-Wants=network-online.target
+Wants=network-online.target ${SERVICE_WORKERS_TARGET} ${SERVICE_ENGINE}
 
 [Service]
 Type=simple
@@ -1194,9 +1200,13 @@ AssertPathExists=${RELEASE_DIR}/custom-server.js
 After=network-online.target ${SERVICE_MAIN}.service ${SERVICE_WORKER_ENV}@%i.service
 Wants=network-online.target
 Requires=${SERVICE_MAIN}.service ${SERVICE_WORKER_ENV}@%i.service
-# PartOf lets systemctl stop 9router-workers.target drain every instance.
-PartOf=${SERVICE_WORKERS_TARGET}
-
+# PartOf lets systemctl stop 9router-workers.target drain every instance, and
+# PartOf=${SERVICE_MAIN}.service makes a restart of the control process (which
+# owns the build the workers must match) propagate to the workers, so they never
+# keep serving the previous build. PartOf adds no ordering, so main must NOT
+# order itself against ${SERVICE_WORKERS_TARGET} (that closes an ordering cycle
+# through ${SERVICE_WORKER_ENV}@.service -> ${SERVICE_MAIN}.service).
+PartOf=${SERVICE_WORKERS_TARGET} ${SERVICE_MAIN}.service
 [Service]
 Type=simple
 User=root
