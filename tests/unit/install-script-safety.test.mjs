@@ -419,6 +419,29 @@ test("release staging is atomic and keeps a rollback copy", () => {
     SRC.slice(swap, rearm).includes('mv "$STAGE_DIR" "$RELEASE_DIR"'),
     "re-arming must follow the swap that puts the new release in place",
   );
+  // The stage must be reaped whatever the exit path: disarmed aborts (gate
+  // failure, plain installs) never call rollback(), so without an EXIT trap each
+  // failed upgrade leaves a full release copy in ${RELEASE_DIR}.staging.<pid>.
+  assert.match(SRC, /^trap reap_stage EXIT$/m, "the stage must be reaped on every exit path");
+  const trapIdx = SRC.indexOf("trap reap_stage EXIT");
+  const stageIdx = SRC.indexOf("STAGE_DIR=");
+  assert.ok(
+    stageIdx < trapIdx,
+    "STAGE_DIR must be assigned before the trap fires on it, or the trap reaps nothing",
+  );
+  // The handler is defined just above the trap line; check it references and
+  // removes STAGE_DIR explicitly. Line-based: a nested ${STAGE_DIR:-} breaks
+  // [^}]* regexes, and the point is to catch a handler that stops deleting.
+  const handlerLine = SRC.split("\n").find((l) => l.startsWith("reap_stage() {"));
+  assert.ok(handlerLine, "the trap handler must be defined");
+  assert.ok(
+    handlerLine.includes("rm -rf") && handlerLine.includes("$STAGE_DIR"),
+    "the trap handler must remove STAGE_DIR",
+  );
+  assert.ok(
+    SRC.indexOf("reap_stage() {") < trapIdx,
+    "the handler must be defined before the trap references it",
+  );
 });
 
 test("secrets survive an upgrade", () => {

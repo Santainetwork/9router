@@ -954,6 +954,13 @@ mkdir -p "$DATA_DIR"
 # Stage into a sibling dir first so a failed copy never leaves a half-written
 # release the service would pick up on its next restart.
 STAGE_DIR="${RELEASE_DIR}.staging.$$"
+# Always reap the throwaway stage on exit, whatever the path out. A disarmed
+# abort (stage-gate failure, or a plain install that never arms the rollback)
+# does not run rollback(), so without this trap each failed upgrade leaves a full
+# ~112 MB release copy in ${RELEASE_DIR}.staging.<pid> until the next install
+# starts. After a successful swap STAGE_DIR no longer exists, so this is a no-op.
+reap_stage() { [ -n "${STAGE_DIR:-}" ] && [ -e "$STAGE_DIR" ] && rm -rf "$STAGE_DIR"; }
+trap reap_stage EXIT
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 cp -a "$REPO_DIR/$DIST_DIR_NAME/standalone/." "$STAGE_DIR/"
