@@ -1,6 +1,6 @@
 #!/bin/bash
 # Post-deploy gate: fail if the release dir is a mixed or partial build.
-# Cause: 2026-10-06 incident where 1161/1619 files in .next-tailadmin were from
+# Cause: 2026-10-06 incident where 1332/1619 files in .next-tailadmin were from
 # two different builds -> RSC module mismatch -> blank dashboard pages.
 set -e
 
