@@ -1005,6 +1005,14 @@ fi
 (cd "$STAGE_DIR" && node -e 'require.resolve("next")') \
   || fail "cannot resolve next from the staged release"
 
+# Post-stage gate: a mixed or partial build must abort before it becomes the
+# live release (2026-10-06 incident: 1332/1619 .next-tailadmin files from two
+# builds, every cheap individual check still passing). RELEASE_DIR points the
+# gate at the stage; the repo build stays the reference. Not run on the restore
+# path: a restore intentionally ships an older build than the repo.
+RELEASE_DIR="$STAGE_DIR" "$REPO_DIR/scripts/verify-release.sh" \
+  || fail "staged release failed verify-release.sh; keeping the current release"
+
 # Atomic swap; keep the previous release so rollback has something to restore.
 rm -rf "${RELEASE_DIR}.previous"
 if [ -d "$RELEASE_DIR" ] && [ -n "$(ls -A "$RELEASE_DIR" 2>/dev/null)" ]; then

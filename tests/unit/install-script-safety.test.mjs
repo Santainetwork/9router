@@ -391,6 +391,16 @@ test("release staging is atomic and keeps a rollback copy", () => {
     !SRC.includes('mkdir -p "$RELEASE_DIR" "$DATA_DIR"'),
     "fresh install must not pre-create RELEASE_DIR and nest the staged release inside it",
   );
+  // The gate must run on the stage, before it becomes the live release. It had
+  // no callers at all when the mixed-build incident happened, so assert it is
+  // wired in AND ordered before the swap.
+  const gate = SRC.indexOf('RELEASE_DIR="$STAGE_DIR" "$REPO_DIR/scripts/verify-release.sh"');
+  assert.ok(gate > 0, "installer must invoke verify-release.sh on the staged release");
+  assert.ok(gate < swap, "the gate must run before the swap, or a mixed build still ships");
+  assert.ok(
+    SRC.slice(gate, gate + 300).includes("|| fail"),
+    "a gate failure must abort the install before the swap",
+  );
 });
 
 test("secrets survive an upgrade", () => {
