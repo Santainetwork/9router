@@ -470,8 +470,8 @@ export default function TokenSaverClient() {
             : "Stopped";
   const pxpipeChipClass =
     pxpipeHealthy || pxpipeStatus.running
-      ? "bg-success/15 text-success"
-      : "bg-warning/15 text-warning";
+      ? "bg-success/10 text-success"
+      : "bg-warning/10 text-warning";
 
   return (
     <div className="space-y-6 p-6">
@@ -521,7 +521,7 @@ export default function TokenSaverClient() {
                 </a>
               </p>
               <span
-                className={`text-xs px-2 py-0.5 rounded ${headroomRunning ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}
+                className={`text-xs px-2 py-0.5 rounded ${headroomRunning ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}
               >
                 {headroomStatusLabel}
               </span>

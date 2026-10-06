@@ -8,12 +8,12 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-span-2 lg:col-span-2">
             <div className="flex items-center gap-3 mb-6">
-              <div className="size-6 rounded bg-[#f97815] flex items-center justify-center text-white">
+              <div className="size-6 rounded bg-[#f97815] flex items-center justify-center text-[#181411]">
                 <span className="material-symbols-outlined text-[16px]">hub</span>
               </div>
               <h3 className="text-white text-lg font-bold">9Router</h3>
             </div>
-            <p className="text-gray-500 text-sm max-w-xs mb-6">
+            <p className="text-gray-400 text-sm max-w-xs mb-6">
               The unified endpoint for AI generation. Connect, route, and manage your AI providers with ease.
             </p>
             <div className="flex gap-4">
@@ -48,10 +48,10 @@ export default function Footer() {
         
         {/* Bottom */}
         <div className="border-t border-[#3a2f27] pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-gray-600 text-sm">© 2025 9Router. All rights reserved.</p>
+          <p className="text-gray-400 text-sm">© 2025 9Router. All rights reserved.</p>
           <div className="flex gap-6">
-            <a className="text-gray-600 hover:text-white text-sm transition-colors" href="https://github.com/decolua/9router" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a className="text-gray-600 hover:text-white text-sm transition-colors" href="https://www.npmjs.com/package/9router" target="_blank" rel="noopener noreferrer">NPM</a>
+            <a className="text-gray-400 hover:text-white text-sm transition-colors" href="https://github.com/decolua/9router" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a className="text-gray-400 hover:text-white text-sm transition-colors" href="https://www.npmjs.com/package/9router" target="_blank" rel="noopener noreferrer">NPM</a>
           </div>
         </div>
       </div>

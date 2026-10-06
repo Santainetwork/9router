@@ -65,7 +65,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
       <button
         aria-label={`Remove ${fullModel}`}
         onClick={onDeleteAlias}
-        className="p-1 hover:bg-red-50 rounded text-red-500"
+        className="p-1 hover:bg-red-50 rounded text-red-700 dark:text-red-300"
         title="Remove model"
       >
         <span className="material-symbols-outlined text-sm">delete</span>

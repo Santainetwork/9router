@@ -188,7 +188,7 @@ export default function UsageCheckPage() {
                 onChange={(e) => setKey(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && check()}
                 aria-label="API key"
-                className="w-full rounded-xl border-2 border-black dark:border-white bg-[#FAF8F5] dark:bg-neutral-800 px-3.5 py-2.5 text-sm font-mono font-bold text-black dark:text-white placeholder:text-neutral-400 focus:outline-none focus:bg-yellow-50 dark:focus:bg-neutral-800 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] transition-all"
+                className="w-full rounded-xl border-2 border-black dark:border-white bg-[#FAF8F5] dark:bg-neutral-800 px-3.5 py-2.5 text-sm font-mono font-bold text-black dark:text-white placeholder:text-neutral-600 dark:placeholder:text-neutral-400 focus:outline-none focus:bg-yellow-50 dark:focus:bg-neutral-800 shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] transition-all"
               />
             </div>
 
@@ -341,7 +341,7 @@ export default function UsageCheckPage() {
 
                   <div className="flex items-center gap-2">
                     {lastLivePing && (
-                      <span className="text-[10px] font-mono font-bold text-neutral-500 hidden sm:inline">
+                      <span className="text-[10px] font-mono font-bold text-neutral-600 dark:text-neutral-400 hidden sm:inline">
                         {lastLivePing.toLocaleTimeString()}
                       </span>
                     )}
@@ -368,14 +368,14 @@ export default function UsageCheckPage() {
                       In-Flight Active
                     </span>
                     <div className="text-2xl font-black font-mono mt-1 text-black dark:text-white flex items-baseline gap-1">
-                      <span className={activeSlots > 0 ? "text-emerald-500 dark:text-emerald-400" : ""}>
+                      <span className={activeSlots > 0 ? "text-emerald-700 dark:text-emerald-400" : ""}>
                         {activeSlots}
                       </span>
-                      <span className="text-xs font-bold text-neutral-500">
+                      <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400">
                         / {limitConcurrency > 0 ? limitConcurrency : "∞"}
                       </span>
                     </div>
-                    <div className="text-[10px] font-bold text-neutral-500 mt-1">
+                    <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mt-1">
                       {limitConcurrency > 0
                         ? `${Math.max(0, limitConcurrency - activeSlots)} slots available`
                         : "Unlimited concurrency"}
@@ -387,12 +387,12 @@ export default function UsageCheckPage() {
                       Buffered in Queue
                     </span>
                     <div className="text-2xl font-black font-mono mt-1 text-black dark:text-white flex items-baseline gap-1">
-                      <span className={queuedSlots > 0 ? "text-amber-500 font-black" : ""}>
+                      <span className={queuedSlots > 0 ? "text-amber-700 dark:text-amber-600 font-black" : ""}>
                         {queuedSlots}
                       </span>
-                      <span className="text-xs font-bold text-neutral-500">waiting</span>
+                      <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400">waiting</span>
                     </div>
-                    <div className="text-[10px] font-bold text-neutral-500 mt-1">
+                    <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mt-1">
                       {queuedSlots > 0 ? "Waiting for active slots" : "Queue buffer idle"}
                     </div>
                   </div>
@@ -404,7 +404,7 @@ export default function UsageCheckPage() {
                     <div className="text-2xl font-black font-mono mt-1 text-black dark:text-white">
                       {limitConcurrency > 0 ? `${concurrencyPct}%` : "0%"}
                     </div>
-                    <div className="text-[10px] font-bold text-neutral-500 mt-1">
+                    <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mt-1">
                       {activeSlots >= limitConcurrency && limitConcurrency > 0
                         ? "⚠️ Limit saturated"
                         : "Ready for requests"}

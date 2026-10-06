@@ -169,7 +169,7 @@ export default function ModelProbeClient() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-semibold rounded-xl flex items-center gap-2">
+        <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-800 dark:text-red-300 text-xs font-semibold rounded-xl flex items-center gap-2">
           <span className="material-symbols-outlined text-[18px]">error</span>
           <span>{error}</span>
         </div>
@@ -363,7 +363,7 @@ export default function ModelProbeClient() {
         <div className="space-y-6">
           {/* Preflight failure alert */}
           {isPreflightFailure && firstItemError && (
-            <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-semibold rounded-xl flex items-start gap-2.5">
+            <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-800 dark:text-red-300 text-xs font-semibold rounded-xl flex items-start gap-2.5">
               <span className="material-symbols-outlined text-[20px] shrink-0 mt-0.5">cancel</span>
               <div>
                 <p className="font-bold uppercase tracking-wider">Upstream Pre-flight Check Failed</p>
@@ -380,10 +380,10 @@ export default function ModelProbeClient() {
             className={cn(
               "rounded-xl border p-5 shadow-sm transition-all",
               status === "confirmed"
-                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-400"
                 : status === "mismatch" || status === "failed"
-                ? "bg-red-500/10 border-red-500/30 text-red-500"
-                : "bg-amber-500/10 border-amber-500/30 text-amber-600"
+                ? "bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300"
+                : "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-500"
             )}
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -432,9 +432,9 @@ export default function ModelProbeClient() {
             {/* Risk flags alert */}
             {flags.length > 0 && (
               <div className="mt-4 pt-3 border-t border-current/20 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wide text-red-500">Risk Flags Triggered:</span>
+                <span className="text-xs font-bold uppercase tracking-wide text-red-800 dark:text-red-300">Risk Flags Triggered:</span>
                 {flags.map((f, i) => (
-                  <span key={i} className="text-xs px-2.5 py-0.5 rounded-md bg-red-500 text-white font-mono font-bold">
+                  <span key={i} className="text-xs px-2.5 py-0.5 rounded-md bg-red-600 text-white font-mono font-bold">
                     ⚠️ {f}
                   </span>
                 ))}
@@ -500,13 +500,13 @@ export default function ModelProbeClient() {
                       <tr key={idx} className="hover:bg-surface-2/40 transition-colors">
                         <td className="py-2 px-3 whitespace-nowrap">
                           {item.passed === true ? (
-                            <span className="text-emerald-500 font-bold">PASS</span>
+                            <span className="text-emerald-800 dark:text-emerald-500 font-bold">PASS</span>
                           ) : item.passed === false ? (
-                            <span className="text-red-500 font-bold">FAIL</span>
+                            <span className="text-red-700 dark:text-red-300 font-bold">FAIL</span>
                           ) : item.status === "error" ? (
-                            <span className="text-red-500 font-bold">ERR</span>
+                            <span className="text-red-700 dark:text-red-300 font-bold">ERR</span>
                           ) : (
-                            <span className="text-amber-500 font-bold">WARN</span>
+                            <span className="text-amber-800 dark:text-amber-500 font-bold">WARN</span>
                           )}
                         </td>
                         <td className="py-2 px-3 uppercase text-[11px] text-text-muted">{item.group || "identity"}</td>

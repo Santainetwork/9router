@@ -244,10 +244,10 @@ export default function PxpipeClient() {
                     <span
                       className={`text-xs px-2 py-0.5 rounded ${
                         ev.applied
-                          ? "bg-success/15 text-success"
+                          ? "bg-success/10 text-success"
                           : ev.reason === "transform_error" || ev.reason === "timeout"
                             ? "bg-danger/15 text-danger"
-                            : "bg-warning/15 text-warning"
+                            : "bg-warning/10 text-warning"
                       }`}
                       title={ev.detail || ""}
                     >

@@ -146,7 +146,7 @@ export default function Sidebar({ onClose, compact = false }) {
         {/* Logo */}
         <div className={cn("px-4 py-3 flex flex-col gap-2", compact && "lg:px-2")}>
           <Link href="/dashboard" className={cn("flex items-center gap-3", compact && "lg:justify-center lg:gap-0 lg:px-0")}>
-            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
+            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-600 to-brand-700 shadow-[var(--shadow-warm)]">
               <span className="material-symbols-outlined text-white text-[20px]" aria-hidden="true">hub</span>
             </div>
             <div className={cn("flex flex-col min-w-0", compact && "lg:hidden")}>
@@ -158,13 +158,13 @@ export default function Sidebar({ onClose, compact = false }) {
           </Link>
           {updateInfo && !compact && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
-              <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
+              <span className="text-xs font-semibold text-green-800 dark:text-amber-500">
                 ↑ New version available: v{updateInfo.latestVersion}
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowUpdateModal(true)}
-                  className="px-2 py-1 rounded bg-green-600 hover:bg-green-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                  className="px-2 py-1 rounded bg-green-700 hover:bg-green-800 dark:bg-amber-700 dark:hover:bg-amber-800 text-white text-[11px] font-semibold transition-colors cursor-pointer"
                 >
                   Update now
                 </button>
@@ -173,7 +173,7 @@ export default function Sidebar({ onClose, compact = false }) {
                   title="Copy install command"
                   className="flex-1 text-left hover:opacity-80 transition-opacity cursor-pointer min-w-0"
                 >
-                  <code className="block text-[10px] text-green-600/80 dark:text-amber-400/70 font-mono truncate">
+                  <code className="block text-[10px] text-green-700 dark:text-green-300 font-mono truncate">
                     {copied ? "✓ copied!" : INSTALL_CMD}
                   </code>
                 </button>
@@ -214,7 +214,7 @@ export default function Sidebar({ onClose, compact = false }) {
 
           {/* System section */}
           <div className="pt-3 mt-2 space-y-0.5">
-            <p className={cn("px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2", compact && "lg:hidden")}>
+            <p className={cn("px-4 text-xs font-semibold text-text-muted/90 uppercase tracking-wider mb-2", compact && "lg:hidden")}>
               System
             </p>
 
@@ -350,7 +350,7 @@ export default function Sidebar({ onClose, compact = false }) {
                 computer
               </span>
               <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>9Remote</span>
-              <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-orange-500/15 text-orange-400", compact && "lg:hidden")}>
+              <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-orange-500/15 text-orange-800 dark:text-orange-300", compact && "lg:hidden")}>
                 HOT
               </span>
             </button>
@@ -439,11 +439,11 @@ export default function Sidebar({ onClose, compact = false }) {
             />
           ) : (
             <div className="text-center p-8">
-              <div className="flex items-center justify-center size-16 rounded-full bg-red-500/20 text-red-500 mx-auto mb-4">
+              <div className="flex items-center justify-center size-16 rounded-full bg-red-500/20 text-red-300 mx-auto mb-4">
                 <span className="material-symbols-outlined text-[32px]">power_off</span>
               </div>
               <h2 className="text-xl font-semibold text-white mb-2">Server Disconnected</h2>
-              <p className="text-text-muted mb-6">The proxy server has been stopped.</p>
+              <p className="text-gray-400 mb-6">The proxy server has been stopped.</p>
               <Button variant="secondary" onClick={() => globalThis.location.reload()}>
                 Reload Page
               </Button>
@@ -465,7 +465,7 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
   return (
     <div className="w-full max-w-lg rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
       <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center size-11 rounded-full bg-amber-500/20 text-amber-400">
+        <div className="flex items-center justify-center size-11 rounded-full bg-amber-500/20 text-amber-300">
           <span className="material-symbols-outlined text-[24px]">content_copy</span>
         </div>
         <div>
@@ -482,13 +482,13 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
 
       <p className="text-sm text-white/80 mb-2">Install command:</p>
       <div className="w-full px-3 py-2 rounded bg-white/5 mb-4">
-        <code className="text-xs font-mono text-amber-400 break-all">{installCmd}</code>
+        <code className="text-xs font-mono text-amber-300 break-all">{installCmd}</code>
       </div>
 
       <ol className="text-xs text-white/70 space-y-1 list-decimal list-inside mb-4">
         <li>Click <strong>Copy & Shutdown</strong> below.</li>
         <li>Paste the command into your terminal and press Enter.</li>
-        <li>Run <code className="px-1 rounded bg-white/10 text-green-400">9router</code> again after install.</li>
+        <li>Run <code className="px-1 rounded bg-white/10 text-green-300">9router</code> again after install.</li>
       </ol>
 
       {isDisconnected ? (

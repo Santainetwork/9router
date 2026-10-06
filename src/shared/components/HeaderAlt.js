@@ -30,6 +30,7 @@ const PAGE_INFO = {
   "/dashboard/quota": ["Quota Tracker", "Track provider quota limits", "data_usage"],
   "/dashboard/custom-credits": ["Custom Credits", "Track custom provider balances", "account_balance_wallet"],
   "/dashboard/queue-monitor": ["Request Queue", "Monitor live concurrency and queued requests", "pending_actions"],
+  "/dashboard/request-logs": ["Request Logs", "Per-request upstream trace and latency", "receipt_long"],
   "/dashboard/error-response": ["Custom Error Response", "Configure gateway error responses", "warning"],
   "/dashboard/token-saver": ["Token Saver", "Configure prompt and output compression", "savings"],
   "/dashboard/cli-tools": ["CLI Tools", "Configure CLI tools", "terminal"],
@@ -220,10 +221,40 @@ export default function Header({ onMenuClick, showMenuButton = true, menuButtonR
   const [displayName, setDisplayName] = useState("");
   const [loginMethod, setLoginMethod] = useState("");
   const [donateOpen, setDonateOpen] = useState(false);
+  const [healthy, setHealthy] = useState(null);
 
   // Memoize page info to prevent unnecessary recalculations
   const pageInfo = useMemo(() => getPageInfo(pathname), [pathname]);
   const { title, description, icon, breadcrumbs } = pageInfo;
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadHealth = async () => {
+      try {
+        const res = await fetch("/api/health", { cache: "no-store" });
+        if (!cancelled) setHealthy(res.ok);
+      } catch {
+        if (!cancelled) setHealthy(false);
+      }
+    };
+    loadHealth();
+    const timer = window.setInterval(loadHealth, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document.getElementById("dashboard-header-search")?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -343,6 +374,13 @@ export default function Header({ onMenuClick, showMenuButton = true, menuButtonR
 
       {/* Right actions */}
       <div className="flex items-center gap-1 shrink-0">
+        <span
+          title={healthy === false ? "Gateway unreachable" : healthy ? "Gateway healthy" : "Checking gateway health"}
+          className={"hidden md:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold " + (healthy === false ? "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-300" : healthy ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-400" : "border-border bg-surface-2 text-text-muted")}
+        >
+          <span className={"size-1.5 rounded-full " + (healthy === false ? "bg-red-700 dark:bg-red-400" : healthy ? "bg-emerald-700 dark:bg-emerald-400" : "bg-text-muted")} />
+          {healthy === false ? "Down" : healthy ? "Healthy" : "Checking"}
+        </span>
         {displayName && (loginMethod === "OIDC" || loginMethod === "SAML") && (
           <div
             className="hidden sm:flex items-center max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate"
@@ -358,7 +396,7 @@ export default function Header({ onMenuClick, showMenuButton = true, menuButtonR
         <HeaderSearch />
         <button
           onClick={() => setDonateOpen(true)}
-          className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-pink-500/30 bg-pink-500/10 text-pink-600 dark:text-pink-400 hover:bg-pink-500/20 transition-colors text-sm font-medium"
+          className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-pink-500/30 bg-pink-500/10 text-pink-800 dark:text-pink-300 hover:bg-pink-500/20 transition-colors text-sm font-medium"
           aria-label="Donate"
         >
           <span className="material-symbols-outlined text-[18px]">volunteer_activism</span>
@@ -387,17 +425,19 @@ function HeaderSearch() {
         search
       </span>
       <input
+        id="dashboard-header-search"
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+        className="w-full h-8 pl-7 pr-12 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
       />
+      <kbd className="pointer-events-none absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-surface-2 px-1 text-[10px] font-semibold text-text-muted sm:block">Ctrl K</kbd>
       {query && (
         <button
           type="button"
           onClick={() => setQuery("")}
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
+          className="absolute right-8 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
           aria-label="Clear search"
         >
           <span className="material-symbols-outlined text-[16px]">close</span>

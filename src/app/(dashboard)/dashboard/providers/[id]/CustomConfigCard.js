@@ -133,7 +133,7 @@ export default function CustomConfigCard({ providerId }) {
                     type="button"
                     title="Remove header"
                     onClick={() => setRows((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : [{ name: "", value: "" }]))}
-                    className="shrink-0 text-text-muted hover:text-red-500"
+                    className="shrink-0 text-text-muted hover:text-red-700 dark:hover:text-red-300"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>
                   </button>

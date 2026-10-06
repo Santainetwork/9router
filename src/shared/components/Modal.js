@@ -69,7 +69,7 @@ export default function Modal({
               {/* Traffic lights — desktop only */}
               {showTrafficLights && (
                 <div className="hidden md:flex items-center gap-2 mr-4 ml-2">
-                  <Tooltip text="Close" position="top" color="#FF5F56">
+                  <Tooltip text="Close" position="top" color="#3f0d0d">
                     <button
                       onClick={onClose}
                       aria-label="Close"

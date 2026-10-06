@@ -24,9 +24,11 @@
   --color-brand-800: #3730a3;
   --color-brand-900: #312e81;
 
-  /* Primary (legacy alias for backward compat with existing components) */
-  --color-primary: var(--color-brand-500);
-  --color-primary-hover: var(--color-brand-600);
+  /* Primary (legacy alias for backward compat with existing components).
+     AA-hardened: brand-600 keeps white-on-primary at 6.29:1 (brand-500 was 4.47:1). */
+  --color-primary: var(--color-brand-600);
+  --color-primary-hover: var(--color-brand-700);
+  --color-on-primary: #ffffff; /* text/icon color on primary surfaces; TailAdmin variant inverts it */
 
   /* Surfaces & backgrounds (light - slate tinted clean) */
   --color-bg: #f8fafc;
@@ -69,67 +71,117 @@
   color-scheme: light;
 }
 
-/* Friend v0.5.86 variant tokens. Scoped to the root data attribute so
-   SantaiNetwork palette remains unchanged when current UI is selected. */
+/* TailAdmin shadcn/ui minimalist variant tokens. Scoped to the root data
+   attribute so SantaiNetwork palette remains unchanged when current UI is
+   selected. Light mode: neutral slate; dark mode: Zinc/Neutral base
+   (bg #09090b, card #18181b, border #27272a, text #f4f4f5, muted #a1a1aa). */
 html[data-ui-variant="friend"] {
-  --color-brand-25: #f2f7ff;
-  --color-brand-50: #ecf3ff;
-  --color-brand-100: #dde9ff;
-  --color-brand-200: #c2d6ff;
-  --color-brand-300: #9cb9ff;
-  --color-brand-400: #7592ff;
-  --color-brand-500: #465fff;
-  --color-brand-600: #3641f5;
-  --color-brand-700: #2a31d8;
-  --color-brand-800: #252dae;
-  --color-brand-900: #262e89;
-  --color-brand-950: #161950;
-  --color-primary: #465fff;
-  --color-primary-hover: #3641f5;
-  --color-bg: #f9fafb;
-  --color-bg-alt: #f2f4f7;
+  --color-brand-25: #fafafa;
+  --color-brand-50: #f4f4f5;
+  --color-brand-100: #e4e4e7;
+  --color-brand-200: #d4d4d8;
+  --color-brand-300: #a1a1aa;
+  --color-brand-400: #71717a;
+  --color-brand-500: #52525b;
+  --color-brand-600: #3f3f46;
+  --color-brand-700: #27272a;
+  --color-brand-800: #1c1917;
+  --color-brand-900: #18181b;
+  --color-brand-950: #09090b;
+  --color-primary: #18181b;
+  --color-primary-hover: #27272a;
+  --color-on-primary: #fafafa;
+  --color-bg: #fafafa;
+  --color-bg-alt: #f4f4f5;
   --color-surface: #ffffff;
-  --color-surface-2: #f9fafb;
-  --color-surface-3: #f2f4f7;
+  --color-surface-2: #f4f4f5;
+  --color-surface-3: #e4e4e7;
   --color-sidebar: #ffffff;
-  --color-border: #e4e7ec;
-  --color-border-subtle: #eaecf0;
-  --color-text: #101828;
-  --color-text-main: #101828;
-  --color-text-muted: #667085;
-  --color-text-subtle: #475467;
+  --color-border: #e4e4e7;
+  --color-border-subtle: #f4f4f5;
+  --color-text: #18181b;
+  --color-text-main: #18181b;
+  --color-text-muted: #52525b;
+  --color-text-subtle: #3f3f46;
 
-  /* Status */
-  --color-danger: #b42318;
-  --color-success: #027a48;
-  --color-warning: #93370d;
-  --color-info: #2a31d8;
+  /* Status (soft shadcn tones) */
+  --color-danger: #be123c;
+  --color-success: #047857;
+  --color-warning: #92400e;
+  --color-info: #1d4ed8;
 
-  /* Radius */
+  /* Radius (rounded-lg default) */
   --radius-brand: 8px;
-  --radius-brand-lg: 12px;
+  --radius-brand-lg: 8px;
 
-  /* Shadows */
-  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-warm: 0 1px 3px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-elevated: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.03);
-  --shadow-elev: 0 20px 24px -4px rgba(16, 24, 40, 0.08), 0 8px 8px -4px rgba(16, 24, 40, 0.03);
-  --shadow-focus: 0 0 0 4px rgba(70, 95, 255, 0.12);
+  /* Shadows (flat with crisp borders) */
+  --shadow-soft: 0 1px 2px rgba(9, 9, 11, 0.05);
+  --shadow-warm: 0 1px 2px rgba(9, 9, 11, 0.06);
+  --shadow-elevated: 0 4px 12px -2px rgba(9, 9, 11, 0.08);
+  --shadow-elev: 0 8px 16px -4px rgba(9, 9, 11, 0.08);
+  --shadow-focus: 0 0 0 2px rgba(9, 9, 11, 0.08);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
 }
 
 html.dark[data-ui-variant="friend"] {
-  --color-bg: #101828;
-  --color-bg-alt: #0c111d;
-  --color-surface: #1d2939;
-  --color-surface-2: #263244;
-  --color-surface-3: #344054;
-  --color-sidebar: #1d2939;
-  --color-border: #344054;
-  --color-border-subtle: #263244;
-  --color-text: #f2f4f7;
-  --color-text-main: #f2f4f7;
-  --color-text-muted: #98a2b3;
-  --color-text-subtle: #d0d5dd;
+  --color-brand-25: #09090b;
+  --color-brand-50: #111113;
+  --color-brand-100: #18181b;
+  --color-brand-200: #27272a;
+  --color-brand-300: #3f3f46;
+  --color-brand-400: #52525b;
+  --color-brand-500: #71717a;
+  --color-brand-600: #a1a1aa;
+  --color-brand-700: #d4d4d8;
+  --color-brand-800: #e4e4e7;
+  --color-brand-900: #f4f4f5;
+  --color-brand-950: #fafafa;
+  --color-primary: #fafafa;
+  --color-primary-hover: #e4e4e7;
+  --color-on-primary: #09090b;
+  --color-bg: #09090b;
+  --color-bg-alt: #0c0a09;
+  --color-surface: #18181b;
+  --color-surface-2: #1c1917;
+  --color-surface-3: #27272a;
+  --color-sidebar: #0c0a09;
+  --color-border: #27272a;
+  --color-border-subtle: #1c1917;
+  --color-text: #f4f4f5;
+  --color-text-main: #f4f4f5;
+  --color-text-muted: #a1a1aa;
+  --color-text-subtle: #d4d4d8;
+
+  /* Status (soft dark tones) */
+  --color-danger: #fb7185;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-warm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-elevated: 0 4px 12px -2px rgba(0, 0, 0, 0.6);
+  --shadow-elev: 0 8px 16px -4px rgba(0, 0, 0, 0.6);
+  --shadow-focus: 0 0 0 2px rgba(244, 244, 245, 0.12);
+
+  color-scheme: dark;
+}
+
+/* Tabular numbers for metrics/latency/tokens in TailAdmin variant */
+html[data-ui-variant="friend"] .tabular,
+html[data-ui-variant="friend"] [data-metric] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* White-on-primary text guard: every `bg-primary text-white` call site must use
+   the theme's on-primary color instead of literal white. TailAdmin (friend) flips
+   --color-primary to near-white in dark mode, and Santai flips it to lavender
+   (#a5b4fc) in dark mode; literal white would be unreadable on both. In light mode
+   --color-on-primary is #ffffff, so the rule is a no-op there. */
+html .bg-primary.text-white {
+  color: var(--color-on-primary);
 }
 
 .dark {
@@ -145,8 +197,11 @@ html.dark[data-ui-variant="friend"] {
   --color-brand-800: #3730a3;
   --color-brand-900: #312e81;
 
-  --color-primary: #6366f1;
-  --color-primary-hover: #818cf8;
+  /* AA-hardened primary: lavender surface with near-black ink (9.98:1) instead of
+     indigo-500, which could not carry white text (4.47:1). */
+  --color-primary: #a5b4fc;
+  --color-primary-hover: #c7d2fe;
+  --color-on-primary: #09090b;
 
   /* Surfaces (dark - Deep Midnight Obsidian) */
   --color-bg: #0b0f19;
@@ -216,6 +271,12 @@ select {
   /* Primary aliases */
   --color-primary: var(--color-primary);
   --color-primary-hover: var(--color-primary-hover);
+  --color-on-primary: var(--color-on-primary);
+  /* shadcn-style alias: `text-primary-foreground` is the ink for `bg-primary`
+     surfaces. Was referenced by 12 call sites but never defined, so the utility
+     was a no-op and those labels fell back to inherited text colors (4.47:1 in
+     light, 1.99:1 on the dark lavender primary). Now resolves to on-primary. */
+  --color-primary-foreground: var(--color-on-primary);
 
   /* Semantic */
   --color-bg: var(--color-bg);

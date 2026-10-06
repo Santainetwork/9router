@@ -24,7 +24,7 @@ export default function GetStarted() {
                 <div className="flex-none w-8 h-8 rounded-full bg-[#f97815]/20 text-[#f97815] flex items-center justify-center font-bold">1</div>
                 <div>
                   <h4 className="font-bold text-lg">Install 9Router</h4>
-                  <p className="text-sm text-gray-500 mt-1">Run npx command to start the server instantly</p>
+                  <p className="text-sm text-gray-400 mt-1">Run npx command to start the server instantly</p>
                 </div>
               </div>
               
@@ -32,7 +32,7 @@ export default function GetStarted() {
                 <div className="flex-none w-8 h-8 rounded-full bg-[#f97815]/20 text-[#f97815] flex items-center justify-center font-bold">2</div>
                 <div>
                   <h4 className="font-bold text-lg">Open Dashboard</h4>
-                  <p className="text-sm text-gray-500 mt-1">Configure providers and API keys via web interface</p>
+                  <p className="text-sm text-gray-400 mt-1">Configure providers and API keys via web interface</p>
                 </div>
               </div>
               
@@ -40,7 +40,7 @@ export default function GetStarted() {
                 <div className="flex-none w-8 h-8 rounded-full bg-[#f97815]/20 text-[#f97815] flex items-center justify-center font-bold">3</div>
                 <div>
                   <h4 className="font-bold text-lg">Route Requests</h4>
-                  <p className="text-sm text-gray-500 mt-1">Point your CLI tools to http://localhost:20128</p>
+                  <p className="text-sm text-gray-400 mt-1">Point your CLI tools to http://localhost:20128</p>
                 </div>
               </div>
             </div>
@@ -54,7 +54,7 @@ export default function GetStarted() {
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <div className="ml-2 text-xs text-gray-500 font-mono">terminal</div>
+                <div className="ml-2 text-xs text-gray-400 font-mono">terminal</div>
               </div>
               
               {/* Terminal content */}
@@ -65,7 +65,7 @@ export default function GetStarted() {
                 >
                   <span className="text-green-400">$</span>
                   <span className="text-white">npx 9router</span>
-                  <span className="ml-auto text-gray-500 text-xs opacity-0 group-hover:opacity-100">
+                  <span className="ml-auto text-gray-400 text-xs opacity-0 group-hover:opacity-100">
                     {copied === "landing" ? "✓ Copied" : "Copy"}
                   </span>
                 </div>
@@ -77,14 +77,14 @@ export default function GetStarted() {
                   <span className="text-green-400">&gt;</span> Ready to route! ✓
                 </div>
                 
-                <div className="text-xs text-gray-500 mb-2 border-t border-gray-700 pt-4">
+                <div className="text-xs text-gray-400 mb-2 border-t border-gray-700 pt-4">
                   📝 Configure providers in dashboard or use environment variables
                 </div>
                 
                 <div className="text-gray-400 text-xs">
                   <span className="text-purple-400">Data Location:</span><br/>
-                  <span className="text-gray-500">  macOS/Linux:</span> ~/.9router/db/data.sqlite<br/>
-                  <span className="text-gray-500">  Windows:</span> %APPDATA%/9router/db/data.sqlite
+                  <span className="text-gray-400">  macOS/Linux:</span> ~/.9router/db/data.sqlite<br/>
+                  <span className="text-gray-400">  Windows:</span> %APPDATA%/9router/db/data.sqlite
                 </div>
               </div>
             </div>

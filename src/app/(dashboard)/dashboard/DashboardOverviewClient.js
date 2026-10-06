@@ -71,9 +71,9 @@ const QUICK_ACTIONS = [
 ];
 
 const GATEWAY_NODES = [
-  { port: ":20128", label: "Master gateway", detail: "UI + API front door", tone: "text-emerald-500" },
-  { port: ":20129", label: "Go limiter", detail: "Atomic concurrency + queue", tone: "text-cyan-500" },
-  { port: ":20140", label: "Public proxy", detail: "Usage check + docs", tone: "text-amber-500" },
+  { port: ":20128", label: "Master gateway", detail: "UI + API front door", tone: "text-emerald-800 dark:text-emerald-500" },
+  { port: ":20129", label: "Go limiter", detail: "Atomic concurrency + queue", tone: "text-cyan-800 dark:text-cyan-500" },
+  { port: ":20140", label: "Public proxy", detail: "Usage check + docs", tone: "text-amber-800 dark:text-amber-500" },
 ];
 
 export default function DashboardOverviewClient() {
@@ -186,8 +186,8 @@ export default function DashboardOverviewClient() {
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border shadow-xs transition-colors",
                 queue.engine.type === "golang"
-                  ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20"
-                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
+                  ? "bg-cyan-500/10 text-cyan-800 dark:text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20"
+                  : "bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
               )}
               title={queue.engine.type === "golang" ? "Limiter: Go Hybrid Daemon Active on :20129" : "Limiter: JavaScript Fallback Active"}
             >
@@ -200,7 +200,7 @@ export default function DashboardOverviewClient() {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-300">
           {error}
         </div>
       ) : null}

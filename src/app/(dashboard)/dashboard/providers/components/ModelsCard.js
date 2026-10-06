@@ -22,7 +22,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
         <span className="sr-only">{testStatus === "ok" ? "Model test passed" : testStatus === "error" ? "Model test failed" : "Model not tested"}</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <code className="break-all text-xs text-text-main font-mono bg-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>
-          {model.name && <span className="text-[9px] text-text-muted/70 italic pl-1">{model.name}</span>}
+          {model.name && <span className="text-[9px] text-text-muted/90 italic pl-1">{model.name}</span>}
         </div>
         {onTest && (
           <div className="relative group/btn">
@@ -44,7 +44,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
             {copied === `model-${model.id}` ? "Copied!" : "Copy"}
           </span>
         </div>
-        {isFree && <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
+        {isFree && <span className="text-[10px] font-bold text-green-800 dark:text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
         {isCustom && (
           <button type="button" aria-label={`Remove ${fullModel}`} onClick={onDeleteAlias} className="flex size-8 shrink-0 items-center justify-center hover:bg-danger/10 rounded text-text-muted hover:text-danger focus-visible:ring-2 focus-visible:ring-primary ml-auto" title="Remove custom model">
             <span className="material-symbols-outlined text-sm">close</span>
@@ -236,7 +236,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
           <input type="search" aria-label="Search models" placeholder="Search models…" value={search} onChange={(event) => setSearch(event.target.value)} className="h-10 w-full min-w-0 rounded-lg border border-border bg-surface px-3 text-sm text-text-main sm:max-w-xs focus-visible:ring-2 focus-visible:ring-primary" />
         </div>
         {loadError && <p role="alert" className="mb-3 text-sm text-danger">{loadError}</p>}
-        {testError && <p className="text-xs text-red-500 mb-3 break-words">{testError}</p>}
+        {testError && <p className="text-xs text-red-700 dark:text-red-300 mb-3 break-words">{testError}</p>}
 
         {loading ? <TableSkeleton rows={3} columns={2} /> : <div className="grid max-h-[60vh] grid-cols-1 gap-3 overflow-y-auto overscroll-contain md:grid-cols-2" role="region" aria-label="Available models" tabIndex={0}>
           {!displayModels.length && !visibleCustomModels.length && <p role="status" className="py-6 text-sm text-text-muted">No models match your search.</p>}

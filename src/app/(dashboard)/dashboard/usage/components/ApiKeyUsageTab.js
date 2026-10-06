@@ -64,14 +64,14 @@ export default function ApiKeyUsageTab({ period = "today" }) {
   }, [stats]);
 
   if (loading) return <CardSkeleton />;
-  if (error) return <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">{error}</div>;
+  if (error) return <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-300">{error}</div>;
   if (!rows.length)
-    return <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-center text-sm text-gray-400">No API-key usage in this period.</div>;
+    return <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-center text-sm text-gray-600 dark:text-gray-300">No API-key usage in this period.</div>;
 
   return (
     <div className="overflow-x-auto rounded-lg border border-white/10">
       <table className="min-w-full text-sm">
-        <thead className="bg-white/5 text-left text-xs uppercase tracking-wide text-gray-400">
+        <thead className="bg-white/5 text-left text-xs uppercase tracking-wide text-gray-600 dark:text-gray-300">
           <tr>
             <th className="px-4 py-3">API Key</th>
             <th className="px-4 py-3 text-right">Requests</th>
@@ -88,8 +88,8 @@ export default function ApiKeyUsageTab({ period = "today" }) {
           {rows.map((r, i) => (
             <tr key={i} className="hover:bg-white/5">
               <td className="px-4 py-3">
-                <div className="font-medium text-gray-100">{r.keyName}</div>
-                {r.apiKeyMasked && <div className="font-mono text-xs text-gray-500">{r.apiKeyMasked}</div>}
+                <div className="font-medium text-gray-600 dark:text-gray-400">{r.keyName}</div>
+                {r.apiKeyMasked && <div className="font-mono text-xs text-gray-600 dark:text-gray-400">{r.apiKeyMasked}</div>}
               </td>
               <td className="px-4 py-3 text-right tabular-nums">{fmt(r.requests)}</td>
               <td className="px-4 py-3 text-right tabular-nums">{fmt(r.promptTokens)}</td>
@@ -98,7 +98,7 @@ export default function ApiKeyUsageTab({ period = "today" }) {
               <td className="px-4 py-3 text-right tabular-nums">{fmt(r.cachedTokens)}</td>
               <td className="px-4 py-3 text-right tabular-nums">${(Number(r.cost) || 0).toFixed(4)}</td>
               <td className="px-4 py-3 text-right tabular-nums">{r.models}</td>
-              <td className="px-4 py-3 text-xs text-gray-400">{r.lastUsed || "-"}</td>
+              <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400">{r.lastUsed || "-"}</td>
             </tr>
           ))}
         </tbody>

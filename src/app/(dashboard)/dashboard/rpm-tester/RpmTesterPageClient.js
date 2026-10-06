@@ -14,11 +14,11 @@ const ENDPOINTS = [
 ];
 
 function statusColor(status) {
-  if (status === 0) return "text-neutral-400";
-  if (status === 429) return "text-amber-500 font-semibold";
-  if (status >= 200 && status < 300) return "text-emerald-500";
-  if (status >= 400) return "text-red-500";
-  return "text-neutral-500";
+  if (status === 0) return "text-neutral-600 dark:text-neutral-400";
+  if (status === 429) return "text-amber-800 dark:text-amber-500 font-semibold";
+  if (status >= 200 && status < 300) return "text-emerald-800 dark:text-emerald-500";
+  if (status >= 400) return "text-red-700 dark:text-red-300";
+  return "text-neutral-600 dark:text-neutral-400";
 }
 
 function buildBody(endpointId, model, prompt, isStream) {
@@ -170,7 +170,7 @@ export default function RpmTesterPageClient() {
         </div>
       </div>
 
-      {loadError && <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded-lg border border-red-500/20">{loadError}</div>}
+      {loadError && <div className="text-sm text-red-800 dark:text-red-300 bg-red-500/10 p-3 rounded-lg border border-red-500/20">{loadError}</div>}
 
       {/* Selected Key Parameters Card */}
       {selectedKey && (
@@ -181,10 +181,10 @@ export default function RpmTesterPageClient() {
               <span className="font-mono text-text-muted">{selectedKey.key.slice(0, 10)}...</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className={cn("px-2 py-0.5 rounded-md font-mono font-medium border", selectedKey.concurrency > 0 ? "bg-blue-500/10 text-blue-500 border-blue-500/30" : "bg-surface-2 text-text-muted border-border")}>
+              <span className={cn("px-2 py-0.5 rounded-md font-mono font-medium border", selectedKey.concurrency > 0 ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30" : "bg-surface-2 text-text-muted border-border")}>
                 Max Concurrency: {selectedKey.concurrency > 0 ? selectedKey.concurrency : "Unlimited"}
               </span>
-              <span className={cn("px-2 py-0.5 rounded-md font-mono font-medium border", selectedKey.rpm > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/30" : "bg-surface-2 text-text-muted border-border")}>
+              <span className={cn("px-2 py-0.5 rounded-md font-mono font-medium border", selectedKey.rpm > 0 ? "bg-amber-500/10 text-amber-800 dark:text-amber-500 border-amber-500/30" : "bg-surface-2 text-text-muted border-border")}>
                 RPM Limit: {selectedKey.rpm > 0 ? `${selectedKey.rpm}/min` : "Unlimited"}
               </span>
               <span className="px-2 py-0.5 rounded-md font-mono text-text-muted bg-surface-2 border border-border">
@@ -286,20 +286,20 @@ export default function RpmTesterPageClient() {
               <p className="text-lg font-bold text-text-main mt-0.5">{summary.total}</p>
             </div>
             <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
-              <p className="text-emerald-600 font-medium">2xx OK</p>
-              <p className="text-lg font-bold text-emerald-600 mt-0.5">{summary.ok}</p>
+              <p className="text-emerald-800 dark:text-emerald-500 font-medium">2xx OK</p>
+              <p className="text-lg font-bold text-emerald-800 dark:text-emerald-500 mt-0.5">{summary.ok}</p>
             </div>
             <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-500/5">
-              <p className="text-blue-600 font-medium">429 Concurrency Cap</p>
-              <p className="text-lg font-bold text-blue-600 mt-0.5">{summary.concurrency429}</p>
+              <p className="text-blue-700 dark:text-blue-300 font-medium">429 Concurrency Cap</p>
+              <p className="text-lg font-bold text-blue-700 dark:text-blue-300 mt-0.5">{summary.concurrency429}</p>
             </div>
             <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
-              <p className="text-amber-600 font-medium">429 RPM Limit</p>
-              <p className="text-lg font-bold text-amber-600 mt-0.5">{summary.rpm429}</p>
+              <p className="text-amber-800 dark:text-amber-500 font-medium">429 RPM Limit</p>
+              <p className="text-lg font-bold text-amber-800 dark:text-amber-500 mt-0.5">{summary.rpm429}</p>
             </div>
             <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/5 col-span-2 sm:col-span-1">
-              <p className="text-red-500 font-medium">Other Errors</p>
-              <p className="text-lg font-bold text-red-500 mt-0.5">{summary.other}</p>
+              <p className="text-red-700 dark:text-red-300 font-medium">Other Errors</p>
+              <p className="text-lg font-bold text-red-700 dark:text-red-300 mt-0.5">{summary.other}</p>
             </div>
           </div>
 
@@ -321,14 +321,14 @@ export default function RpmTesterPageClient() {
                     </span>
                   </div>
                   <span className="text-text-muted font-mono">{r.ms !== null ? `${r.ms}ms` : "-"}</span>
-                  <span className="text-amber-500 font-mono">{r.retryAfter || "-"}</span>
+                  <span className="text-amber-800 dark:text-amber-500 font-mono">{r.retryAfter || "-"}</span>
                   <div className="truncate" title={r.detail}>
                     {r.isConcurrencyLimit ? (
-                      <span className="text-blue-500 font-medium bg-blue-500/10 px-1.5 py-0.5 rounded text-[10px] mr-1.5">
+                      <span className="text-blue-700 dark:text-blue-300 font-medium bg-blue-500/10 px-1.5 py-0.5 rounded text-[10px] mr-1.5">
                         CONCURRENCY CAP
                       </span>
                     ) : r.isRpmLimit ? (
-                      <span className="text-amber-500 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px] mr-1.5">
+                      <span className="text-amber-800 dark:text-amber-500 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px] mr-1.5">
                         RPM RATE LIMIT
                       </span>
                     ) : null}

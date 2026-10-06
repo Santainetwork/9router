@@ -12,7 +12,7 @@ function MenuItem({ icon, label, onClick, trailing, danger }) {
       onClick={onClick}
       className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors ${
         danger
-          ? "text-red-500 hover:bg-red-500/10"
+          ? "text-red-700 dark:text-red-300 hover:bg-red-500/10"
           : "text-text-main hover:bg-black/5 dark:hover:bg-white/5"
       }`}
     >

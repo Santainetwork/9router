@@ -272,7 +272,7 @@ function KeyConfigModal({ keyData, allModels, isOpen, onClose, onSave, isSaving 
                     <button
                       type="button"
                       onClick={() => setAllowedModels([])}
-                      className="text-xs text-red-400 hover:text-red-300 underline"
+                      className="text-xs text-red-700 dark:text-red-300 hover:text-red-700 dark:hover:text-red-300 underline"
                     >
                       Clear all (Permit all models)
                     </button>
@@ -294,7 +294,7 @@ function KeyConfigModal({ keyData, allModels, isOpen, onClose, onSave, isSaving 
                         <button
                           type="button"
                           onClick={() => toggleModel(id)}
-                          className="hover:text-red-500 transition-colors ml-0.5"
+                          className="hover:text-red-700 dark:hover:text-red-300 transition-colors ml-0.5"
                         >
                           <span className="material-symbols-outlined text-[14px]">close</span>
                         </button>
@@ -479,7 +479,7 @@ export default function ApiKeysAccessPageClient() {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400 flex items-center gap-2">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-300 flex items-center gap-2">
           <span className="material-symbols-outlined text-[18px]">error</span>
           {error}
         </div>
@@ -532,12 +532,12 @@ export default function ApiKeysAccessPageClient() {
                       {/* Status */}
                       <td className="py-3 px-4">
                         {key.isActive === false ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-500 px-2 py-0.5 text-xs font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-800 dark:text-amber-500 px-2 py-0.5 text-xs font-medium">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                             Paused
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 px-2 py-0.5 text-xs font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                             Active
                           </span>
@@ -600,7 +600,7 @@ export default function ApiKeysAccessPageClient() {
                                 key={m}
                                 className={`px-1.5 py-0.5 rounded text-[11px] font-mono border ${
                                   m.includes("*")
-                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-500 font-semibold"
+                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-500 font-semibold"
                                     : "bg-surface-2 border-border text-text-main"
                                 }`}
                               >

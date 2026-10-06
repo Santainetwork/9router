@@ -220,7 +220,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
           {sessBusy ? "Starting..." : "Choose cluster & sign in"}
         </Button>
       )}
-      {sessError && <p className="text-[11px] text-red-500">{translate(sessError)}</p>}
+      {sessError && <p className="text-[11px] text-red-700 dark:text-red-300">{translate(sessError)}</p>}
     </div>
   );
 
@@ -276,7 +276,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
             ) : (
               <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
                 <div className="flex gap-2.5 items-start">
-                  <span className="material-symbols-outlined text-green-600 dark:text-green-400 text-lg mt-0.5">
+                  <span className="material-symbols-outlined text-green-700 dark:text-green-400 text-lg mt-0.5">
                     check_circle
                   </span>
                   <div className="text-sm text-green-800 dark:text-green-200">
@@ -291,7 +291,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
 
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 p-2.5 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-xs text-red-600 dark:text-red-400">{translate(error)}</p>
+                <p className="text-xs text-red-700 dark:text-red-300">{translate(error)}</p>
               </div>
             )}
 
@@ -322,7 +322,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
           <div className="flex flex-col gap-3">
             <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
               <div className="flex gap-2.5 items-start">
-                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-lg mt-0.5">info</span>
+                <span className="material-symbols-outlined text-amber-700 dark:text-amber-400 text-lg mt-0.5">info</span>
                 <div className="text-sm text-amber-800 dark:text-amber-200">
                   <p className="font-medium">No local Desktop credentials found</p>
                   <p className="text-xs mt-0.5 opacity-80">

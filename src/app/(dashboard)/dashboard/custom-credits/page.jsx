@@ -218,12 +218,12 @@ export default function CustomCreditsPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-wider text-text-muted font-medium">Tracked Balance / Credits</p>
-              <p className="mt-1.5 text-2xl font-bold text-emerald-500 tabular-nums font-mono">
+              <p className="mt-1.5 text-2xl font-bold text-emerald-800 dark:text-emerald-500 tabular-nums font-mono">
                 {formatCompactNumber(summary.totalCreditsTracked)}
               </p>
               <p className="mt-1 text-xs text-text-muted">Combined across {summary.hasCreditsCount} active quotas</p>
             </div>
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border border-emerald-500/20">
               <span className="material-symbols-outlined text-[22px]">paid</span>
             </div>
           </div>
@@ -236,7 +236,7 @@ export default function CustomCreditsPage() {
               <p className="mt-1.5 text-2xl font-bold text-text-main tabular-nums">7 Types</p>
               <p className="mt-1 text-xs text-text-muted">Amanai, OpenRouter, SiliconFlow, NewAPI, User Balance, Custom</p>
             </div>
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-500 border border-amber-500/20">
               <span className="material-symbols-outlined text-[22px]">integration_instructions</span>
             </div>
           </div>
@@ -337,8 +337,8 @@ export default function CustomCreditsPage() {
                                   key={srv}
                                   className={`rounded px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider ${
                                     srv.includes("Embedding") 
-                                      ? "bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20"
-                                      : "bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/20"
+                                      ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20"
+                                      : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20"
                                   }`}
                                 >
                                   {srv}
@@ -364,7 +364,7 @@ export default function CustomCreditsPage() {
                         {isLoading ? (
                           <span className="text-text-muted italic">Checking...</span>
                         ) : data?.message ? (
-                          <span className="text-amber-500 font-medium truncate max-w-[200px] block" title={data.message}>
+                          <span className="text-amber-800 dark:text-amber-500 font-medium truncate max-w-[200px] block" title={data.message}>
                             {data.message}
                           </span>
                         ) : data?.plan ? (
@@ -391,7 +391,7 @@ export default function CustomCreditsPage() {
                                 <div key={name} className="flex flex-col gap-1 min-w-[200px]">
                                   <div className="flex items-center justify-between text-[11px]">
                                     <span className="text-text-muted font-medium truncate">{name}</span>
-                                    <span className="font-bold text-emerald-500 font-mono">
+                                    <span className="font-bold text-emerald-800 dark:text-emerald-500 font-mono">
                                       {formatCompactNumber(item.total)}
                                     </span>
                                   </div>

@@ -37,7 +37,7 @@ export default function NineRemotePromoModal({ isOpen, onClose }) {
         <div className="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 rounded-[8px] flex items-center justify-center bg-primary">
-              <span className="material-symbols-outlined text-white text-base">terminal</span>
+              <span className="material-symbols-outlined text-on-primary text-base">terminal</span>
             </div>
             <span className="text-xs font-bold uppercase tracking-wider text-primary font-mono">9Remote</span>
           </div>
@@ -54,7 +54,7 @@ export default function NineRemotePromoModal({ isOpen, onClose }) {
           {/* Hero */}
           <div className="flex flex-col items-center gap-2 text-center mt-2">
             <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-1 bg-primary shadow-[var(--shadow-warm)]">
-              <span className="material-symbols-outlined text-white text-[30px]">terminal</span>
+              <span className="material-symbols-outlined text-on-primary text-[30px]">terminal</span>
             </div>
             <h1 className="text-lg font-bold text-text-main tracking-tight">9Remote</h1>
             <p className="text-xs text-text-muted leading-5 max-w-[220px]">
@@ -86,7 +86,7 @@ export default function NineRemotePromoModal({ isOpen, onClose }) {
           {/* CTA */}
           <button
             onClick={() => window.open(NINE_REMOTE_URL, "_blank")}
-            className="w-full py-3 flex items-center justify-center gap-2 text-sm font-semibold text-white rounded-[10px] bg-primary hover:bg-primary-hover shadow-[var(--shadow-warm)] active:scale-[0.98] transition-all"
+            className="w-full py-3 flex items-center justify-center gap-2 text-sm font-semibold text-on-primary rounded-[10px] bg-primary hover:bg-primary-hover shadow-[var(--shadow-warm)] active:scale-[0.98] transition-all"
           >
             <span className="material-symbols-outlined text-base">open_in_new</span>
             Get 9Remote

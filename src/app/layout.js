@@ -42,6 +42,11 @@ export default function RootLayout({ children }) {
         />
         <script
           dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=localStorage.getItem('9router-ui-variant');var v=s?(JSON.parse(s).state||{}).variant:'';if(v==='friend'||v==='santai'){document.documentElement.dataset.uiVariant=v}}catch(e){}})();`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
             __html: `var d=document,r=d.documentElement,f=function(){r.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}`,
           }}
         />

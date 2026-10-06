@@ -602,7 +602,7 @@ export default function ProxyPoolsPage() {
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-orange-500">cloud</span>
+                  <span className="material-symbols-outlined text-[20px] text-orange-800 dark:text-orange-400">cloud</span>
                   Cloudflare Relay
                 </button>
                 <button
@@ -612,7 +612,7 @@ export default function ProxyPoolsPage() {
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-blue-500">cloud_upload</span>
+                  <span className="material-symbols-outlined text-[20px] text-blue-700 dark:text-blue-400">cloud_upload</span>
                   Vercel Relay
                 </button>
                 <button
@@ -622,7 +622,7 @@ export default function ProxyPoolsPage() {
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-green-500">terminal</span>
+                  <span className="material-symbols-outlined text-[20px] text-green-800 dark:text-green-500">terminal</span>
                   Deno Relay
                 </button>
               </div>
@@ -766,7 +766,7 @@ export default function ProxyPoolsPage() {
                   </button>
                   <button
                     onClick={() => handleDelete(pool)}
-                    className="p-2 rounded hover:bg-red-500/10 text-red-500"
+                    className="p-2 rounded hover:bg-red-500/10 text-red-700 dark:text-red-300"
                     title="Delete"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>

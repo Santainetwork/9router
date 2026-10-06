@@ -42,21 +42,21 @@ function fmtCost(n) {
 function RankBadge({ rank }) {
   if (rank === 1) {
     return (
-      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-500/20 text-amber-500 font-bold text-xs ring-1 ring-amber-500/40 shadow-sm">
+      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-400 font-bold text-xs ring-1 ring-amber-500/40 shadow-sm">
         🥇
       </span>
     );
   }
   if (rank === 2) {
     return (
-      <span className="inline-flex items-center justify-center size-7 rounded-full bg-slate-400/20 text-slate-400 font-bold text-xs ring-1 ring-slate-400/40 shadow-sm">
+      <span className="inline-flex items-center justify-center size-7 rounded-full bg-slate-400/20 text-slate-600 dark:text-slate-300 font-bold text-xs ring-1 ring-slate-400/40 shadow-sm">
         🥈
       </span>
     );
   }
   if (rank === 3) {
     return (
-      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-700/20 text-amber-700 font-bold text-xs ring-1 ring-amber-700/40 shadow-sm">
+      <span className="inline-flex items-center justify-center size-7 rounded-full bg-amber-700/20 text-amber-900 dark:text-amber-500 font-bold text-xs ring-1 ring-amber-700/40 shadow-sm">
         🥉
       </span>
     );
@@ -71,9 +71,9 @@ function RankBadge({ rank }) {
 function StatSummaryCard({ icon, label, value, sub, color = "primary" }) {
   const colorMap = {
     primary: "bg-primary/10 text-primary border-primary/20",
-    success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    warning: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-    info: "bg-sky-500/10 text-sky-500 border-sky-500/20"
+    success: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-500/20",
+    warning: "bg-amber-500/10 text-amber-800 dark:text-amber-500 border-amber-500/20",
+    info: "bg-sky-500/10 text-sky-800 dark:text-sky-400 border-sky-500/20"
   };
 
   return (
@@ -334,7 +334,7 @@ export default function LeaderboardPage() {
       <Card padding="md">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3.5">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-800 dark:text-amber-500 border border-amber-500/20">
               <span className="material-symbols-outlined text-[24px]">leaderboard</span>
             </div>
             <div>
@@ -537,7 +537,7 @@ export default function LeaderboardPage() {
                         <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(item.input_tokens)}</td>
                         <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(item.output_tokens)}</td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-text-main">{fmtNum(item.total_tokens)}</td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-500">{fmtCost(item.total_cost)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-800 dark:text-amber-500">{fmtCost(item.total_cost)}</td>
                         <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtCost(item.cost_per_request)}</td>
                       </tr>
                     );
@@ -601,7 +601,7 @@ export default function LeaderboardPage() {
                         <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(prov.input_tokens)}</td>
                         <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtNum(prov.output_tokens)}</td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-text-main">{fmtNum(totalTokens)}</td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-500">{fmtCost(prov.total_cost)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-800 dark:text-amber-500">{fmtCost(prov.total_cost)}</td>
                         <td className="py-3 px-3 text-right font-mono text-text-muted">{fmtCost(prov.cost_per_request)}</td>
                       </tr>
                     );

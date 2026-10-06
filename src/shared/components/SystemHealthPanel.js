@@ -124,12 +124,12 @@ export default function SystemHealthPanel({ workerTopology }) {
       </div>
 
       {authRequired && (
-        <p className="text-xs text-amber-500">
+        <p className="text-xs text-amber-800 dark:text-amber-500">
           Admin auth required to read process metrics. Reload the dashboard with an authenticated
           session.
         </p>
       )}
-      {error && !authRequired && <p className="text-xs text-red-500">{error}</p>}
+      {error && !authRequired && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
 
       {data && !authRequired && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -141,7 +141,7 @@ export default function SystemHealthPanel({ workerTopology }) {
               <span
                 className={cn(
                   "ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded",
-                  goActive ? "bg-cyan-500/10 text-cyan-500" : "bg-amber-500/10 text-amber-500",
+                  goActive ? "bg-cyan-500/10 text-cyan-800 dark:text-cyan-400" : "bg-amber-500/10 text-amber-800 dark:text-amber-500",
                 )}
               >
                 {goActive ? "active" : "fallback"}
@@ -191,8 +191,8 @@ export default function SystemHealthPanel({ workerTopology }) {
                 className={cn(
                   "ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded",
                   db?.type === "postgres"
-                    ? "bg-indigo-500/10 text-indigo-400"
-                    : "bg-emerald-500/10 text-emerald-500",
+                    ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
+                    : "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400",
                 )}
               >
                 {db?.type}

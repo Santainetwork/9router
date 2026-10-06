@@ -4,18 +4,38 @@ import { readFileSync, existsSync } from "node:fs";
 
 const source = (path) => readFileSync(new URL(`../../src/${path}`, import.meta.url), "utf8");
 
-test("Friend CSS variant tokens complete", () => {
+test("TailAdmin (friend) CSS variant tokens complete", () => {
   const css = source("app/globals.css");
 
   assert.match(css, /html\[data-ui-variant="friend"\]/, "friend variant block must exist");
-  assert.match(css, /--color-brand-25:\s*#f2f7ff/, "friend brand-25 token");
-  assert.match(css, /--color-brand-950:\s*#161950/, "friend brand-950 token");
+  // Zinc/shadcn palette (was TailAdmin blue #f2f7ff..#161950 before the restyle).
+  assert.match(css, /--color-brand-25:\s*#fafafa/, "friend brand-25 token (zinc)");
+  assert.match(css, /--color-brand-950:\s*#09090b/, "friend brand-950 token (zinc)");
+  assert.match(css, /--color-primary:\s*#18181b/, "friend light primary (shadcn zinc)");
+  assert.match(css, /--color-on-primary:\s*#fafafa/, "friend light on-primary");
   assert.match(css, /--radius-brand:\s*8px/, "friend radius-brand 8px");
-  assert.match(css, /--radius-brand-lg:\s*12px/, "friend radius-brand-lg 12px");
-  assert.match(css, /--shadow-elev:\s*0\s+20px\s+24px/, "friend shadow-elev");
-  assert.match(css, /--shadow-focus:\s*0\s+0\s+0\s+4px/, "friend shadow-focus");
-  assert.match(css, /--color-danger:\s*#b42318/, "friend danger status color");
-  assert.match(css, /--color-success:\s*#027a48/, "friend success status color");
+  assert.match(css, /--radius-brand-lg:\s*8px/, "friend radius-brand-lg 8px (rounded-lg default)");
+  assert.match(css, /--shadow-elev:\s*0\s+8px\s+16px/, "friend shadow-elev");
+  assert.match(css, /--shadow-focus:\s*0\s+0\s+0\s+2px/, "friend shadow-focus");
+  assert.match(css, /--color-danger:\s*#be123c/, "friend danger status color");
+  assert.match(css, /--color-success:\s*#047857/, "friend success status color");
+});
+
+test("TailAdmin dark tokens + on-primary contrast guard", () => {
+  const css = source("app/globals.css");
+
+  assert.match(css, /html\.dark\[data-ui-variant="friend"\]/, "friend dark block must exist");
+  assert.match(css, /--color-primary:\s*#fafafa/, "friend dark primary inverts to near-white");
+  assert.match(css, /--color-on-primary:\s*#09090b/, "friend dark on-primary inverts to near-black");
+  // Without this shim every `bg-primary text-white` call site goes invisible in
+  // friend dark mode, where primary is near-white (#fafafa).
+  assert.match(
+    css,
+    /html\s+\.bg-primary\.text-white\s*\{\s*color:\s*var\(--color-on-primary\)/,
+    "bg-primary + text-white call sites must remap to on-primary"
+  );
+  // Santai palette must define on-primary too, otherwise the @theme alias is empty.
+  assert.match(css, /--color-on-primary:\s*#ffffff/, "Santai palette defines on-primary");
 });
 
 test("Request logs route exists", () => {

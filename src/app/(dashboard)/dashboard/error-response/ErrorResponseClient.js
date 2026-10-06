@@ -135,13 +135,13 @@ export default function ErrorResponseClient() {
       </div>
 
       {saved && (
-        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-semibold rounded-lg">
+        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400 text-xs font-semibold rounded-lg">
           Pengaturan custom error berhasil disimpan dan aktif langsung!
         </div>
       )}
 
       {error && (
-        <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-semibold rounded-lg">
+        <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-800 dark:text-red-300 text-xs font-semibold rounded-lg">
           {error}
         </div>
       )}
@@ -180,7 +180,7 @@ export default function ErrorResponseClient() {
           <Card>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-500 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[16px]">speed</span>
                   HTTP 429 · Parallel & Rate Limit
                 </label>
@@ -203,7 +203,7 @@ export default function ErrorResponseClient() {
           <Card>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-red-500 flex items-center gap-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-red-700 dark:text-red-300 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[16px]">cloud_off</span>
                   HTTP 502 · Bad Gateway & Timeout
                 </label>
@@ -226,7 +226,7 @@ export default function ErrorResponseClient() {
           <Card>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-blue-500 flex items-center gap-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[16px]">sync_problem</span>
                   HTTP 503 · Service Unavailable
                 </label>
@@ -278,7 +278,7 @@ export default function ErrorResponseClient() {
                   <span className="material-symbols-outlined text-[18px] text-primary">visibility</span>
                   <p className="text-xs font-bold uppercase tracking-wide text-text-main">Live Client Preview</p>
                 </div>
-                <span className={cn("text-[10px] px-2 py-0.5 rounded font-mono font-bold", enabled ? "bg-emerald-500/10 text-emerald-500" : "bg-neutral-500/10 text-neutral-400")}>
+                <span className={cn("text-[10px] px-2 py-0.5 rounded font-mono font-bold", enabled ? "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400" : "bg-neutral-500/10 text-neutral-600 dark:text-neutral-300")}>
                   {enabled ? "CUSTOM MODE ACTIVE" : "RAW UPSTREAM PASS-THROUGH"}
                 </span>
               </div>

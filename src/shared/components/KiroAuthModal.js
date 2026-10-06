@@ -311,7 +311,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">
-                IDC Start URL <span className="text-red-500">*</span>
+                IDC Start URL <span className="text-red-700 dark:text-red-300">*</span>
               </label>
               <Input
                 value={idcStartUrl}
@@ -340,7 +340,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
             </div>
 
             {error && (
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
             )}
 
             <div className="flex gap-2">
@@ -369,7 +369,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
             <div>
               <label className="block text-sm font-medium mb-2">
-                API Key <span className="text-red-500">*</span>
+                API Key <span className="text-red-700 dark:text-red-300">*</span>
               </label>
               <Input
                 value={apiKey}
@@ -396,7 +396,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
               </div>
             )}
 
@@ -416,7 +416,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
           <div className="space-y-4">
             <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
               <div className="flex gap-2">
-                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">info</span>
+                <span className="material-symbols-outlined text-amber-700 dark:text-amber-400">info</span>
                 <div className="flex-1 text-sm">
                   <p className="font-medium text-amber-900 dark:text-amber-100 mb-1">
                     Manual Callback Required
@@ -444,7 +444,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
           <div className="space-y-4">
             <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
               <div className="flex gap-2">
-                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">info</span>
+                <span className="material-symbols-outlined text-amber-700 dark:text-amber-400">info</span>
                 <div className="flex-1 text-sm">
                   <p className="font-medium text-amber-900 dark:text-amber-100 mb-1">
                     Manual Callback Required
@@ -492,7 +492,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
                 {autoDetected && (
                   <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
                     <div className="flex gap-2">
-                      <span className="material-symbols-outlined text-green-600 dark:text-green-400">check_circle</span>
+                      <span className="material-symbols-outlined text-green-700 dark:text-green-400">check_circle</span>
                       <p className="text-sm text-green-800 dark:text-green-200">
                         Token auto-detected from Kiro IDE successfully!
                       </p>
@@ -514,7 +514,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Refresh Token <span className="text-red-500">*</span>
+                    Refresh Token <span className="text-red-700 dark:text-red-300">*</span>
                   </label>
                   <Input
                     value={refreshToken}
@@ -526,7 +526,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
                 {error && (
                   <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                    <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                    <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
                   </div>
                 )}
 
@@ -557,7 +557,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
             <div>
               <label className="block text-sm font-medium mb-2">
-                CLIProxyAPI Auth JSON <span className="text-red-500">*</span>
+                CLIProxyAPI Auth JSON <span className="text-red-700 dark:text-red-300">*</span>
               </label>
               <textarea
                 value={cliProxyJson}
@@ -569,7 +569,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
               </div>
             )}
 

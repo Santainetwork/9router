@@ -12,12 +12,12 @@ const badgeVariants = cva(
         secondary:
           "border-transparent bg-surface-2 text-text-muted hover:bg-surface-3",
         destructive:
-          "border-transparent bg-red-500/10 text-red-500 border-red-500/20",
+          "border-transparent bg-red-500/10 text-red-800 dark:text-red-300 border-red-500/20",
         outline: "text-text-main border-border",
         success:
-          "border-transparent bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+          "border-transparent bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-500/20",
         warning:
-          "border-transparent bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+          "border-transparent bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-500/20",
         neoYellow:
           "rounded-md border-2 border-black dark:border-white bg-yellow-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
         neoCyan:

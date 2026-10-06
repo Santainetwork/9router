@@ -311,7 +311,7 @@ export default function ZedAuthModal({ isOpen, providerInfo, onSuccess, onClose 
           <div className="space-y-3">
             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
               <div className="flex gap-2">
-                <span className="material-symbols-outlined text-green-600 dark:text-green-400">
+                <span className="material-symbols-outlined text-green-700 dark:text-green-400">
                   check_circle
                 </span>
                 <p className="text-sm text-green-800 dark:text-green-200">
@@ -384,7 +384,7 @@ export default function ZedAuthModal({ isOpen, providerInfo, onSuccess, onClose 
 
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
               </div>
             )}
 

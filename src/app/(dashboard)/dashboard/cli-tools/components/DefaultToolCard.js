@@ -87,7 +87,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
             </button>
             <button
               onClick={() => setModelValue("")}
-              className="p-2 text-text-muted hover:text-red-500 rounded transition-colors"
+              className="p-2 text-text-muted hover:text-red-700 dark:hover:text-red-300 rounded transition-colors"
               title="Clear"
             >
               <span className="material-symbols-outlined text-lg">close</span>
@@ -111,19 +111,19 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           const isError = note.type === "cloudCheck" && !cloudEnabled && !tunnelEnabled;
           
           let bgClass = "bg-blue-500/10 border-blue-500/30";
-          let textClass = "text-blue-600 dark:text-blue-400";
-          let iconClass = "text-blue-500";
+          let textClass = "text-blue-700 dark:text-blue-400";
+          let iconClass = "text-blue-700 dark:text-blue-400";
           let icon = "info";
           
           if (isWarning) {
             bgClass = "bg-yellow-500/10 border-yellow-500/30";
-            textClass = "text-yellow-600 dark:text-yellow-400";
-            iconClass = "text-yellow-500";
+            textClass = "text-yellow-800 dark:text-yellow-400";
+            iconClass = "text-yellow-800 dark:text-yellow-500";
             icon = "warning";
           } else if (isError) {
             bgClass = "bg-red-500/10 border-red-500/30";
-            textClass = "text-red-600 dark:text-red-400";
-            iconClass = "text-red-500";
+            textClass = "text-red-700 dark:text-red-300";
+            iconClass = "text-red-700 dark:text-red-300";
             icon = "error";
           }
           

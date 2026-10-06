@@ -117,7 +117,7 @@ function RouterNode({ data }) {
         loading="lazy"
         decoding="async"
       />
-      <span className={`text-sm font-bold ${powering ? "topology-router-label text-yellow-300" : "text-primary"}`}>
+      <span className={`text-sm font-bold ${powering ? "topology-router-label text-yellow-800 dark:text-yellow-500" : "text-primary"}`}>
         9Router
       </span>
       {data.activeCount > 0 && (

@@ -45,7 +45,7 @@ function formatResetTimeDisplay(resetTime) {
 function getColorClasses(remainingPercentage) {
   if (remainingPercentage > 70) {
     return {
-      text: "text-green-600 dark:text-green-400",
+      text: "text-green-800 dark:text-green-400",
       bg: "bg-green-500",
       bgLight: "bg-green-500/10",
       emoji: "🟢",
@@ -54,7 +54,7 @@ function getColorClasses(remainingPercentage) {
 
   if (remainingPercentage >= 30) {
     return {
-      text: "text-yellow-600 dark:text-yellow-400",
+      text: "text-yellow-800 dark:text-yellow-400",
       bg: "bg-yellow-500",
       bgLight: "bg-yellow-500/10",
       emoji: "🟡",
@@ -62,7 +62,7 @@ function getColorClasses(remainingPercentage) {
   }
 
   return {
-    text: "text-red-600 dark:text-red-400",
+    text: "text-red-700 dark:text-red-300",
     bg: "bg-red-500",
     bgLight: "bg-red-500/10",
     emoji: "🔴",
@@ -153,7 +153,7 @@ export default function QuotaTable({
           const isUnlimited = quota.unlimited === true;
           const isCreditBalance = quota.isCreditBalance === true;
           const colors = isCreditBalance
-            ? { text: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500", bgLight: "bg-blue-500/10", emoji: "💰" }
+            ? { text: "text-blue-700 dark:text-blue-400", bg: "bg-blue-500", bgLight: "bg-blue-500/10", emoji: "💰" }
             : getColorClasses(quota.remaining);
           const countdown = formatResetTime(quota.resetAt);
           const resetDisplay = formatResetTimeDisplay(quota.resetAt);
@@ -206,7 +206,7 @@ export default function QuotaTable({
                       ? `Credit: ${quota.total.toFixed(2)} ${quota.currency || ""}`
                       : `${formatCompactNumber(quota.used)} / ${quota.total > 0 ? formatCompactNumber(quota.total) : "∞"}`}
                   </span>
-                  <span className={`font-medium ${isUnlimited ? "text-green-600 dark:text-green-400" : isCreditBalance ? "text-blue-600 dark:text-blue-400" : colors.text} shrink-0`}>
+                  <span className={`font-medium ${isUnlimited ? "text-green-800 dark:text-green-400" : isCreditBalance ? "text-blue-700 dark:text-blue-400" : colors.text} shrink-0`}>
                     {isUnlimited ? "Unlimited" : isCreditBalance ? "" : `${quota.remaining}%`}
                   </span>
                 </div>

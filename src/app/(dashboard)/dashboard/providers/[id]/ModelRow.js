@@ -29,8 +29,8 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <code className="break-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-text-main" title={displayModel}>{displayModel}</code>
           <span className="flex min-w-0 items-center text-[9px] gap-1 pl-1">
-            {model.name && <span className="truncate text-[9px] italic text-text-muted/70">{model.name}</span>}
-            <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
+            {model.name && <span className="truncate text-[9px] italic text-text-muted/90">{model.name}</span>}
+            <CapacityBadges caps={caps} colorOverride="text-text-muted/90" size={12} />
           </span>
         </div>
         {onTest && (

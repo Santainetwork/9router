@@ -205,7 +205,7 @@ function CompareModelCard({ index, model, loading, result, onRetry, onStop }) {
           </span>
           <div>
             <p className="text-sm font-medium text-white">{model.name}</p>
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-white/55">
               {model.providerName || model.providerId || model.requestModel}
             </p>
           </div>
@@ -221,13 +221,13 @@ function CompareModelCard({ index, model, loading, result, onRetry, onStop }) {
       </div>
 
       {isError ? (
-        <div className="mt-3 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+        <div className="mt-3 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
           {result?.error || "Failed to generate response"}
         </div>
       ) : null}
 
       {result?.responseMeta ? (
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-white/40" aria-label="Response metadata">
+        <div className="mt-3 flex flex-wrap gap-3 text-xs text-white/55" aria-label="Response metadata">
           <span>{result.responseMeta.providerName || result.responseMeta.provider} · {result.responseMeta.model}</span>
           {result.responseMeta.usage ? <span>{result.responseMeta.usage.promptTokens} in · {result.responseMeta.usage.completionTokens} out · {result.responseMeta.usage.totalTokens} total</span> : null}
           {result.responseMeta.apiKeyQueueMs > 0 ? <span>API queue {formatDuration(result.responseMeta.apiKeyQueueMs)}</span> : null}
@@ -1127,10 +1127,10 @@ export default function BasicChatPageClient() {
                 {compareModels.map((model) => (
                   <button key={model.id} type="button" onClick={() => removeCompareModeModel(model.id)} className="group flex max-w-[9rem] items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs text-white/80" aria-label={`Remove ${model.name} from comparison`}>
                     <span className="truncate">{model.name}</span>
-                    <span className="material-symbols-outlined text-[14px] text-white/45 group-hover:text-white">close</span>
+                    <span className="material-symbols-outlined text-[14px] text-white/55 group-hover:text-white">close</span>
                   </button>
                 ))}
-                <span className="text-xs text-white/45">{compareModels.length}/{MAX_COMPARE_MODELS}</span>
+                <span className="text-xs text-white/55">{compareModels.length}/{MAX_COMPARE_MODELS}</span>
               </div>
             ) : null}
           {/* Provider selector */}
@@ -1141,7 +1141,7 @@ export default function BasicChatPageClient() {
               className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/8"
             >
               <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">Provider</p>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/55">Provider</p>
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-semibold text-white">{activeProviderGroup?.providerName || "Select provider"}</span>
                   <span className="material-symbols-outlined text-[18px] text-white/70">expand_more</span>
@@ -1152,7 +1152,7 @@ export default function BasicChatPageClient() {
             {providerMenuOpen ? (
               <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#262626] shadow-2xl shadow-black/50">
                 <div className="border-b border-white/10 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/45">Providers</p>
+                  <p className="text-xs uppercase tracking-[0.22em] text-white/55">Providers</p>
                   <p className="text-sm text-white/75">Pick a provider first</p>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
@@ -1188,7 +1188,7 @@ export default function BasicChatPageClient() {
               className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:bg-white/8 disabled:opacity-50"
             >
               <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">Model</p>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/55">Model</p>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white">{modelLabel}</span>
                   <span className="material-symbols-outlined text-[18px] text-white/70">expand_more</span>
@@ -1200,7 +1200,7 @@ export default function BasicChatPageClient() {
             {modelMenuOpen && activeProviderGroup ? (
               <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#262626] shadow-2xl shadow-black/50">
                 <div className="border-b border-white/10 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-white/45">Models</p>
+                  <p className="text-xs uppercase tracking-[0.22em] text-white/55">Models</p>
                   <p className="text-sm text-white/75">{activeProviderGroup.providerName} · {activeProviderGroup.requestPrefix}/…</p>
                   <div className="mt-3 flex gap-2">
                     <input
@@ -1208,9 +1208,9 @@ export default function BasicChatPageClient() {
                       onChange={(event) => setCustomModel(event.target.value)}
                       onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); handleAddCustomModel(); } }}
                       placeholder="Custom model ID, e.g. qd/ultimate"
-                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-white/30 focus:border-blue-400/50"
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-white/55 focus:border-blue-400/50"
                     />
-                    <button type="button" onClick={handleAddCustomModel} disabled={!customModel.trim()} className="rounded-lg bg-blue-500/20 px-3 py-2 text-xs text-blue-200 disabled:opacity-40">
+                    <button type="button" onClick={handleAddCustomModel} disabled={!customModel.trim()} className="rounded-lg bg-blue-500/20 px-3 py-2 text-xs text-blue-800 dark:text-blue-300 disabled:opacity-40">
                       Add
                     </button>
                   </div>
@@ -1239,7 +1239,7 @@ export default function BasicChatPageClient() {
                               <ProviderIcon providerId={model.provider} size={20} className="rounded shrink-0" />
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium text-white">{model.name}</p>
-                                <p className="truncate text-[11px] text-white/45">{model.requestModel}</p>
+                                <p className="truncate text-[11px] text-white/55">{model.requestModel}</p>
                               </div>
                             </div>
                             {(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? <span className="material-symbols-outlined text-[18px] text-blue-300 shrink-0">check_circle</span> : null}
@@ -1265,7 +1265,7 @@ export default function BasicChatPageClient() {
             <button
               type="button"
               onClick={() => setApiKeyOpen((value) => !value)}
-              className={`rounded-2xl border px-4 py-3 text-sm transition ${apiKey.trim() ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15" : "border-white/10 bg-white/5 text-white/80 hover:bg-white/8"}`}
+              className={`rounded-2xl border px-4 py-3 text-sm transition ${apiKey.trim() ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15" : "border-white/10 bg-white/5 text-white/80 hover:bg-white/8"}`}
               title={apiKey.trim() ? "Using your API key" : "Set an API key to call the provider directly"}
             >
               <span className="material-symbols-outlined align-middle text-[18px]">key</span>
@@ -1277,7 +1277,7 @@ export default function BasicChatPageClient() {
             >
               History
             </button>
-            <Button variant="ghost" size="sm" icon="delete" onClick={handleDeleteCurrentChat} disabled={!activeSessionId || sessions.length === 0}>
+            <Button variant="ghost" size="sm" icon="delete" onClick={handleDeleteCurrentChat} disabled={!activeSessionId || sessions.length === 0} className="text-white/70! hover:bg-white/10! hover:text-white!">
               Clear
             </Button>
           </div>
@@ -1286,8 +1286,8 @@ export default function BasicChatPageClient() {
         {apiKeyOpen ? (
           <div className="mx-4 mb-1 rounded-[18px] border border-white/10 bg-[#262626] p-3 lg:mx-6">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/45">API Key (optional)</p>
-              <button type="button" onClick={() => setApiKeyOpen(false)} className="text-white/40 hover:text-white" aria-label="Close">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/55">API Key (optional)</p>
+              <button type="button" onClick={() => setApiKeyOpen(false)} className="text-white/55 hover:text-white" aria-label="Close">
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
@@ -1302,7 +1302,7 @@ export default function BasicChatPageClient() {
                 placeholder="sk-..."
                 autoComplete="off"
                 spellCheck={false}
-                className="min-w-0 flex-1 rounded-[12px] border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white outline-none placeholder:text-white/30 focus:border-white/25"
+                className="min-w-0 flex-1 rounded-[12px] border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white outline-none placeholder:text-white/55 focus:border-white/25"
               />
               {apiKey ? (
                 <button type="button" onClick={() => setApiKey("")} className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70 transition hover:bg-white/10">
@@ -1316,7 +1316,7 @@ export default function BasicChatPageClient() {
         {historyOpen ? (
           <div ref={historyMenuRef} className="absolute right-4 top-[72px] z-20 w-[min(360px,calc(100vw-2rem))] rounded-[20px] border border-white/10 bg-[#262626] p-2 shadow-2xl shadow-black/50 lg:right-6">
             <div className="px-3 py-2">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/45">Recent chats</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-white/55">Recent chats</p>
             </div>
             <div className="max-h-[48vh] space-y-2 overflow-y-auto p-1 custom-scrollbar">
               {sessionItems.length === 0 ? (
@@ -1336,9 +1336,9 @@ export default function BasicChatPageClient() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-white">{session.title}</p>
-                        <p className="mt-1 truncate text-xs text-white/50">{textValue(latestMessage?.content) || "Empty chat"}</p>
+                        <p className="mt-1 truncate text-xs text-white/55">{textValue(latestMessage?.content) || "Empty chat"}</p>
                       </div>
-                      <span className="text-[10px] text-white/40 shrink-0">{formatRelativeTime(session.updatedAt)}</span>
+                      <span className="text-[10px] text-white/55 shrink-0">{formatRelativeTime(session.updatedAt)}</span>
                     </div>
                   </button>
                 );
@@ -1348,7 +1348,7 @@ export default function BasicChatPageClient() {
         ) : null}
 
         {loadError ? (
-          <div className="mt-4 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-rose-100">
+          <div className="mt-4 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-rose-300">
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined text-[20px]">error</span>
               <p className="text-sm leading-6">{loadError}</p>
@@ -1365,7 +1365,7 @@ export default function BasicChatPageClient() {
                     <div className="mb-4 rounded-[18px] border border-white/10 bg-white/5 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-white/45">Prompt</p>
+                          <p className="text-xs uppercase tracking-[0.18em] text-white/55">Prompt</p>
                           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/85">{compareRun.prompt || `${compareRun.attachments.length} image attachment(s)`}</p>
                         </div>
                         {compareRunning ? <button type="button" onClick={stopAllCompareRuns} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 hover:bg-white/10" aria-label="Stop all model responses">Stop all</button> : null}
@@ -1450,7 +1450,7 @@ export default function BasicChatPageClient() {
                       {isAssistant && !isStreaming ? (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           {message.responseMeta && footerSettings.loaded && footerSettings.enabled && (footerSettings.hasVisibleField() || footerSettings.customMessage) ? (
-                            <div className="mr-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/40" aria-label="Response metadata">
+                            <div className="mr-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/55" aria-label="Response metadata">
                               {footerSettings.fields.providerModel ? <span title="Provider and model">{message.responseMeta.providerName || message.responseMeta.provider} · {message.responseMeta.model}</span> : null}
                               {footerSettings.fields.tokens && message.responseMeta.usage ? <span title="Prompt / completion / total tokens">{message.responseMeta.usage.promptTokens} in · {message.responseMeta.usage.completionTokens} out · {message.responseMeta.usage.totalTokens} total</span> : null}
                               {footerSettings.fields.apiKeyQueue && message.responseMeta.apiKeyQueueMs > 0 ? <span title="API key queue wait">API queue {formatDuration(message.responseMeta.apiKeyQueueMs)}</span> : null}
@@ -1504,7 +1504,7 @@ export default function BasicChatPageClient() {
                   onKeyDown={handleKeyDown}
                   placeholder={mode === "compare" ? (compareModels.length >= 2 ? `Ask ${compareModels.length} models...` : "Add 2–4 models to compare") : "Message AI"}
                   rows={1}
-                  className="w-full resize-none bg-transparent px-2 text-[15px] leading-6 text-white outline-none placeholder:text-white/40 custom-scrollbar max-h-[25vh] overflow-y-auto"
+                  className="w-full resize-none bg-transparent px-2 text-[15px] leading-6 text-white outline-none placeholder:text-white/55 custom-scrollbar max-h-[25vh] overflow-y-auto"
                 />
 
                 <div className="mt-2 flex items-center justify-between gap-3">
@@ -1513,7 +1513,7 @@ export default function BasicChatPageClient() {
                       <span className="material-symbols-outlined text-[20px]">attach_file</span>
                     </button>
                     <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} />
-                    <span className="text-xs font-medium text-white/30 truncate max-w-[180px]">{mode === "compare" ? `${compareModels.length} models selected` : (activeModel ? activeModel.name : "No model")}</span>
+                    <span className="text-xs font-medium text-white/55 truncate max-w-[180px]">{mode === "compare" ? `${compareModels.length} models selected` : (activeModel ? activeModel.name : "No model")}</span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1526,7 +1526,7 @@ export default function BasicChatPageClient() {
                         <span className="material-symbols-outlined text-[16px]">stop</span>
                       </button>
                     ) : null}
-                    <button type="button" onClick={mode === "compare" ? startCompareRun : sendMessage} disabled={mode === "compare" ? !compareModeCanSend : !canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${(mode === "compare" ? compareModeCanSend : canSend) ? 'bg-white text-black hover:opacity-90' : 'bg-white/10 text-white/30 cursor-not-allowed'}`} aria-label={mode === "compare" ? "Compare selected models" : "Send message"}>
+                    <button type="button" onClick={mode === "compare" ? startCompareRun : sendMessage} disabled={mode === "compare" ? !compareModeCanSend : !canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${(mode === "compare" ? compareModeCanSend : canSend) ? 'bg-white text-black hover:opacity-90' : 'bg-white/10 text-white/55 cursor-not-allowed'}`} aria-label={mode === "compare" ? "Compare selected models" : "Send message"}>
                       <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
                     </button>
                   </div>
@@ -1535,7 +1535,7 @@ export default function BasicChatPageClient() {
             </div>
           </div>
 
-          <p className="mx-auto mt-2 max-w-3xl px-4 pb-4 text-center text-[11px] text-white/30">
+          <p className="mx-auto mt-2 max-w-3xl px-4 pb-4 text-center text-[11px] text-white/55">
             Model list is filtered from connected providers.
           </p>
         </div>
