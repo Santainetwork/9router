@@ -165,6 +165,39 @@ test("--restore-backup requires a path and rejects a missing directory", () => {
   }
 });
 
+test("--restore-backup --dry-run is a preview and mutates nothing", () => {
+  // The restore path copies with raw cp/mv/rm outside run(), so it needs its own
+  // dry-run exit. Regression guard: without it, --yes auto-accepts the typed
+  // confirmation and the preview really replaces the live release.
+  const sb = sandbox();
+  try {
+    const backup = path.join(sb.dir, "backup");
+    mkdirSync(path.join(backup, "env"), { recursive: true });
+    writeFileSync(path.join(backup, "env", "9router.env"), "SANDBOX=1\n");
+    mkdirSync(path.join(backup, "release-live", "sentinel"), { recursive: true });
+    writeFileSync(path.join(backup, "release-live", "marker"), "from-backup\n");
+
+    mkdirSync(sb.env.RELEASE_DIR, { recursive: true });
+    writeFileSync(path.join(sb.env.RELEASE_DIR, "live"), "live\n");
+    writeFileSync(sb.env.ENV_FILE, "LIVE=1\n");
+    const liveBefore = readFileSync(sb.env.RELEASE_DIR + "/live", "utf8");
+    const envBefore = readFileSync(sb.env.ENV_FILE, "utf8");
+
+    const r = runInstaller(["--restore-backup", backup, "--dry-run", "--yes"], sb.env);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /\[dry-run\]/);
+
+    assert.equal(readFileSync(sb.env.RELEASE_DIR + "/live", "utf8"), liveBefore, "release dir untouched");
+    assert.equal(readFileSync(sb.env.ENV_FILE, "utf8"), envBefore, "env file untouched");
+    assert.ok(!existsSync(sb.env.RELEASE_DIR + "/marker"), "no backup content may reach the release");
+    for (const p of [".restoring", ".failed", ".previous"]) {
+      assert.ok(!existsSync(sb.env.RELEASE_DIR + p), `${p} must not be created by a dry run`);
+    }
+  } finally {
+    sb.cleanup();
+  }
+});
+
 test("a foreign listener on a required port is a hard failure", async () => {
   const net = await import("node:net");
   const sb = sandbox();
