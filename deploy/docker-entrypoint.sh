@@ -148,7 +148,7 @@ if [ "$API_WORKERS" -gt 1 ]; then
     worker_port=$((BACKEND_PORT + 4 + i))
     # API workers are internal and must never bind a public interface, even when
     # the Go engine is disabled and the parent HOSTNAME was set to 0.0.0.0.
-    PORT="$worker_port" HOSTNAME="127.0.0.1" WORKER_ROLE=api API_WORKERS="$API_WORKERS" su-exec node node custom-server.js --no-browser --log --skip-update &
+    PORT="$worker_port" HOSTNAME="127.0.0.1" WORKER_ROLE=api API_WORKERS="$API_WORKERS" WORKER_INDEX="$((i + 1))" su-exec node node custom-server.js --no-browser --log --skip-update &
     API_NODE_PIDS="${API_NODE_PIDS} $!"
     i=$((i + 1))
   done

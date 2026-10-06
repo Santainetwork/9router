@@ -12,9 +12,18 @@ export async function register() {
     const { isApiWorkerRole } = await import("@/shared/utils/engineConfig.js");
     if (!isApiWorkerRole() && !isBuildPhase) {
       const { startWorkerJournalCollector } = await import("@/lib/workerJournalLogs");
-      startWorkerJournalCollector();
+      const journalCollector = startWorkerJournalCollector();
+      if (!journalCollector) {
+        const { startWorkerFileCollector } = await import("@/lib/workerFileLogs");
+        const { getDataDir } = await import("@/lib/dataDir.js");
+        startWorkerFileCollector({ dataDir: getDataDir() });
+      }
       const { startSqliteMutationWriter } = await import("@/lib/db/sqliteMutationRuntime.js");
       await startSqliteMutationWriter();
+    } else if (isApiWorkerRole() && !isBuildPhase) {
+      const { installWorkerFileMirror } = await import("@/lib/workerFileLogs");
+      const { getDataDir } = await import("@/lib/dataDir.js");
+      installWorkerFileMirror({ dataDir: getDataDir() });
     }
 
     // Server-only: lets capabilities.js read the synced catalog without pulling
