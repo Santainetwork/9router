@@ -945,7 +945,15 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 cp -a "$REPO_DIR/$DIST_DIR_NAME/standalone/." "$STAGE_DIR/"
 mkdir -p "$STAGE_DIR/$DIST_DIR_NAME"
-cp -a "$REPO_DIR/$DIST_DIR_NAME/static" "$STAGE_DIR/$DIST_DIR_NAME/static"
+# The standalone bundle already ships the built static dir when postbuild ran. Copying
+# unconditionally nests static inside static, which bloats the release by the whole
+# bundle size and trips the tree comparison in verify-release.sh.
+if [ ! -d "$STAGE_DIR/$DIST_DIR_NAME/static" ]; then
+  cp -a "$REPO_DIR/$DIST_DIR_NAME/static" "$STAGE_DIR/$DIST_DIR_NAME/static"
+  info "static assets copied into the stage"
+else
+  info "static assets already present in the standalone bundle"
+fi
 cp -a "$REPO_DIR/public" "$STAGE_DIR/public"
 cp -a "$REPO_DIR/custom-server.js" "$STAGE_DIR/custom-server.js"
 mkdir -p "$STAGE_DIR/scripts"
