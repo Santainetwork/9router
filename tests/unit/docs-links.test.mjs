@@ -14,6 +14,28 @@ const headings = (text) =>
   [...text.matchAll(/^#{1,6}\s+(.*)$/gm)].map((m) =>
     m[1].toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-"));
 
+// Cross-file anchors: a link like [x](OTHER.md#anchor) must land on a real
+// heading in that file. Nothing uses them today; this is the guard.
+test("cross-file anchor links resolve", () => {
+  for (const file of FILES) {
+    const text = readFileSync(`${REPO}/${file}`, "utf8");
+    for (const [, target, anchor] of text.matchAll(/\]\(([^)#]+)#([^)]+)\)/g)) {
+      if (target.startsWith("http")) continue;
+      assert.ok(existsSync(`${REPO}/${target}`), `${file} links to missing file ${target}`);
+      const heads = headings(readFileSync(`${REPO}/${target}`, "utf8"));
+      assert.ok(heads.includes(anchor), `${file} links to ${target}#${anchor}, which does not exist`);
+    }
+  }
+});
+
+// A broken in-page anchor is silently invisible to a test that only parses the
+// clean copy, so assert the checker rejects the shape the bug had.
+test("the anchor checker detects the double-dash link form", () => {
+  const body = "## Real Heading\n\n[go](#-real--heading)";
+  assert.ok(headings(body).length === 1, "helper must see the heading");
+  assert.ok(!headings(body).includes("-real--heading"), "checker must not resolve a doubled hyphen");
+});
+
 for (const file of FILES) {
   const text = readFileSync(`${REPO}/${file}`, "utf8");
   test(`${file}: fences balanced`, () => {
