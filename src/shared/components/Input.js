@@ -22,7 +22,7 @@ export default function Input({
       {label && (
         <label className="text-sm font-medium text-text-main">
           {label}
-          {required && <span className="text-red-700 dark:text-red-300 ml-1">*</span>}
+          {required && <span className="text-danger ml-1">*</span>}
         </label>
       )}
       <div className="relative">
@@ -38,21 +38,21 @@ export default function Input({
           onChange={onChange}
           disabled={disabled}
           className={cn(
-            "w-full py-2.5 px-3 text-sm text-text-main bg-surface-2 rounded-[10px]",
+            "w-full py-2.5 px-3 text-sm text-text-main bg-surface-2 rounded-lg",
             "border border-transparent placeholder-text-muted/70",
             "focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40",
             "transition-all duration-150 ease-out disabled:opacity-50 disabled:cursor-not-allowed",
             // iOS zoom fix
             "text-[16px] sm:text-sm",
             icon && "pl-10",
-            error && "ring-1 ring-red-500 focus:ring-2 focus:ring-red-500/40 border-red-500/40",
+            error && "ring-1 ring-danger focus:ring-2 focus:ring-danger/40 border-danger/40",
             inputClassName
           )}
           {...props}
         />
       </div>
       {error && (
-        <p className="text-xs text-red-700 dark:text-red-300 flex items-center gap-1">
+        <p className="text-xs text-danger flex items-center gap-1">
           <span className="material-symbols-outlined text-[14px]">error</span>
           {error}
         </p>

@@ -13,7 +13,7 @@ const POLL_MS = 5000;
 
 function StatusDot({ tone }) {
   const color =
-    tone === "ok" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-500" : "bg-red-500";
+    tone === "ok" ? "bg-success" : tone === "warn" ? "bg-warning" : "bg-danger";
   return (
     <span className="relative flex size-2.5 shrink-0">
       <span
@@ -124,12 +124,12 @@ export default function SystemHealthPanel({ workerTopology }) {
       </div>
 
       {authRequired && (
-        <p className="text-xs text-amber-800 dark:text-amber-500">
+        <p className="text-xs text-warning">
           Admin auth required to read process metrics. Reload the dashboard with an authenticated
           session.
         </p>
       )}
-      {error && !authRequired && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
+      {error && !authRequired && <p className="text-xs text-danger">{error}</p>}
 
       {data && !authRequired && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -141,7 +141,7 @@ export default function SystemHealthPanel({ workerTopology }) {
               <span
                 className={cn(
                   "ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded",
-                  goActive ? "bg-cyan-500/10 text-cyan-800 dark:text-cyan-400" : "bg-amber-500/10 text-amber-800 dark:text-amber-500",
+                  goActive ? "bg-info/10 text-info" : "bg-warning/10 text-warning",
                 )}
               >
                 {goActive ? "active" : "fallback"}
@@ -191,8 +191,8 @@ export default function SystemHealthPanel({ workerTopology }) {
                 className={cn(
                   "ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded",
                   db?.type === "postgres"
-                    ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
-                    : "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400",
+                    ? "bg-info/10 text-info"
+                    : "bg-success/15 text-success",
                 )}
               >
                 {db?.type}

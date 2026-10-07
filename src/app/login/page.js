@@ -171,7 +171,7 @@ export default function LoginPage() {
         <Card>
           {mustChange ? (
             <form onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
-              <p className="text-sm text-amber-800 dark:text-amber-400 text-center">
+              <p className="text-sm text-warning text-center">
                 Set a new password before accessing the dashboard remotely.
               </p>
               <div className="flex flex-col gap-2">
@@ -184,7 +184,7 @@ export default function LoginPage() {
                   required
                   autoFocus
                 />
-                {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
+                {error && <p className="text-xs text-danger">{error}</p>}
               </div>
               <Button type="submit" variant="primary" className="w-full" loading={loading} disabled={!newPassword}>
                 Set password
@@ -209,7 +209,7 @@ export default function LoginPage() {
             {passwordAvailable ? (
               <form onSubmit={handleLogin} className="flex flex-col gap-4">
                 {isSsoEnabled && !ssoAvailable && (
-                  <p className="text-xs text-amber-800 dark:text-amber-400 text-center">
+                  <p className="text-xs text-warning text-center">
                     {activeSsoType === "saml" ? "SAML SSO" : "OIDC"} login is enabled, but configuration is incomplete. Password login is still available for recovery.
                   </p>
                 )}
@@ -230,9 +230,9 @@ export default function LoginPage() {
                     required
                     autoFocus={!oidcAvailable}
                   />
-                  {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
+                  {error && <p className="text-xs text-danger">{error}</p>}
                   {retryAfter > 0 && (
-                    <p className="text-xs text-amber-800 dark:text-amber-400">
+                    <p className="text-xs text-warning">
                       Locked. Retry in <span className="font-mono">{retryAfter}s</span>.
                     </p>
                   )}
@@ -257,13 +257,13 @@ export default function LoginPage() {
                   Default password is <code className="bg-sidebar px-1 rounded">123456</code>
                 </p>
                 {hasPassword === false && (
-                  <p className="text-xs text-center text-amber-800 dark:text-amber-400">
+                  <p className="text-xs text-center text-warning">
                     Security risk: no password set. You will be asked to set one when logging in remotely.
                   </p>
                 )}
               </form>
             ) : (
-              error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>
+              error && <p className="text-xs text-danger">{error}</p>
             )}
           </div>
           )}

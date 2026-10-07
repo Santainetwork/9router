@@ -3,18 +3,18 @@
 import { cn } from "@/shared/utils/cn";
 
 const variants = {
-  primary: "bg-primary hover:bg-primary-hover text-on-primary shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
+  primary: "bg-primary hover:bg-primary-hover text-on-primary shadow-soft disabled:bg-surface-3 disabled:text-text-muted",
   secondary: "bg-surface-2 hover:bg-surface-3 text-text-main border border-border disabled:opacity-50",
   outline: "border border-border text-text-main hover:bg-surface-2 hover:border-brand-500/40",
   ghost: "text-text-muted hover:bg-surface-2 hover:text-text-main",
-  danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
-  success: "bg-green-700 hover:bg-green-800 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
+  danger: "bg-danger hover:bg-danger/90 text-on-primary shadow-soft disabled:bg-surface-3 disabled:text-text-muted",
+  success: "bg-success hover:bg-success/90 text-on-primary shadow-soft disabled:bg-surface-3 disabled:text-text-muted",
 };
 
 const sizes = {
-  sm: "h-7 px-3 text-xs rounded-[8px]",
-  md: "h-9 px-4 text-sm rounded-[10px]",
-  lg: "h-11 px-6 text-sm rounded-[10px]",
+  sm: "h-7 px-3 text-xs rounded-lg",
+  md: "h-9 px-4 text-sm rounded-lg",
+  lg: "h-11 px-6 text-sm rounded-lg",
 };
 
 export default function Button({
