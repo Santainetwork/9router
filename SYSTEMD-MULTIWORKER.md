@@ -206,45 +206,31 @@ HOSTNAME=127.0.0.1
 API_WORKERS=<total>
 ```
 
-**Important:** `scripts/install.sh` rewrites `/etc/9router.env` from a fixed
-template and preserves only `JWT_SECRET`, `MACHINE_ID_SALT`, `API_KEY_SECRET`,
-`DATABASE_URL`, and `DB_TYPE`. The Redis variables are *not* in that list, so
-they must be **passed in the installer's environment** (so the topology check
-sees them) **and appended afterwards** (so runtime sees them).
+**Important:** `scripts/install.sh` rewrites `/etc/9router.env` from a template,
+but it reads the SQLite broker variables back from the existing file before it
+writes, and the template re-emits them when set. So passing them once is enough —
+later `--upgrade` runs keep the topology and no manual append is needed.
 
 ```bash
 QUEUE_KEY="$(openssl rand -hex 32)"
 
-# Step 1: pass the topology in the installer's environment.
-# ENABLE_GO_HYBRID=true is mandatory: the topology preflight runs
-# `custom-server.js --check-config`, and `validateWorkerConfig()` rejects SQLite
-# multicore without it. The units set it for runtime, but the preflight reads
-# only the process environment, so pass it here too.
+# One command. ENABLE_GO_HYBRID defaults to true in the installer; passing the
+# broker keys here is what makes the topology preflight see them and persist
+# them. Run from the extracted release directory.
 sudo API_WORKERS=3 \
      DB_TYPE=sqlite \
      SQLITE_MULTICORE=redis \
      REDIS_URL="redis://127.0.0.1:6379/0" \
      REDIS_KEY_PREFIX="9router:sqlite" \
      SQLITE_QUEUE_ENCRYPTION_KEY="$QUEUE_KEY" \
-     ENABLE_GO_HYBRID=true \
      bash scripts/install.sh --upgrade
-
-# Step 2: persist them, because install.sh rewrote the env file.
-sudo tee -a /etc/9router.env >/dev/null <<EOF
-SQLITE_MULTICORE=redis
-REDIS_URL=redis://127.0.0.1:6379/0
-REDIS_KEY_PREFIX=9router:sqlite
-SQLITE_QUEUE_ENCRYPTION_KEY=$QUEUE_KEY
-ENABLE_GO_HYBRID=true
-EOF
-
-# Step 3: make every unit re-read the file.
-sudo systemctl daemon-reload
-sudo systemctl restart 9router 9router-workers.target 9router-hybrid-engine
 ```
 
-For PostgreSQL, `DATABASE_URL` is preserved across upgrades, so no append step
-is needed:
+That is the whole procedure. `systemctl daemon-reload` runs inside the
+installer, and it restarts the units in the right order, so no extra restart
+follows.
+
+For PostgreSQL, `DATABASE_URL` is also preserved across upgrades:
 
 ```bash
 sudo API_WORKERS=3 \
@@ -252,7 +238,7 @@ sudo API_WORKERS=3 \
      bash scripts/install.sh --upgrade
 ```
 
-A `--force-reinstall` overwrites the env file, so repeat the append step.
+`--upgrade`, `--force-reinstall` and every later re-run keep the installed topology without an append step. Only `--uninstall --purge` deletes `/etc/9router.env`, so a purged host needs the broker keys passed again on reinstall. Verify the installed topology in the file at any time: `sudo grep -E 'API_WORKERS|SQLITE_MULTICORE|REDIS_URL|REDIS_KEY_PREFIX|SQLITE_QUEUE_ENCRYPTION_KEY|ENABLE_GO_HYBRID' /etc/9router.env`.
 
 ### 3.4 Alternative: a systemd drop-in
 
@@ -473,10 +459,13 @@ curl -o /dev/null -w '%{http_code}\n' http://localhost:20128/api/health
 `API_WORKERS>1 requires PostgreSQL or SQLITE_MULTICORE=redis`, or the follow-up
 `SQLITE_MULTICORE=redis requires a valid redis:// or rediss:// REDIS_URL`.
 
-These check the **installer's environment**, not `/etc/9router.env`. Pass the
-variables inline as in section 3.3. If `DATABASE_URL` is set to anything that is
-not `postgres://` or `postgresql://`, multi-worker mode is refused outright,
-because `DB_TYPE=postgres` cannot override it.
+On `--upgrade` the installer reads `API_WORKERS`, `DB_TYPE`, `SQLITE_MULTICORE`
+and the Redis variables back from the existing `/etc/9router.env`, so an
+installed topology passes without extra flags. The error means either a first
+install that never passed them (add them inline as in section 3.3) or a real
+conflict. If `DATABASE_URL` is set to anything that is not `postgres://` or
+`postgresql://`, multi-worker mode is refused outright, because `DB_TYPE=postgres`
+cannot override it.
 
 ### The installer refused late: `Rejected by custom-server.js --check-config`
 
@@ -491,10 +480,12 @@ The failure you will most likely hit is:
 [9Router] Invalid worker configuration: SQLite multicore requires ENABLE_GO_HYBRID=true
 ```
 
-The units set `ENABLE_GO_HYBRID=true` for runtime, but the preflight reads only
-the process environment, so it must be passed to the installer as well (section
-3.3). Other `validateWorkerConfig()` rejections: an `API_WORKERS` above 8 or not
-a positive integer, `WORKER_ROLE` outside `control`/`api`, a missing or reused
+The installer now exports `ENABLE_GO_HYBRID=true` by default for the preflight,
+so on a current installer you should not see this. You only get it if
+`ENABLE_GO_HYBRID=false` is set explicitly (in the installer's environment or
+`/etc/9router.env`) while `SQLITE_MULTICORE=redis` is active — remove that line.
+Other `validateWorkerConfig()` rejections: an `API_WORKERS` above 8 or not a
+positive integer, `WORKER_ROLE` outside `control`/`api`, a missing or reused
 `SQLITE_QUEUE_ENCRYPTION_KEY`, an invalid `REDIS_URL`, and `SQLITE_MULTICORE`
 not set to `redis`.
 

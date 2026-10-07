@@ -44,7 +44,7 @@ This repository contains the hardened, production-grade custom distribution of *
 - **Automated Dialect Translation**: Intelligent query parameter converter (`?` to `$1, $2, ...`) and DDL normalization (`SERIAL PRIMARY KEY`, `NOW()`) supporting all core tables.
 - **No schema disruption when switching back**: SQLite + Redis multicore uses the same schema and the same migration path as the single-process SQLite default.
 
-> **Multicore rollout safety:** Enable `API_WORKERS>1` with PostgreSQL or SQLite + Redis, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. SQLite without `SQLITE_MULTICORE=redis` stays pinned to `API_WORKERS=1`. Related: [SQLite + Redis Multicore (Systemd)](#5-sqlite--redis-multicore-systemd) and [SQLite + Redis multicore (Docker)](#sqlite--redis-multicore-docker). Day-to-day operations, health-check reasons, and rollback: [SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md).
+> **Multicore rollout safety:** Enable `API_WORKERS>1` with PostgreSQL or SQLite + Redis, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. SQLite without `SQLITE_MULTICORE=redis` stays pinned to `API_WORKERS=1`. Related: [SQLite + Redis multicore (Systemd)](#sqlite--redis-multicore-systemd) and [SQLite + Redis multicore (Docker)](#sqlite--redis-multicore-docker). Day-to-day operations, health-check reasons, and rollback: [SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md).
 
 ### 3. 🏷️ Upstream Model & Prefix Attribution
 - **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
@@ -224,37 +224,22 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 
 ### Recommended: one-command production installer
 
-The installer configures the Go Master Gateway, internal Next.js backend, limiter, public portal, systemd units, backups, rollback, and health checks automatically.
-
 ```bash
 # From a cloned repository
 sudo ROUTER_PASSWORD="choose-a-strong-password" bash scripts/install.sh --yes
 
 # Preview changes without modifying the host
 sudo bash scripts/install.sh --dry-run
-
-# Upgrade safely (creates a rollback backup)
-sudo bash scripts/install.sh --upgrade
-
-# TailAdmin variant builds: pass the dist dir BEFORE sudo (sudo strips exported env,
-# and a missing NEXT_DIST_DIR silently builds/serves the default .next bundle)
-sudo NEXT_DIST_DIR=.next-tailadmin bash scripts/install.sh --upgrade
 ```
 
-After installation:
+Then reach the gateway:
 
 - Dashboard: `http://localhost:20128/dashboard`
 - OpenAI-compatible API: `http://localhost:20128/v1`
 - Public usage portal: `http://localhost:20140/usage-check`
 - Go limiter health: `http://localhost:20129/health`
-- Internal Next.js backend: `127.0.0.1:20127` (not publicly exposed)
 
-Uninstall keeps data by default:
-
-```bash
-sudo bash scripts/install.sh --uninstall
-# Add --purge only when intentionally deleting release and data directories.
-```
+Upgrade, uninstall, multicore (`API_WORKERS>1`), Docker profiles, and the VPS/PM2 path are all in [Deployment & Maintenance](#-deployment--maintenance). Uninstall keeps data unless you add `--purge`.
 
 ### Manual / npm installation
 
@@ -1413,180 +1398,83 @@ Model: cc/claude-opus-4-7
 
 ### 🏢 SantaiNetwork Production Operations
 
-This gateway runs in production using Next.js standalone output with a custom HTTP server managing clean SIGTERM drains and zero stream interruptions:
+The gateway serves Next.js standalone output behind a custom HTTP server (clean SIGTERM drains, no interrupted SSE streams), fronted by the compiled Go master gateway. Every step below is idempotent.
 
-> **Database boundary:** `API_WORKERS=3` runs one control process and two API workers on either multicore backend — PostgreSQL, or SQLite + Redis with `SQLITE_MULTICORE=redis` and a `redis://` / `rediss://` `REDIS_URL`. Plain SQLite with no Redis broker must stay at `API_WORKERS=1`. Bumped worker counts require the matching topology flags: the installer refuses `API_WORKERS>1` for a plain SQLite deployment instead of silently handing every worker its own database file.
+> **Database boundary:** `API_WORKERS>1` (multicore) requires PostgreSQL, or SQLite + Redis with `SQLITE_MULTICORE=redis` and a `redis://`/`rediss://` `REDIS_URL`. Plain SQLite must stay `API_WORKERS=1`. The installer refuses a mismatched topology instead of silently handing every worker its own SQLite file.
 
-#### 1. Verification & Quality Assurance
-Run the maintained Node verification suite before deploying any changes:
+### Deploy the gateway (systemd)
+
+```bash
+# One command: Go gateway :20128, limiter :20129, public portal :20140, backend :20127.
+# Default backend is SQLite with a single Node process.
+sudo ROUTER_PASSWORD="choose-a-strong-password" bash scripts/install.sh --yes
+
+# Preview the exact plan without touching the host
+sudo bash scripts/install.sh --dry-run
+
+# Upgrade in place (auto-backup first, auto-rollback if a health check fails)
+sudo bash scripts/install.sh --upgrade
+
+# TailAdmin build variant: pass the dist dir BEFORE sudo (sudo strips exported env)
+sudo NEXT_DIST_DIR=.next-tailadmin bash scripts/install.sh --upgrade
+```
+
+Services and control:
+
+```bash
+curl http://localhost:20128/api/health            # public liveness
+sudo systemctl status 9router 9router-hybrid-engine --no-pager
+sudo systemctl restart 9router-hybrid-engine      # gateway :20128, limiter :20129, public :20140
+sudo systemctl restart 9router                    # Next.js backend :20127
+```
+
+- `9router-hybrid-engine.service` — Go master gateway `:20128`, limiter RPC `:20129`, public proxy `:20140`.
+- `9router.service` — Next.js backend on loopback `127.0.0.1:20127` with `NODE_OPTIONS=--max-old-space-size=512`.
+- `9router-worker@.service` + `9router-workers.target` — API worker instances, enabled only when `API_WORKERS>1`.
+- The legacy Node `9router-public-proxy.service` folded into the Go binary and no longer exists.
+
+Run the verification suite before any deploy:
+
 ```bash
 npm run verify
 ```
-*Validates the provider registry and OAuth URL baselines, then runs the Node-native `*.test.mjs` suite. Historical `*.test.js` Vitest files are not invoked by this command.*
 
-#### 2. Standalone Build & Zero-Downtime Release
-```bash
-# Build standalone bundle
-npm run build
+### Enable multicore (`API_WORKERS > 1`)
 
-# Deploy assets to release directory
-cp -a /opt/9router/.next/standalone/. /opt/9router-release/
-cp -a /opt/9router/.next/static /opt/9router-release/.next/static
-cp -a /opt/9router/public /opt/9router-release/public
-cp -a /opt/9router/custom-server.js /opt/9router-release/custom-server.js
+`API_WORKERS` counts total Node processes: one control process plus `API_WORKERS-1` API workers on `127.0.0.1:20131, 20132, ...`. Maximum `8`. Pick **one** backend.
 
-# Restart systemd services
-systemctl restart 9router
-systemctl restart 9router-hybrid-engine
+#### SQLite + Redis multicore (Systemd)
 
-# Verify health
-curl http://localhost:20128/api/health
-```
-
-#### 3. Systemd Services
-- `9router-hybrid-engine.service`: Master Gateway Golang pada port `:20128` (front-door gating & UI proxy), Limiter RPC pada port `:20129`, dan Public Proxy pada port `:20140`.
-- `9router.service`: Backend Next.js App Router berjalan di jaringan internal loopback `127.0.0.1:20127` dengan `NODE_OPTIONS="--max-old-space-size=512"`.
-- *(Catatan: Layanan lama `9router-public-proxy.service` (Node.js) telah diserap penuh ke dalam `9router-hybrid-engine` binary Golang untuk menghemat memori).*
-
-#### 4. Kontrol Layanan (Systemd Commands)
-```bash
-# Restart master gateway & limiter Go (:20128, :20129, :20140)
-systemctl restart 9router-hybrid-engine
-
-# Restart backend Next.js (:20127)
-systemctl restart 9router
-
-# Cek status layanan aktif
-systemctl status 9router 9router-hybrid-engine --no-pager
-```
-
-#### 5. SQLite + Redis Multicore (Systemd)
-Native systemd deployments get SQLite multicore via `scripts/install.sh`, which
-validates the topology and writes one EnvironmentFile per API worker through
-`scripts/systemd-worker-topology.sh`. The Redis variables belong in
-`/etc/9router.env` (the shared EnvironmentFile every unit reads), because the
-installer regenerates that file from a fixed template and only preserves
-`JWT_SECRET`, `MACHINE_ID_SALT`, `API_KEY_SECRET`, `DATABASE_URL` and `DB_TYPE`:
+Single command. Pass the broker keys in the installer environment; the installer persists them in `/etc/9router.env` and keeps them across later `--upgrade` runs, so this is needed once.
 
 ```bash
-# 1. Install with the topology in the process environment: worker_env_prepare
-#    reads SQLITE_MULTICORE/REDIS_URL from the process, not from the env file,
-#    so API_WORKERS>1 on SQLite is validated and accepted here.
-#    SQLITE_QUEUE_ENCRYPTION_KEY must be exactly 64 hex characters and must not
-#    reuse API_KEY_SECRET or the Redis password.
 QUEUE_KEY="$(openssl rand -hex 32)"
-#    ENABLE_GO_HYBRID=true is mandatory: the topology preflight runs
-#    `custom-server.js --check-config`, which rejects SQLite multicore without
-#    it. The units set it for runtime; the preflight reads only the process.
 sudo API_WORKERS=3 DB_TYPE=sqlite \
      SQLITE_MULTICORE=redis \
      REDIS_URL="redis://127.0.0.1:6379/0" \
      REDIS_KEY_PREFIX="9router:sqlite" \
      SQLITE_QUEUE_ENCRYPTION_KEY="$QUEUE_KEY" \
-     ENABLE_GO_HYBRID=true \
      bash scripts/install.sh --upgrade
-
-# 2. Persist them: install.sh rewrites /etc/9router.env from a fixed template
-#    and only preserves JWT_SECRET, MACHINE_ID_SALT, API_KEY_SECRET,
-#    DATABASE_URL and DB_TYPE, so append the rest after the run.
-sudo tee -a /etc/9router.env >/dev/null <<EOF
-SQLITE_MULTICORE=redis
-REDIS_URL=redis://127.0.0.1:6379/0
-REDIS_KEY_PREFIX=9router:sqlite
-SQLITE_QUEUE_ENCRYPTION_KEY=$QUEUE_KEY
-ENABLE_GO_HYBRID=true
-EOF
-
-# 3. Restart so every unit re-reads the EnvironmentFile.
-sudo systemctl daemon-reload
-sudo systemctl restart 9router 9router-hybrid-engine
 ```
 
-`API_WORKERS` counts total Node processes (1 control + N-1 workers on
-`127.0.0.1:20131, 20132, ...`). The topology check refuses `API_WORKERS>1` unless
-`DATABASE_URL`/`DB_TYPE=postgres` or `SQLITE_MULTICORE=redis` with a valid
-`redis://`/`rediss://` URL is present, so a misconfigured setup fails fast instead
-of letting each worker open its own database file. The `api` role opens SQLite
-read-only and routes mutations to the `control` writer over a Redis Streams
-broker. A plain `--upgrade` re-runs with the same inherited topology, but
-`--force-reinstall` overwrites `/etc/9router.env`, so repeat step 2 afterwards.
+- `SQLITE_QUEUE_ENCRYPTION_KEY` must be exactly 64 hex characters and must not reuse `API_KEY_SECRET` or the Redis password.
+- API workers open SQLite read-only and route mutations to the control writer over a Redis Streams broker.
+- Re-running `--upgrade` or `--force-reinstall` without these variables keeps the installed topology. Only `--uninstall --purge` deletes `/etc/9router.env`, so reinstall then needs them passed again.
 
----
+#### PostgreSQL multicore (Systemd)
 
-### VPS Deployment
+`DATABASE_URL` is preserved across upgrades, so no extra persistence step:
 
 ```bash
-# Clone and install
-git clone https://github.com/decolua/9router.git
-cd 9router
-npm install
-npm run build
-
-# Configure
-export JWT_SECRET="your-secure-secret-change-this"
-export INITIAL_PASSWORD="your-password"
-export DATA_DIR="/var/lib/9router"
-export PORT="20128"
-export HOSTNAME="0.0.0.0"
-export NODE_ENV="production"
-export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
-export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
-export API_KEY_SECRET="replace-with-a-long-random-hex-secret"
-export MACHINE_ID_SALT="replace-with-a-random-hex-salt"
-
-# Start
-npm run start
-
-# Or use PM2
-npm install -g pm2
-pm2 start npm --name 9router -- start
-pm2 save
-pm2 startup
-```
-
-### Docker
-
-Published images (multi-platform `linux/amd64` + `linux/arm64`):
-
-- Docker Hub: [`decolua/9router`](https://hub.docker.com/r/decolua/9router)
-- GHCR: [`ghcr.io/decolua/9router`](https://github.com/decolua/9router/pkgs/container/9router)
-
-**Docker Compose with bundled PostgreSQL + multicore (SantaiNetwork source):**
-
-```bash
-# From this SantaiNetwork repository root
-
-# Starts PostgreSQL plus 3 Node processes: 1 control + 2 API workers.
-bash scripts/install-docker.sh --postgres --yes --password "choose-a-strong-password"
-
-# Verify the gateway and containers.
-curl http://127.0.0.1:20128/api/health
-docker compose --profile postgres ps
-```
-
-`API_WORKERS` is the total Node process count. Override the default when needed,
-up to the supported maximum of `8`:
-
-```bash
-API_WORKERS=5 bash scripts/install-docker.sh --postgres --yes \
-  --password "choose-a-strong-password"
-```
-
-`API_WORKERS>1` requires PostgreSQL (`--postgres`) or the SQLite + Redis
-profile (`--sqlite-redis`); plain SQLite stays at one process. The installer
-generates the database credentials, writes `.env` with mode `600`, waits for the
-selected backend to become healthy, and keeps that profile during later
-upgrades:
-
-```bash
-bash scripts/install-docker.sh --upgrade --yes
+sudo API_WORKERS=3 \
+     DATABASE_URL="postgres://user:password@host:5432/9router" \
+     bash scripts/install.sh --upgrade
 ```
 
 #### SQLite + Redis multicore (Docker)
 
 ```bash
-# Bundled private Redis service + SQLite single-writer broker.
-# Defaults API_WORKERS=2 (1 control + 1 API worker).
+# Bundled private Redis service + SQLite single-writer broker (default API_WORKERS=2).
 bash scripts/install-docker.sh --sqlite-redis --yes --password "choose-a-strong-password"
 
 # External Redis instead of the bundled container:
@@ -1594,27 +1482,54 @@ bash scripts/install-docker.sh --sqlite-redis \
   --redis-url rediss://user:pass@cache.example.com:6380/0 --yes
 ```
 
-The installer sets `SQLITE_MULTICORE=redis`, generates `REDIS_PASSWORD` and a
-64-hex `SQLITE_QUEUE_ENCRYPTION_KEY` (never reusing `API_KEY_SECRET` or the
-Redis password), and enables the `sqlite-redis` Compose service. `--sqlite-redis`
-and `--postgres` are mutually exclusive. Raise the worker count the same way as
-PostgreSQL:
+#### PostgreSQL multicore (Docker)
 
 ```bash
-API_WORKERS=5 bash scripts/install-docker.sh --sqlite-redis --yes \
-  --password "choose-a-strong-password"
+# Bundled PostgreSQL plus 3 Node processes (1 control + 2 API workers).
+bash scripts/install-docker.sh --postgres --yes --password "choose-a-strong-password"
+
+# Raise the worker count (total Node processes, max 8):
+API_WORKERS=5 bash scripts/install-docker.sh --postgres --yes --password "choose-a-strong-password"
 ```
 
-Public endpoints remain on ports `20128` and `20140`. The backend, workers, and
-`/api/ready` probe stay internal. See [DOCKER.md](DOCKER.md) for manual Compose,
-external PostgreSQL, external Redis, lifecycle, backup, and troubleshooting
-details.
+`--sqlite-redis` and `--postgres` are mutually exclusive. The installer generates the database credentials, writes `.env` with mode `600`, waits for the selected backend to become healthy, and keeps that profile on later upgrades:
 
-For native systemd multi-worker operations (unit layout, per-worker env files,
-`/api/ready` reasons, troubleshooting, and rollback to `API_WORKERS=1`), see
-[SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md).
+```bash
+bash scripts/install-docker.sh --upgrade --yes
+```
 
-**Quick start (use published image):**
+For native systemd operations in depth — unit layout, per-worker env files, `/api/ready` reason table, troubleshooting, rollback — see [SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md). For Compose details, external databases, backup and lifecycle, see [DOCKER.md](DOCKER.md).
+
+### VPS deployment (no systemd: npm or PM2)
+
+```bash
+git clone https://github.com/Santainetwork/9router.git
+cd 9router
+npm install
+npm run build
+
+export JWT_SECRET="your-secure-secret-change-this"
+export DATA_DIR="/var/lib/9router"
+export NODE_ENV="production"
+export API_KEY_SECRET="replace-with-a-long-random-hex-secret"
+export MACHINE_ID_SALT="replace-with-a-random-hex-salt"
+
+npm run start          # Next.js backend on :20127
+
+# Or supervise with PM2:
+npm install -g pm2
+pm2 start npm --name 9router -- start
+pm2 save && pm2 startup
+```
+
+This path runs only the Next.js backend. For the public gateway ports and concurrency gating, deploy with `scripts/install.sh` (systemd) or Docker instead.
+
+### Docker (published images)
+
+Multi-platform `linux/amd64` + `linux/arm64`:
+
+- Docker Hub: [`decolua/9router`](https://hub.docker.com/r/decolua/9router)
+- GHCR: [`ghcr.io/decolua/9router`](https://github.com/decolua/9router/pkgs/container/9router)
 
 ```bash
 docker run -d --stop-timeout 330 \
@@ -1627,31 +1542,24 @@ docker run -d --stop-timeout 330 \
 
 → Open http://localhost:20128
 
-**Build from source (dev):**
+Build from source:
 
 ```bash
-git clone https://github.com/decolua/9router.git
-cd 9router/app
+git clone https://github.com/Santainetwork/9router.git
+cd 9router
 docker build -t 9router .
 docker run -d --stop-timeout 330 --name 9router -p 20128:20128 \
   -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data 9router
 ```
 
-**Container defaults:**
-
-- `PORT=20128`
-- `HOSTNAME=0.0.0.0`
-
-**Useful commands:**
+Container defaults: `PORT=20128`, `HOSTNAME=0.0.0.0`. Data persists at `$HOME/.9router/db/data.sqlite` on the host ↔ `/app/data/db/data.sqlite` in the container.
 
 ```bash
 docker logs -f 9router
 docker restart 9router
 docker stop -t 330 9router && docker rm 9router
-docker pull decolua/9router:latest   # update to latest
+docker pull decolua/9router:latest      # update to latest
 ```
-
-**Data persistence:** `$HOME/.9router/db/data.sqlite` on host ↔ `/app/data/db/data.sqlite` in container.
 
 ### Environment Variables
 
