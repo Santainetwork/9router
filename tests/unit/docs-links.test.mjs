@@ -7,12 +7,14 @@ import assert from "node:assert/strict";
 const FILES = ["README.md", "SYSTEMD-MULTIWORKER.md"];
 const REPO = process.cwd();
 
-// GitHub's slugger: lowercase, delete anything that is not word/space/hyphen
-// (an emoji or "&" leaves an empty word behind), then spaces become hyphens.
-// So "🚀 Deployment & Maintenance" slugs to "-deployment--maintenance".
+// GitHub's slugger (verified against a rendered README on github.com): lowercase,
+// strip anything that is not word/space/hyphen, then replace each space with a
+// dash. No trim: dropping punctuation first and NOT trimming afterwards is what
+// leaves the leading dash in "🚀 Deployment & Maintenance" and the doubled dash
+// in "SQLite + Redis multicore (Systemd)".
 const headings = (text) =>
   [...text.matchAll(/^#{1,6}\s+(.*)$/gm)].map((m) =>
-    m[1].toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-"));
+    m[1].toLowerCase().replace(/[^\w\s-]/g, "").replace(/ /g, "-"));
 
 // Cross-file anchors: a link like [x](OTHER.md#anchor) must land on a real
 // heading in that file. Nothing uses them today; this is the guard.
@@ -29,11 +31,16 @@ test("cross-file anchor links resolve", () => {
 });
 
 // A broken in-page anchor is silently invisible to a test that only parses the
-// clean copy, so assert the checker rejects the shape the bug had.
-test("the anchor checker detects the double-dash link form", () => {
-  const body = "## Real Heading\n\n[go](#-real--heading)";
-  assert.ok(headings(body).length === 1, "helper must see the heading");
-  assert.ok(!headings(body).includes("-real--heading"), "checker must not resolve a doubled hyphen");
+// clean copy, so assert the checker behaves exactly like GitHub on the shapes
+// that once broke: a leading emoji or a "+" between words must both survive
+// into the slug. The earlier version of this check asserted the opposite of
+// GitHub's rule and made the README's seven wrong anchors look correct.
+test("the anchor checker reproduces GitHub's slug shape", () => {
+  assert.deepEqual(headings("## 🚀 Deployment & Maintenance"), ["-deployment--maintenance"]);
+  assert.deepEqual(headings("#### SQLite + Redis multicore (Systemd)"), ["sqlite--redis-multicore-systemd"]);
+  assert.deepEqual(headings("## Plain Heading"), ["plain-heading"]);
+  const body = "## Real Heading\n\n[go](#real-heading)";
+  assert.ok(headings(body).includes("real-heading"), "checker must resolve the plain form");
 });
 
 for (const file of FILES) {

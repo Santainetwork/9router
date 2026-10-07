@@ -10,10 +10,10 @@
   [![Version](https://img.shields.io/badge/version-v0.5.86--custom-emerald.svg)](package.json)
   [![SantaiNetwork](https://img.shields.io/badge/maintained%20by-SantaiNetwork-blue.svg)](https://santainetwork.id)
   [![Tests](https://img.shields.io/badge/node%20verify-passing-brightgreen.svg)](tests/)
-  [![Status](https://img.shields.io/badge/single--process-stable-success.svg)](#deployment-maintenance)
-  [![Multicore](https://img.shields.io/badge/PostgreSQL%20multicore-experimental-orange.svg)](#deployment-maintenance)
+  [![Status](https://img.shields.io/badge/single--process-stable-success.svg)](#-deployment--maintenance)
+  [![Multicore](https://img.shields.io/badge/PostgreSQL%20multicore-experimental-orange.svg)](#-deployment--maintenance)
 
-[🚀 SantaiNetwork Enhancements](#santainetwork-custom-enhancements) • [⚡ Endpoints & Ports](#endpoints-ports-architecture) • [💡 Core Features](#key-features) • [🛠️ Deployment](#deployment-maintenance) • [📖 Setup](#setup-guide)
+[🚀 SantaiNetwork Enhancements](#-santainetwork-custom-enhancements) • [⚡ Endpoints & Ports](#-endpoints--ports-architecture) • [💡 Core Features](#-key-features) • [🛠️ Deployment](#-deployment--maintenance) • [📖 Setup](#-setup-guide)
 
 </div>
 
@@ -44,7 +44,7 @@ This repository contains the hardened, production-grade custom distribution of *
 - **Automated Dialect Translation**: Intelligent query parameter converter (`?` to `$1, $2, ...`) and DDL normalization (`SERIAL PRIMARY KEY`, `NOW()`) supporting all core tables.
 - **No schema disruption when switching back**: SQLite + Redis multicore uses the same schema and the same migration path as the single-process SQLite default.
 
-> **Multicore rollout safety:** Enable `API_WORKERS>1` with PostgreSQL or SQLite + Redis, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. SQLite without `SQLITE_MULTICORE=redis` stays pinned to `API_WORKERS=1`. Related: [SQLite + Redis multicore (Systemd)](#sqlite-redis-multicore-systemd) and [SQLite + Redis multicore (Docker)](#sqlite-redis-multicore-docker). Day-to-day operations, health-check reasons, and rollback: [SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md).
+> **Multicore rollout safety:** Enable `API_WORKERS>1` with PostgreSQL or SQLite + Redis, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. SQLite without `SQLITE_MULTICORE=redis` stays pinned to `API_WORKERS=1`. Related: [SQLite + Redis multicore (Systemd)](#sqlite--redis-multicore-systemd) and [SQLite + Redis multicore (Docker)](#sqlite--redis-multicore-docker). Day-to-day operations, health-check reasons, and rollback: [SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md).
 
 ### 3. 🏷️ Upstream Model & Prefix Attribution
 - **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
@@ -239,7 +239,7 @@ Then reach the gateway:
 - Public usage portal: `http://localhost:20140/usage-check`
 - Go limiter health: `http://localhost:20129/health`
 
-Upgrade, uninstall, multicore (`API_WORKERS>1`), Docker profiles, and the VPS/PM2 path are all in [Deployment & Maintenance](#deployment-maintenance). Uninstall keeps data unless you add `--purge`.
+Upgrade, uninstall, multicore (`API_WORKERS>1`), Docker profiles, and the VPS/PM2 path are all in [Deployment & Maintenance](#-deployment--maintenance). Uninstall keeps data unless you add `--purge`.
 
 ### Manual / npm installation
 
