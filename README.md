@@ -231,6 +231,10 @@ sudo bash scripts/install.sh --dry-run
 
 # Upgrade safely (creates a rollback backup)
 sudo bash scripts/install.sh --upgrade
+
+# TailAdmin variant builds: pass the dist dir BEFORE sudo (sudo strips exported env,
+# and a missing NEXT_DIST_DIR silently builds/serves the default .next bundle)
+sudo NEXT_DIST_DIR=.next-tailadmin bash scripts/install.sh --upgrade
 ```
 
 After installation:

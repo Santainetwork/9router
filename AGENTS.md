@@ -5,7 +5,7 @@
 - **Latest Version**: `v0.5.75-custom` (Upstream merged from `origin/master`)
 - **Status**: Production Ready ✅ (all tests passing)
 
-**Installer distDir pitfall**: `scripts/install.sh` builds with plain `npm run build` and defaults `DIST_DIR_NAME="${NEXT_DIST_DIR:-.next}"`. On this host the live bundle is `.next-tailadmin`, so `install.sh --upgrade` without `NEXT_DIST_DIR=.next-tailadmin` writes the santai build and `.dist-dir` then records `.next` wrongly. Always upgrade with `NEXT_DIST_DIR=.next-tailadmin` (or use the manual build:tailadmin flow below), then run `bash scripts/verify-release.sh` (it prefers the recorded `.dist-dir` and needs repo/release byte-identical on that dir).
+**Installer distDir pitfall**: `scripts/install.sh` builds with plain `npm run build` and defaults `DIST_DIR_NAME="${NEXT_DIST_DIR:-.next}"`. On this host the live bundle is `.next-tailadmin`, so `install.sh --upgrade` without `NEXT_DIST_DIR=.next-tailadmin` writes the santai build and `.dist-dir` then records `.next` wrongly. Always upgrade with `sudo NEXT_DIST_DIR=.next-tailadmin bash scripts/install.sh --upgrade` (env var must sit **before** `sudo`, not `export`ed; sudo strips the exported environment unless `-E` is passed, and the resulting fallback to `.next` is a silent wrong-bundle swap, not a gate failure). After install, run `bash scripts/verify-release.sh` (it prefers the recorded `.dist-dir` and needs repo/release byte-identical on that dir). Alternatively use the manual `build:tailadmin` flow below.
 
 ---
 
