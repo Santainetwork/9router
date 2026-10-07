@@ -128,7 +128,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
     return (
       <div className="flex flex-col gap-1">
         <Badge variant="error">Invalid</Badge>
-        {error && <span className="text-sm text-red-700 dark:text-red-300">{error}</span>}
+        {error && <span className="text-sm text-danger">{error}</span>}
       </div>
     );
   };

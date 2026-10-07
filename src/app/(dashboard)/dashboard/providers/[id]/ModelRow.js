@@ -4,9 +4,9 @@ import { CapacityBadges } from "@/shared/components";
 export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const borderColor = testStatus === "ok"
-    ? "border-green-500/40"
+    ? "border-success/40"
     : testStatus === "error"
-    ? "border-red-500/40"
+    ? "border-danger/40"
     : "border-border";
 
   const iconColor = testStatus === "ok"

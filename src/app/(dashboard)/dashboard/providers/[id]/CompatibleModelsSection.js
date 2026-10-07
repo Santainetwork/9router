@@ -6,9 +6,9 @@ import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
-    ? "border-green-500/40"
+    ? "border-success/40"
     : testStatus === "error"
-    ? "border-red-500/40"
+    ? "border-danger/40"
     : "border-border";
 
   const iconColor = testStatus === "ok"
@@ -65,7 +65,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
       <button
         aria-label={`Remove ${fullModel}`}
         onClick={onDeleteAlias}
-        className="p-1 hover:bg-red-50 rounded text-red-700 dark:text-red-300"
+        className="p-1 hover:bg-danger/10 rounded text-text-muted hover:text-danger"
         title="Remove model"
       >
         <span className="material-symbols-outlined text-sm">delete</span>
