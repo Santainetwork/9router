@@ -34,13 +34,17 @@ This repository contains the hardened, production-grade custom distribution of *
 
 ### 2. 🗄️ Dual-Database Engine: SQLite or PostgreSQL
 - **Configurable Database Backend**: Seamless choice between embedded SQLite (default) or external enterprise PostgreSQL.
-- **Multi-worker status: experimental**: PostgreSQL can run one control process plus API workers, but this mode has not completed a production soak. Keep `API_WORKERS=1` for the conservative production default. SQLite always requires `API_WORKERS=1`.
+- **Two multicore options**: `API_WORKERS>1` runs one control process plus API workers on either backend:
+  - **PostgreSQL mode**: `DATABASE_URL=postgres://user:password@host:5432/9router` (or `DB_TYPE=postgres`), every process opens its own connection.
+  - **SQLite + Redis mode**: `DB_TYPE=sqlite`, `SQLITE_MULTICORE=redis`, `REDIS_URL=redis://...`, `SQLITE_QUEUE_ENCRYPTION_KEY=...` — API workers open the database file **read-only** and route every mutation through a single-writer Redis Streams broker, so the SQLite file still has exactly one writer.
+- **Multi-worker status: experimental**: Neither multicore mode has completed a production soak. Keep `API_WORKERS=1` for the conservative production default.
 - **Zero Schema Disruption**: Switch database engine via simple environment variable:
   - `DATABASE_URL=postgres://user:password@host:5432/9router` or `DB_TYPE=postgres`
   - Unset `DATABASE_URL` continues using high-speed local SQLite (`/var/lib/9router/...`).
 - **Automated Dialect Translation**: Intelligent query parameter converter (`?` to `$1, $2, ...`) and DDL normalization (`SERIAL PRIMARY KEY`, `NOW()`) supporting all core tables.
+- **No schema disruption when switching back**: SQLite + Redis multicore uses the same schema and the same migration path as the single-process SQLite default.
 
-> **Multicore rollout safety:** Enable `API_WORKERS>1` only with PostgreSQL, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. Do not enable API workers with SQLite.
+> **Multicore rollout safety:** Enable `API_WORKERS>1` with PostgreSQL or SQLite + Redis, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. SQLite without `SQLITE_MULTICORE=redis` stays pinned to `API_WORKERS=1`. Related: [SQLite + Redis Multicore (Systemd)](#5-sqlite--redis-multicore-systemd) and [SQLite + Redis multicore (Docker)](#sqlite--redis-multicore-docker).
 
 ### 3. 🏷️ Upstream Model & Prefix Attribution
 - **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
@@ -1412,7 +1416,7 @@ Model: cc/claude-opus-4-7
 
 This gateway runs in production using Next.js standalone output with a custom HTTP server managing clean SIGTERM drains and zero stream interruptions:
 
-> **Database boundary:** SQLite must use `API_WORKERS=1`. PostgreSQL supports multicore mode; `API_WORKERS=3` runs one control process and two API workers.
+> **Database boundary:** `API_WORKERS=3` runs one control process and two API workers on either multicore backend — PostgreSQL, or SQLite + Redis with `SQLITE_MULTICORE=redis` and a `redis://` / `rediss://` `REDIS_URL`. Plain SQLite with no Redis broker must stay at `API_WORKERS=1`. Bumped worker counts require the matching topology flags: the installer refuses `API_WORKERS>1` for a plain SQLite deployment instead of silently handing every worker its own database file.
 
 #### 1. Verification & Quality Assurance
 Run the maintained Node verification suite before deploying any changes:
@@ -1456,6 +1460,52 @@ systemctl restart 9router
 # Cek status layanan aktif
 systemctl status 9router 9router-hybrid-engine --no-pager
 ```
+
+#### 5. SQLite + Redis Multicore (Systemd)
+Native systemd deployments get SQLite multicore via `scripts/install.sh`, which
+validates the topology and writes one EnvironmentFile per API worker through
+`scripts/systemd-worker-topology.sh`. The Redis variables belong in
+`/etc/9router.env` (the shared EnvironmentFile every unit reads), because the
+installer regenerates that file from a fixed template and only preserves
+`JWT_SECRET`, `MACHINE_ID_SALT`, `API_KEY_SECRET`, `DATABASE_URL` and `DB_TYPE`:
+
+```bash
+# 1. Install with the topology in the process environment: worker_env_prepare
+#    reads SQLITE_MULTICORE/REDIS_URL from the process, not from the env file,
+#    so API_WORKERS>1 on SQLite is validated and accepted here.
+#    SQLITE_QUEUE_ENCRYPTION_KEY must be exactly 64 hex characters and must not
+#    reuse API_KEY_SECRET or the Redis password.
+QUEUE_KEY="$(openssl rand -hex 32)"
+sudo API_WORKERS=3 DB_TYPE=sqlite \
+     SQLITE_MULTICORE=redis \
+     REDIS_URL="redis://127.0.0.1:6379/0" \
+     REDIS_KEY_PREFIX="9router:sqlite" \
+     SQLITE_QUEUE_ENCRYPTION_KEY="$QUEUE_KEY" \
+     bash scripts/install.sh --upgrade
+
+# 2. Persist them: install.sh rewrites /etc/9router.env from a fixed template
+#    and only preserves JWT_SECRET, MACHINE_ID_SALT, API_KEY_SECRET,
+#    DATABASE_URL and DB_TYPE, so append the rest after the run.
+sudo tee -a /etc/9router.env >/dev/null <<EOF
+SQLITE_MULTICORE=redis
+REDIS_URL=redis://127.0.0.1:6379/0
+REDIS_KEY_PREFIX=9router:sqlite
+SQLITE_QUEUE_ENCRYPTION_KEY=$QUEUE_KEY
+EOF
+
+# 3. Restart so every unit re-reads the EnvironmentFile.
+sudo systemctl daemon-reload
+sudo systemctl restart 9router 9router-hybrid-engine
+```
+
+`API_WORKERS` counts total Node processes (1 control + N-1 workers on
+`127.0.0.1:20131, 20132, ...`). The topology check refuses `API_WORKERS>1` unless
+`DATABASE_URL`/`DB_TYPE=postgres` or `SQLITE_MULTICORE=redis` with a valid
+`redis://`/`rediss://` URL is present, so a misconfigured setup fails fast instead
+of letting each worker open its own database file. The `api` role opens SQLite
+read-only and routes mutations to the `control` writer over a Redis Streams
+broker. A plain `--upgrade` re-runs with the same inherited topology, but
+`--force-reinstall` overwrites `/etc/9router.env`, so repeat step 2 afterwards.
 
 ---
 
@@ -1518,18 +1568,43 @@ API_WORKERS=5 bash scripts/install-docker.sh --postgres --yes \
   --password "choose-a-strong-password"
 ```
 
-Use PostgreSQL whenever `API_WORKERS>1`; SQLite is intentionally restricted to
-one process. The installer generates the database credentials, writes `.env`
-with mode `600`, waits for PostgreSQL health, and keeps the selected PostgreSQL
-profile during later upgrades:
+`API_WORKERS>1` requires PostgreSQL (`--postgres`) or the SQLite + Redis
+profile (`--sqlite-redis`); plain SQLite stays at one process. The installer
+generates the database credentials, writes `.env` with mode `600`, waits for the
+selected backend to become healthy, and keeps that profile during later
+upgrades:
 
 ```bash
 bash scripts/install-docker.sh --upgrade --yes
 ```
 
+**SQLite + Redis multicore (Docker):**
+
+```bash
+# Bundled private Redis service + SQLite single-writer broker.
+# Defaults API_WORKERS=2 (1 control + 1 API worker).
+bash scripts/install-docker.sh --sqlite-redis --yes --password "choose-a-strong-password"
+
+# External Redis instead of the bundled container:
+bash scripts/install-docker.sh --sqlite-redis \
+  --redis-url rediss://user:pass@cache.example.com:6380/0 --yes
+```
+
+The installer sets `SQLITE_MULTICORE=redis`, generates `REDIS_PASSWORD` and a
+64-hex `SQLITE_QUEUE_ENCRYPTION_KEY` (never reusing `API_KEY_SECRET` or the
+Redis password), and enables the `sqlite-redis` Compose service. `--sqlite-redis`
+and `--postgres` are mutually exclusive. Raise the worker count the same way as
+PostgreSQL:
+
+```bash
+API_WORKERS=5 bash scripts/install-docker.sh --sqlite-redis --yes \
+  --password "choose-a-strong-password"
+```
+
 Public endpoints remain on ports `20128` and `20140`. The backend, workers, and
 `/api/ready` probe stay internal. See [DOCKER.md](DOCKER.md) for manual Compose,
-external PostgreSQL, lifecycle, backup, and troubleshooting details.
+external PostgreSQL, external Redis, lifecycle, backup, and troubleshooting
+details.
 
 **Quick start (use published image):**
 
@@ -1586,11 +1661,17 @@ docker pull decolua/9router:latest   # update to latest
 | `NEXT_PUBLIC_CLOUD_URL`                              | `https://9router.com`                    | Backward-compatible/public cloud URL (prefer `CLOUD_URL` for server runtime)        |
 | `API_KEY_SECRET`                                     | `endpoint-proxy-api-key-secret (public code default)`          | HMAC secret for generated API keys                                                  |
 | `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt (public code default)`                    | Salt for stable machine ID hashing                                                  |
-| `DATABASE_URL`                                       | empty (SQLite)                           | PostgreSQL connection URL; required when `API_WORKERS>1`                            |
+| `DATABASE_URL`                                       | empty (SQLite)                           | PostgreSQL connection URL; must be unset in SQLite + Redis mode                      |
 | `DB_TYPE`                                            | inferred                                 | Database driver override (`sqlite` or `postgres`)                                   |
-| `API_WORKERS`                                        | `1`                                      | Total Node processes; PostgreSQL installer defaults to `3`, maximum `8`             |
+| `API_WORKERS`                                        | `1`                                      | Total Node processes; a value above `1` needs PostgreSQL or `SQLITE_MULTICORE=redis`, maximum `8` |
 | `BUNDLED_DATABASE_URL`                               | empty                                    | Internal URL generated by `install-docker.sh --postgres`                            |
 | `BUNDLED_API_WORKERS`                                | empty                                    | Persists the bundled PostgreSQL worker count across plain upgrades                  |
+| `BUNDLED_SQLITE_REDIS`                               | empty                                    | Set by `install-docker.sh --sqlite-redis`; keeps the bundled Redis profile on upgrades |
+| `SQLITE_MULTICORE`                                   | empty                                    | `redis` enables SQLite multicore: API workers open SQLite read-only and route mutations through the single-writer broker |
+| `REDIS_URL`                                          | empty                                    | `redis://` or `rediss://` broker URL; required with `SQLITE_MULTICORE=redis`         |
+| `REDIS_PASSWORD`                                     | empty                                    | Password for the Redis broker; required for the bundled Redis container              |
+| `SQLITE_QUEUE_ENCRYPTION_KEY`                        | empty                                    | 64 hex characters (32 bytes) encrypting queued mutations; must not reuse `API_KEY_SECRET` or the Redis password |
+| `WORKER_ROLE`                                         | `control`                                | `control` or `api`; written per process by the installer and worker topology script  |
 | `ENABLE_REQUEST_LOGS`                                | `false`                                  | Enables request/response logs under `logs/`                                         |
 | `AUTH_COOKIE_SECURE`                                 | `false`                                  | Force `Secure` auth cookie (set `true` behind HTTPS reverse proxy)                  |
 | `REQUIRE_API_KEY`                                    | `false`                                  | Enforce Bearer API key on `/v1/*` routes (recommended for internet-exposed deploys) |
