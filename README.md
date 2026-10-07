@@ -1503,7 +1503,7 @@ For native systemd operations in depth — unit layout, per-worker env files, `/
 ### VPS deployment (no systemd: npm or PM2)
 
 ```bash
-git clone https://github.com/Santainetwork/9router.git
+git clone https://github.com/decolua/9router.git
 cd 9router
 npm install
 npm run build
@@ -1545,7 +1545,7 @@ docker run -d --stop-timeout 330 \
 Build from source:
 
 ```bash
-git clone https://github.com/Santainetwork/9router.git
+git clone https://github.com/decolua/9router.git
 cd 9router
 docker build -t 9router .
 docker run -d --stop-timeout 330 --name 9router -p 20128:20128 \
