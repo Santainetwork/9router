@@ -178,8 +178,8 @@ export default function QueueMonitorClient() {
       <div className={cn(
         "rounded-2xl border p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3",
         data?.engine?.type === "golang"
-          ? "bg-info/20/[0.04] border-info/25"
-          : "bg-warning/20/[0.04] border-warning/25"
+          ? "bg-info/[0.04] border-info/25"
+          : "bg-warning/[0.04] border-warning/25"
       )}>
         <div className="flex items-center gap-3">
           <div className={cn(
