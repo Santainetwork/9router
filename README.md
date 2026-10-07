@@ -44,7 +44,7 @@ This repository contains the hardened, production-grade custom distribution of *
 - **Automated Dialect Translation**: Intelligent query parameter converter (`?` to `$1, $2, ...`) and DDL normalization (`SERIAL PRIMARY KEY`, `NOW()`) supporting all core tables.
 - **No schema disruption when switching back**: SQLite + Redis multicore uses the same schema and the same migration path as the single-process SQLite default.
 
-> **Multicore rollout safety:** Enable `API_WORKERS>1` with PostgreSQL or SQLite + Redis, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. SQLite without `SQLITE_MULTICORE=redis` stays pinned to `API_WORKERS=1`. Related: [SQLite + Redis Multicore (Systemd)](#5-sqlite--redis-multicore-systemd) and [SQLite + Redis multicore (Docker)](#sqlite--redis-multicore-docker).
+> **Multicore rollout safety:** Enable `API_WORKERS>1` with PostgreSQL or SQLite + Redis, start with a canary, and monitor readiness, error rate, queue depth, stream completion, and RSS. Roll back by setting `API_WORKERS=1` and restarting the application services. SQLite without `SQLITE_MULTICORE=redis` stays pinned to `API_WORKERS=1`. Related: [SQLite + Redis Multicore (Systemd)](#5-sqlite--redis-multicore-systemd) and [SQLite + Redis multicore (Docker)](#sqlite--redis-multicore-docker). Day-to-day operations, health-check reasons, and rollback: [SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md).
 
 ### 3. 🏷️ Upstream Model & Prefix Attribution
 - **Actual Model Attribution**: Dashboard, Recent Requests, and logs accurately record the concrete upstream provider model dispatched (e.g. `ag/gemini-3.8-flash-high`, `myr/deepseek-v4.1-flash`, `ama/qwen3.8-max`) alongside caller combo aliases (`via <requestedModel>`).
@@ -1476,11 +1476,15 @@ installer regenerates that file from a fixed template and only preserves
 #    SQLITE_QUEUE_ENCRYPTION_KEY must be exactly 64 hex characters and must not
 #    reuse API_KEY_SECRET or the Redis password.
 QUEUE_KEY="$(openssl rand -hex 32)"
+#    ENABLE_GO_HYBRID=true is mandatory: the topology preflight runs
+#    `custom-server.js --check-config`, which rejects SQLite multicore without
+#    it. The units set it for runtime; the preflight reads only the process.
 sudo API_WORKERS=3 DB_TYPE=sqlite \
      SQLITE_MULTICORE=redis \
      REDIS_URL="redis://127.0.0.1:6379/0" \
      REDIS_KEY_PREFIX="9router:sqlite" \
      SQLITE_QUEUE_ENCRYPTION_KEY="$QUEUE_KEY" \
+     ENABLE_GO_HYBRID=true \
      bash scripts/install.sh --upgrade
 
 # 2. Persist them: install.sh rewrites /etc/9router.env from a fixed template
@@ -1491,6 +1495,7 @@ SQLITE_MULTICORE=redis
 REDIS_URL=redis://127.0.0.1:6379/0
 REDIS_KEY_PREFIX=9router:sqlite
 SQLITE_QUEUE_ENCRYPTION_KEY=$QUEUE_KEY
+ENABLE_GO_HYBRID=true
 EOF
 
 # 3. Restart so every unit re-reads the EnvironmentFile.
@@ -1605,6 +1610,10 @@ Public endpoints remain on ports `20128` and `20140`. The backend, workers, and
 `/api/ready` probe stay internal. See [DOCKER.md](DOCKER.md) for manual Compose,
 external PostgreSQL, external Redis, lifecycle, backup, and troubleshooting
 details.
+
+For native systemd multi-worker operations (unit layout, per-worker env files,
+`/api/ready` reasons, troubleshooting, and rollback to `API_WORKERS=1`), see
+[SYSTEMD-MULTIWORKER.md](SYSTEMD-MULTIWORKER.md).
 
 **Quick start (use published image):**
 
