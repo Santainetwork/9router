@@ -1,5 +1,10 @@
 # 🚀 9Router Custom Enhancements - Complete Documentation
 
+> **Fork notes.** This file documents the customizations maintained in this fork
+> on top of upstream 9Router, including host-specific deploy workflow. It contains
+> no credentials; keep it that way when editing. Upstream project:
+> <https://github.com/decolua/9router> (MIT).
+
 ## Current State
 - **Active Branch**: `master` (and `dev`)
 - **Latest Version**: `v0.5.75-custom` (Upstream merged from `origin/master`)
