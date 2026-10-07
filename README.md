@@ -1409,8 +1409,7 @@ Model: cc/claude-opus-4-7
 
 </details>
 
-<details>
-<summary><b>🚀 Deployment & Maintenance</b></summary>
+## 🚀 Deployment & Maintenance
 
 ### 🏢 SantaiNetwork Production Operations
 
@@ -1583,7 +1582,7 @@ upgrades:
 bash scripts/install-docker.sh --upgrade --yes
 ```
 
-**SQLite + Redis multicore (Docker):**
+#### SQLite + Redis multicore (Docker)
 
 ```bash
 # Bundled private Redis service + SQLite single-writer broker.
@@ -1701,7 +1700,7 @@ Notes:
 - Optional request/translator logs: `<repo>/logs/...` when `ENABLE_REQUEST_LOGS=true`
 - Both `${DATA_DIR}` and `~/.9router` resolve to the same location in a Docker container — the symlink `/root/.9router -> /app/data` is created at build time.
 
-</details>
+
 
 ---
 
