@@ -47,6 +47,12 @@ yarn-error.log*
 next-env.d.ts
 
 .bin/*
+
+# hybrid-engine/bin
+# Build your own: (cd hybrid-engine && go build -o bin/router-engine ./cmd/engine)
+# Docker and CI build from source; install.sh only reuses a prebuilt binary when no
+# Go toolchain is present, so it must never be committed (18MB ELF each).
+/hybrid-engine/bin/
 data/
 logs/*
 source/*

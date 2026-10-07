@@ -1,7 +1,15 @@
 {
   "name": "9router-app",
   "version": "0.5.95",
-  "description": "9Router web dashboard",
+  "description": "9Router web dashboard and LLM routing gateway",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decolua/9router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/decolua/9router/issues"
+  },
   "private": true,
   "imports": {
     "open-sse/*": "./open-sse/*",

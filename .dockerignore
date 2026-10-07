@@ -17,6 +17,7 @@ coverage
 # Runtime data and logs
 data
 logs
+hybrid-engine/bin
 
 # Local env files (inject at runtime via --env-file or -e)
 .env

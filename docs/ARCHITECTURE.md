@@ -549,8 +549,8 @@ Environment variables actively used by code:
 
 ## Operational Verification Checklist
 
-- Build from source: `cd /root/dev/9router && npm run build`
-- Build Docker image: `cd /root/dev/9router && docker build -t 9router .`
+- Build from source: `cd <repo-root> && npm run build`
+- Build Docker image: `cd <repo-root> && docker build -t 9router .`
 - Start service and verify:
 - `GET /api/settings`
 - `GET /api/v1/models`
