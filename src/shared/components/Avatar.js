@@ -29,25 +29,14 @@ export default function Avatar({
 
   // Generate color from name
   const getColorFromName = (name) => {
-    if (!name) return "bg-primary";
+    if (!name) return "bg-primary/10 text-primary";
     const colors = [
-      "bg-red-600",
-      "bg-orange-700",
-      "bg-amber-700",
-      "bg-yellow-700",
-      "bg-lime-700",
-      "bg-green-700",
-      "bg-emerald-700",
-      "bg-teal-700",
-      "bg-cyan-700",
-      "bg-sky-700",
-      "bg-blue-600",
-      "bg-indigo-600",
-      "bg-violet-600",
-      "bg-purple-600",
-      "bg-fuchsia-600",
-      "bg-pink-600",
-      "bg-rose-600",
+      "bg-danger/15 text-danger",
+      "bg-warning/15 text-warning",
+      "bg-success/15 text-success",
+      "bg-info/15 text-info",
+      "bg-primary/10 text-primary",
+      "bg-surface-3 text-text-main",
     ];
     const index = name.charCodeAt(0) % colors.length;
     return colors[index];
@@ -72,7 +61,7 @@ export default function Avatar({
   return (
     <div
       className={cn(
-        "rounded-full flex items-center justify-center font-semibold text-white",
+        "rounded-full flex items-center justify-center font-semibold",
         "ring-2 ring-border shadow-soft",
         sizes[size],
         getColorFromName(name),
