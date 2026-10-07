@@ -69,6 +69,15 @@ test('no high-signal credentials are committed', () => {
     /\bglpat-[A-Za-z0-9_-]{20,}\b/,        // GitLab PAT
     /\bxox[baprs]-[0-9A-Za-z-]{24,}\b/,     // Slack token
     /\bsk-[A-Za-z0-9]{40,}\b/,             // OpenAI-style key
+    /\bsk-(proj|ant|svcacct|live|test)-[A-Za-z0-9_-]{20,}\b/, // OpenAI/Anthropic/Stripe prefixed variants
+    /\bya29\.[A-Za-z0-9_-]{20,}\b/,          // Google OAuth access token
+    /:_authToken[=:]npm_[A-Za-z0-9]{30,}\b/,  // npm authToken
+    /hooks\.slack\.com\/services\/[A-Z0-9]{9,}\/[A-Z0-9]{9,}/, // Slack incoming webhook
+    /\bSK[0-9a-f]{32}\b/,                     // Twilio API key
+    /\bSG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/, // SendGrid API key
+    /discord(app)?\.com\/api\/webhooks\/[0-9]{10,}\/[A-Za-z0-9_-]{20,}/, // Discord webhook
+    /(?:\bbot)?[0-9]{8,10}:[A-Za-z0-9_-]{35}\b/, // Telegram bot token (bare or bot<id>:<hash>)
+    /aws_secret_access_key[\s]*[=:][\s]*[A-Za-z0-9/+=]{40}/, // AWS secret key (labelled, 40-char body)
   ]
   // Test fixtures and documented public values are excluded by path.
   const ALLOWED = new Set([
