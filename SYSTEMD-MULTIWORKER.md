@@ -461,7 +461,8 @@ curl -o /dev/null -w '%{http_code}\n' http://localhost:20128/api/health
 
 On `--upgrade` the installer reads `API_WORKERS`, `DB_TYPE`, `SQLITE_MULTICORE`
 and the Redis variables back from the existing `/etc/9router.env`, so an
-installed topology passes without extra flags. The error means either a first
+installed topology passes without extra flags. It reads the broker keys only
+when more than one worker is being installed, so the error means either a first
 install that never passed them (add them inline as in section 3.3) or a real
 conflict. If `DATABASE_URL` is set to anything that is not `postgres://` or
 `postgresql://`, multi-worker mode is refused outright, because `DB_TYPE=postgres`
@@ -510,9 +511,36 @@ redis-cli pttl 9router:sqlite:writer:heartbeat   # must be > 0
 A negative PTL means the writer stopped. Restart the control process; the
 workers recover once the heartbeat returns.
 
+### Every request fails with `ECONNREFUSED` on the Redis port
+
+The SQLite mutation writer starts from `src/instrumentation.js` during Next's
+`register()`, and it connects to Redis and probes the server config before
+serving anything. With an unreachable broker, `register()` rejects. Next
+caches that rejected promise for the process lifetime, so the control process
+stays up but `handleRequest` rethrows the same error on every request. A
+systemd restart does not help while Redis is still down, and Redis recovering
+on its own does not clear the cache: restart once the broker is back.
+
+```
+Failed to prepare server
+An error occurred while loading instrumentation hook:
+[SQLiteMutationWriter] ... connect ECONNREFUSED 127.0.0.1:6379
+```
+
+Start the broker, then restart the control process:
+
+```bash
+sudo systemctl status redis-server 2>/dev/null | head -5   # or your broker unit
+sudo systemctl restart 9router
+curl -fsS http://127.0.0.1:20127/api/ready
+```
+
+
+
 ### `REDIS_PREFLIGHT_FAILED` on startup
 
-The control writer refuses an unsafe Redis. Fix the server, not the key:
+The broker answered, but it is unsafe for queued mutations. Fix the server, not
+the key (`ECONNREFUSED` above means it did not answer at all):
 
 ```bash
 redis-cli config get appendonly maxmemory-policy
