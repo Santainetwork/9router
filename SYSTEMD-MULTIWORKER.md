@@ -482,8 +482,12 @@ The failure you will most likely hit is:
 
 The installer now exports `ENABLE_GO_HYBRID=true` by default for the preflight,
 so on a current installer you should not see this. You only get it if
-`ENABLE_GO_HYBRID=false` is set explicitly (in the installer's environment or
-`/etc/9router.env`) while `SQLITE_MULTICORE=redis` is active — remove that line.
+`ENABLE_GO_HYBRID=false` is set explicitly **in the installer's own environment**
+(`sudo ENABLE_GO_HYBRID=false bash scripts/install.sh --upgrade`) while
+`SQLITE_MULTICORE=redis` is active — drop the override. A line in
+`/etc/9router.env` cannot cause it: the installer reads that file key by key, it
+does not source it, and the units set `Environment=ENABLE_GO_HYBRID=true`, which
+takes precedence over the file at runtime.
 Other `validateWorkerConfig()` rejections: an `API_WORKERS` above 8 or not a
 positive integer, `WORKER_ROLE` outside `control`/`api`, a missing or reused
 `SQLITE_QUEUE_ENCRYPTION_KEY`, an invalid `REDIS_URL`, and `SQLITE_MULTICORE`
