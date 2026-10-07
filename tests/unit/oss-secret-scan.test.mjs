@@ -31,6 +31,8 @@ const looksPlaceholder = (s) => {
   if (body.length < 12) return true
   if (/^(x{2,}|y{2,}|0{2,}|a{4,}|test|example|placeholder|your|abc|123)/i.test(body)) return true
   if (/abcdef|123456|xxxxxxxx/i.test(body)) return true
+  // A long run of one character is filler, not entropy (e.g. T00000000B00000000).
+  if (/(.)\1{5,}/.test(body)) return true
   // Low distinct-character ratio => filler.
   const distinct = new Set(body.toLowerCase()).size
   return distinct / body.length < 0.25
@@ -61,9 +63,8 @@ test('no private key material is committed', () => {
   assert.equal(bad.length, 0, `private keys committed: ${[...new Set(bad)].join(', ')}`)
 })
 
-test('no high-signal credentials are committed', () => {
-  // Shapes that only ever look like real credentials.
-  const PATTERNS = [
+// Shapes that only ever look like real credentials.
+const CREDENTIAL_PATTERNS = [
     /\bAKIA[0-9A-Z]{16}\b/,               // AWS access key id
     /\bgh[pousr]_[A-Za-z0-9]{30,}\b/,      // GitHub token
     /\bglpat-[A-Za-z0-9_-]{20,}\b/,        // GitLab PAT
@@ -78,7 +79,10 @@ test('no high-signal credentials are committed', () => {
     /discord(app)?\.com\/api\/webhooks\/[0-9]{10,}\/[A-Za-z0-9_-]{20,}/, // Discord webhook
     /(?:\bbot)?[0-9]{8,10}:[A-Za-z0-9_-]{35}\b/, // Telegram bot token (bare or bot<id>:<hash>)
     /aws_secret_access_key[\s]*[=:][\s]*[A-Za-z0-9/+=]{40}/, // AWS secret key (labelled, 40-char body)
-  ]
+]
+
+test('no high-signal credentials are committed', () => {
+  const PATTERNS = CREDENTIAL_PATTERNS
   // Test fixtures and documented public values are excluded by path.
   const ALLOWED = new Set([
     'tests/unit/sqlite-mutation-protocol.test.mjs',
@@ -125,4 +129,52 @@ test('no build artifacts or dumps are tracked', () => {
 test('engine binaries are not tracked (build from source)', () => {
   const bad = tracked().filter((f) => f.startsWith('hybrid-engine/bin/'))
   assert.equal(bad.length, 0, `compiled binaries tracked: ${bad.join(', ')}`)
+})
+
+// Self-test: the patterns above must actually fire on realistic credentials,
+// and must stay silent on the filler values that appear in docs and tests.
+// Guards against a future edit accidentally neutering detection.
+test('credential patterns still fire (guard self-test)', () => {
+  const MUST_MATCH = [
+    'AKIAZ7Y4KQ2M9P3XW1RD',
+    'ghp_K9mP2qL7vR4tY8wZ3nB6cD1fG5hJ0kM2sP7',
+    'glpat-K9mP2qL7vR4tY8wZ3nB6c',
+    'xoxb-K9mP2qL7vR4tY8wZ3nB6cD1fG5hJ0kM2sP7qW9eR4tY8wZ3',
+    'sk-proj-Qm7xK2pL9vR4tY8wZ3nB6cD1fG5hJ0kM2sP7qW9eR4tY',
+    'sk-ant-api03-Xk9mP2qL7vR4tY8wZ3nB6cD1fG5hJ0kM2sP7qW9eR4tY8wZ3nB6cD',
+    'ya29.a0AfH6SMBxK9mP2qL7vR4tY8wZ3nB6cD1fG5hJ0kM2sP7qW9eR4t',
+    '//registry.npmjs.org/:_authToken=npm_K9mP2qL7vR4tY8wZ3nB6cD1fG5hJ0kM2sP7',
+    'https://hooks.slack.com' + '/services/T7K2M9P4Q/B3N8R5X1Z/' + 'Qm7xK2pL9vR4tY8wZ3nB6cD1',
+    'SK' + '9f2b7c4e1a8d5f3b6c9e2a7d4f1b8c3d',
+    'SG.Qm7xK2pL9vR4tY8wZ3nB6cD1.R4tY8wZ3nB6cD1fG5hJ0kM2sP7qW9eR4t',
+    'https://discord.com/api/webhooks/8472910356/Qm7xK2pL9vR4tY8wZ3nB6cD1fG5hJ0kM',
+    'https://api.telegram.org/bot8472910356:AAFQm7xK2pL9vR4tY8wZ3nB6cD1fG5hJ0kM',
+    '8472910356:AAFQm7xK2pL9vR4tY8wZ3nB6cD1fG5hJ0kM',
+    'aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLQK9mP2qL7vR4',
+  ]
+  const MUST_NOT_MATCH = [
+    'sk-abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+    'ghp_abcdefghijklmnopqrstuvwxyz',
+    'AKIAXXXXXXXXXXXXXXXX',
+    'xoxb-0000000000-0000000000-0000000000-abcdefabcdefabcdefabcdefabcdef',
+    'Configuration: "AKIA...replace with your key"',
+    'https://hooks.slack.com' + '/services/T00000000/B00000000/xxxxxxxxxxxxxxxxxxxxxxxx',
+    'time is 12:00:00',
+    'SG.example.example',
+    'port 20128',
+    '_authToken=npm_yourtokenhere',
+    'bot123:GET_YOUR_TOKEN',
+  ]
+
+  for (const s of MUST_MATCH) {
+    const hit = CREDENTIAL_PATTERNS.some((re) => re.test(s)) && !looksPlaceholder(s.match(CREDENTIAL_PATTERNS.find((re) => re.test(s)))[0])
+    assert.ok(hit, `pattern set must detect a realistic credential: ${s.slice(0, 40)}...`)
+  }
+  for (const s of MUST_NOT_MATCH) {
+    const m = s.match(CREDENTIAL_PATTERNS.find((re) => re.test(s)))
+    assert.ok(
+      !m || looksPlaceholder(m[0]),
+      `pattern set must not flag documented placeholder as credential: ${s.slice(0, 40)}...`,
+    )
+  }
 })
