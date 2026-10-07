@@ -1017,7 +1017,7 @@ docker stop -t 330 9router && docker rm 9router
 | 変数 | デフォルト | 説明 |
 |------|-----------|------|
 | `JWT_SECRET` | 自動生成（`~/.9router/jwt-secret`） | ダッシュボード認証クッキーのJWT署名シークレット（複数インスタンス間で共有する場合に設定） |
-| `INITIAL_PASSWORD` | `123456` | 保存されたハッシュがない場合の初回ログインパスワード |
+| `INITIAL_PASSWORD` | インストールごとにランダム（起動時にログ出力、`~/.9router/initial-password` に保存） | 保存されたハッシュがない場合の初回ログインパスワード |
 | `DATA_DIR` | `~/.9router` | メインアプリのデータベース格納場所（`db.json`） |
 | `PORT` | フレームワークデフォルト | サービスポート（例では`20128`） |
 | `HOSTNAME` | フレームワークデフォルト | バインドホスト（Dockerデフォルトは`0.0.0.0`） |
@@ -1119,7 +1119,7 @@ docker stop -t 330 9router && docker rm 9router
 
 **初回ログインできない**
 - `.env` の `INITIAL_PASSWORD` を確認
-- 未設定の場合、デフォルトパスワードは `123456`
+- 未設定の場合、初回パスワードはインストールごとにランダム生成され、サーバー起動ログに出力され `~/.9router/initial-password` に保存されます
 
 **`logs/` にリクエストログがない**
 - `ENABLE_REQUEST_LOGS=true` に設定

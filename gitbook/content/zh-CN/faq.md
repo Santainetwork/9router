@@ -236,7 +236,7 @@ npm run deploy:cloudflare
 **环境变量:**
 - `JWT_SECRET` - **生产环境必须修改!**
 - `DATA_DIR` - 数据库存储路径(默认:`~/.9router`)
-- `INITIAL_PASSWORD` - 仪表盘登录(默认:`123456`)
+- `INITIAL_PASSWORD` - 没有已保存哈希时的仪表盘登录密码(无默认值:按安装随机生成并打印在启动日志中)
 - `NODE_ENV` - 部署时设为 `production`
 
 详情见 [部署指南](getting-started/installation.md#deployment)。

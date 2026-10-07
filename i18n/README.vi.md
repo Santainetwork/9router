@@ -1017,7 +1017,7 @@ docker stop -t 330 9router && docker rm 9router
 | Biến | Mặc định | Mô tả |
 |----------|---------|-------------|
 | `JWT_SECRET` | Tự động sinh (`~/.9router/jwt-secret`) | Bí mật ký JWT cho cookie xác thực bảng điều khiển (đặt để chia sẻ giữa nhiều instance) |
-| `INITIAL_PASSWORD` | `123456` | Mật khẩu đăng nhập đầu tiên khi không có hash đã lưu tồn tại |
+| `INITIAL_PASSWORD` | Per installment (dilog saat start, disimpan di `~/.9router/initial-password`) | Mật khẩu đăng nhập đầu tiên khi không có hash đã lưu tồn tại |
 | `DATA_DIR` | `~/.9router` |ị trí cơ sở dữ liệu ứng dụng chính (`db.json`) |
 | `PORT` | framework default | Cổng dịch vụ (`20128` trong các ví dụ) |
 | `HOSTNAME` | framework default | Bind host (Docker mặc định là `0.0.0.0`) |
@@ -1134,7 +1134,7 @@ Ghi chú:
 
 **Đăng nhập lần đầu không hoạt động**
 - Kiểm tra `INITIAL_PASSWORD` trong `.env`
-- Nếu chưa đặt, mật khẩu dự phòng là `123456`
+- Nếu chưa đặt, mật khẩu lần chạy đầu được sinh ngẫu nhiên cho từng bản cài, in ra log khởi động và lưu tại `~/.9router/initial-password`
 
 **Không có log request dưới `logs/`**
 - Đặt `ENABLE_REQUEST_LOGS=true`
@@ -1234,7 +1234,7 @@ Hành vi dự kiến từ việc xác thực gần đây:
 ### Hành vi Xác thực
 
 - Các route Bảng điều khiển (`/dashboard/*`) sử dụng bảo vệ cookie `auth_token`.
-- Đăng nhập sử dụng hash mật khẩu đã lưu khi có mặt; nếu không, nó dự phòng vào `INITIAL_PASSWORD`.
+- Đăng nhập dùng hash mật khẩu đã lưu khi có mặt; nếu không, nó dùng `INITIAL_PASSWORD` hoặc mật khẩu ngẫu nhiên theo bản cài.
 - `requireLogin` có thể được chuyển đổi qua `/api/settings/require-login`.
 
 ### Xử lý Yêu cầu (C cao)

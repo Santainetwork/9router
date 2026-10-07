@@ -5,6 +5,7 @@ import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
 import { footerSettingsPatch } from "@/shared/utils/footerSettings.js";
 import { getWorkerTopology } from "@/shared/utils/systemHealth.js";
+import { getInitialPassword } from "@/lib/auth/dashboardSession";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -78,9 +79,10 @@ export async function PATCH(request) {
           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       } else {
-        // First time setting password, no current password needed
-        // Allow empty currentPassword or default "123456"
-        if (body.currentPassword && body.currentPassword !== "123456") {
+        // First time setting password, no current password needed.
+        // If a value is supplied it must match the current first-run password
+        // (INITIAL_PASSWORD env or the per-install random value).
+        if (body.currentPassword && body.currentPassword !== getInitialPassword()) {
            return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       }

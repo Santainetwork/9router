@@ -105,7 +105,7 @@ npm start
 ### Dashboard Login
 
 **Default credentials:**
-- Password: `123456`
+- Password: the `INITIAL_PASSWORD` you set, or the per-install password printed in the server startup log
 
 **⚠️ Change password immediately:**
 1. Login to dashboard

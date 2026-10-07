@@ -2,6 +2,9 @@ const api = require("../api/client");
 const { confirm, pause } = require("../utils/input");
 const { showStatus } = require("../utils/display");
 const { showMenuWithBack } = require("../utils/menuHelper");
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
 
 // ANSI colors
 const COLORS = {
@@ -13,7 +16,19 @@ const COLORS = {
   cyan: "\x1b[36m"
 };
 
-const DEFAULT_PASSWORD = "123456";
+// First-run password after a reset: INITIAL_PASSWORD when the operator set it,
+// otherwise the per-install random value the server logged at startup and
+// persisted in DATA_DIR. No hardcoded default exists.
+function firstRunPasswordHint() {
+  if (process.env.INITIAL_PASSWORD) return "the value of INITIAL_PASSWORD";
+  const dir = process.env.DATA_DIR || path.join(os.homedir(), ".9router");
+  const file = path.join(dir, "initial-password");
+  try {
+    const value = fs.readFileSync(file, "utf8").trim();
+    if (value) return value;
+  } catch {}
+  return "the password printed in the server startup log";
+}
 
 /**
  * Show settings menu (tunnel + RTK + reset password)
@@ -181,11 +196,11 @@ async function toggleHeadroom(currentlyOn) {
 }
 
 /**
- * Reset dashboard password to default via server API (writes the live SQLite DB).
- * After reset, user can log in with the default password "123456".
+ * Reset dashboard password to the first-run value via server API (writes the live DB).
+ * After reset, the first-run password applies again.
  */
 async function resetPassword() {
-  const ok = await confirm(`Reset dashboard password to default "${DEFAULT_PASSWORD}"?`);
+  const ok = await confirm("Reset dashboard password to the first-run value?");
   if (!ok) {
     showStatus("Cancelled", "info");
     await pause();
@@ -194,7 +209,7 @@ async function resetPassword() {
 
   const result = await api.resetPassword();
   if (result.success) {
-    showStatus(`Password reset. Default: ${DEFAULT_PASSWORD}`, "success");
+    showStatus(`Password reset. Login with ${firstRunPasswordHint()}`, "success");
   } else {
     showStatus(`Failed to reset password: ${result.error}`, "error");
   }

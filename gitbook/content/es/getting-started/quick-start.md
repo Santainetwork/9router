@@ -22,7 +22,7 @@ npm install -g 9router
 
 🎉 **El dashboard se abre automáticamente** en `http://localhost:20128`
 
-- Contraseña por defecto: `123456` (cámbiala en el dashboard)
+- Contraseña de primera vez: el valor de `INITIAL_PASSWORD`, o la generada por instalación impresa en el registro de arranque del servidor (cámbiala en el panel)
 - API key generada automáticamente
 - Listo para conectar proveedores
 

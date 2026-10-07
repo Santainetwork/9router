@@ -236,7 +236,7 @@ npm run deploy:cloudflare
 **Variables de entorno:**
 - `JWT_SECRET` - **¡DEBE cambiarse en producción!**
 - `DATA_DIR` - Ruta de almacenamiento de la base de datos (por defecto: `~/.9router`)
-- `INITIAL_PASSWORD` - Login del dashboard (por defecto: `123456`)
+- `INITIAL_PASSWORD` - Login del panel cuando no hay hash guardado (sin valor por defecto: se genera por instalación y se imprime en el registro de arranque)
 - `NODE_ENV` - Establece en `production` para desplegar
 
 Consulta la [guía de despliegue](getting-started/installation.md#deployment) para detalles.

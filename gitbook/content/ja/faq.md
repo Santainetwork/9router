@@ -236,7 +236,7 @@ npm run deploy:cloudflare
 **環境変数:**
 - `JWT_SECRET` - **本番環境で必ず変更!**
 - `DATA_DIR` - データベース保存パス(デフォルト: `~/.9router`)
-- `INITIAL_PASSWORD` - ダッシュボードログイン(デフォルト: `123456`)
+- `INITIAL_PASSWORD` - 保存されたハッシュがない場合のダッシュボードログイン(デフォルトはありません:インストールごとに生成され起動ログに出力されます)
 - `NODE_ENV` - デプロイ時は`production`に設定
 
 詳細は[デプロイメントガイド](getting-started/installation.md#deployment)を参照。

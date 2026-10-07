@@ -253,13 +253,15 @@ export default function LoginPage() {
                   {retryAfter > 0 ? `Wait ${retryAfter}s` : "Login"}
                 </Button>
 
-                <p className="text-xs text-center text-text-muted mt-2">
-                  Default password is <code className="bg-sidebar px-1 rounded">123456</code>
-                </p>
                 {hasPassword === false && (
-                  <p className="text-xs text-center text-warning">
-                    Security risk: no password set. You will be asked to set one when logging in remotely.
-                  </p>
+                  <>
+                    <p className="text-xs text-center text-text-muted mt-2">
+                      First run: use INITIAL_PASSWORD, or the password printed in the server startup log.
+                    </p>
+                    <p className="text-xs text-center text-warning">
+                      Security risk: no password set. You will be asked to set one when logging in remotely.
+                    </p>
+                  </>
                 )}
               </form>
             ) : (

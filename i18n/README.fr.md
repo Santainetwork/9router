@@ -1205,7 +1205,7 @@ docker pull decolua/9router:latest   # mise à jour vers la dernière version
 | Variable                                             | Par défaut                                  | Description                                                                                  |
 | ---------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `JWT_SECRET`                                         | Généré automatiquement (`~/.9router/jwt-secret`) | Secret de signature JWT pour le cookie d'authentification du tableau de bord (remplacez-le pour partager entre instances) |
-| `INITIAL_PASSWORD`                                   | `123456`                                    | Mot de passe de première connexion quand aucun hash n'est enregistré                          |
+| `INITIAL_PASSWORD`                                   | Aléatoire par installation (journalisée au démarrage, stockée dans `~/.9router/initial-password`) | Mot de passe de première connexion quand aucun hash n'est enregistré ; définissez-la pour remplacer la valeur générée |
 | `DATA_DIR`                                           | `~/.9router`                                | Emplacement principal des données de l'app (SQLite dans `$DATA_DIR/db/data.sqlite`)          |
 | `PORT`                                               | défaut du framework                         | Port du service (`20128` dans les exemples)                                                   |
 | `HOSTNAME`                                           | défaut du framework                         | Hôte de liaison (Docker utilise `0.0.0.0` par défaut)                                         |
@@ -1348,7 +1348,7 @@ Remarques :
 **La première connexion ne fonctionne pas**
 
 - Vérifiez `INITIAL_PASSWORD` dans `.env`
-- S'il n'est pas défini, le mot de passe de secours est `123456`
+- S'il n'est pas défini, le mot de passe de première connexion est généré par installation, affiché dans le journal de démarrage du serveur et stocké dans `~/.9router/initial-password`
 
 **Pas de journaux de requêtes dans `logs/`**
 

@@ -48,7 +48,7 @@ export NODE_ENV="production"
 | Biến | Mặc định | Mô tả |
 |----------|---------|-------------|
 | `JWT_SECRET` | Auto-generated | **PHẢI đổi trong production!** Dùng để ký JWT token |
-| `INITIAL_PASSWORD` | `123456` | Mật khẩu đăng nhập Dashboard |
+| `INITIAL_PASSWORD` | Ngẫu nhiên theo bản cài (ghi nhật ký lúc khởi động) | Mật khẩu đăng nhập Dashboard |
 | `DATA_DIR` | `~/.9router` | Đường dẫn lưu database và data |
 | `NODE_ENV` | `development` | Đặt `production` cho deployment |
 | `ENABLE_REQUEST_LOGS` | `false` | Bật debug request/response logs |

@@ -22,7 +22,7 @@ npm install -g 9router
 
 🎉 **Dashboard tự động mở** tại `http://localhost:20128`
 
-- Mật khẩu mặc định: `123456` (đổi trong dashboard)
+- Mật khẩu lần chạy đầu: giá trị `INITIAL_PASSWORD`, hoặc mật khẩu ngẫu nhiên theo bản cài in trong log khởi động (đổi trong dashboard)
 - API key được tạo tự động
 - Sẵn sàng kết nối provider
 

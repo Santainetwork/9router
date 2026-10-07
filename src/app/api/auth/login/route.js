@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { setDashboardAuthCookie, getInitialPassword } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { isSamlConfigured } from "@/lib/auth/saml.js";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
@@ -37,7 +37,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Dashboard access via tunnel is disabled" }, { status: 403 });
     }
 
-    // Default password is '123456' if not set
+    // No saved hash yet: only the operator's INITIAL_PASSWORD or the
+    // per-install random value generated on this machine is accepted.
     const storedHash = settings.password;
 
     if (settings.authMode === "sso" || settings.authMode === "saml" || settings.authMode === "oidc") {
@@ -54,9 +55,7 @@ export async function POST(request) {
     if (storedHash) {
       isValid = await bcrypt.compare(password, storedHash);
     } else {
-      // Use env var or default
-      const initialPassword = process.env.INITIAL_PASSWORD || "123456";
-      isValid = password === initialPassword;
+      isValid = password === getInitialPassword();
     }
 
     if (isValid) {
@@ -69,7 +68,7 @@ export async function POST(request) {
 
       if (mustChangePassword) {
         // Do NOT issue a session token: a fresh install's default password is
-        // public knowledge ("123456"), so handing out a valid JWT would let any
+        // public knowledge, so handing out a valid JWT would let any
         // remote attacker authenticate and (e.g.) PATCH /api/settings to disable
         // authentication entirely (CVE-2026-56679 class). Require the password
         // to be changed first.

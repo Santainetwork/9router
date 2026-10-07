@@ -1129,7 +1129,7 @@ export default function ProfilePage() {
                 {/* {!settings.hasPassword && (
                   <div className="p-3 rounded-lg bg-info/10 border border-info/20">
                     <p className="text-sm text-info dark:text-info">
-                      Setting password for the first time. Leave current password empty or use default: <code className="bg-info/20 px-1 rounded">123456</code>
+                      Setting password for the first time. Leave current password empty, or use INITIAL_PASSWORD / the first-run password from the server startup log.
                     </p>
                   </div>
                 )} */}

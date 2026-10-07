@@ -1575,7 +1575,7 @@ docker pull decolua/9router:latest   # update to latest
 | Variable                                             | Default                                  | Description                                                                         |
 | ---------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- |
 | `JWT_SECRET`                                         | Auto-generated (`~/.9router/jwt-secret`) | JWT signing secret for dashboard auth cookie (override to share across instances)   |
-| `INITIAL_PASSWORD`                                   | `123456` (default, change on first login; forced for non-local access) | First login password when no saved hash exists                          |
+| `INITIAL_PASSWORD`                                   | Per-install random (logged at startup, stored in `~/.9router/initial-password`) | First login password when no saved hash exists; set to override the generated value |
 | `DATA_DIR`                                           | `~/.9router`                             | Main app data location (SQLite at `$DATA_DIR/db/data.sqlite`)                       |
 | `PORT`                                               | framework default                        | Service port (`20128` in examples)                                                  |
 | `HOSTNAME`                                           | framework default                        | Bind host (Docker defaults to `0.0.0.0`)                                            |
@@ -1723,7 +1723,7 @@ Notes:
 **First login not working**
 
 - Check `INITIAL_PASSWORD` in `.env`
-- If unset, fallback password is `123456`
+- If unset, the first-run password is generated per install, printed in the server startup log, and stored in `~/.9router/initial-password`
 
 **No request logs under `logs/`**
 

@@ -1094,7 +1094,7 @@ docker stop -t 330 9router && docker rm 9router
 | 变量 | 默认值 | 描述 |
 |----------|---------|-------------|
 | `JWT_SECRET` | 自动生成（`~/.9router/jwt-secret`） | 用于控制面板 auth cookie 的 JWT 签名密钥（设置可在多实例间共享） |
-| `INITIAL_PASSWORD` | `123456` | 当没有保存的哈希时首次登录的密码 |
+| `INITIAL_PASSWORD` | 安装时随机生成（启动时记录，保存于 `~/.9router/initial-password`） | 当没有保存的哈希时首次登录的密码 |
 | `DATA_DIR` | `~/.9router` | 主应用数据库位置（`db.json`） |
 | `PORT` | 框架默认值 | 服务端口（示例中为 `20128`） |
 | `HOSTNAME` | 框架默认值 | 绑定主机（Docker 默认为 `0.0.0.0`） |
@@ -1219,7 +1219,7 @@ docker stop -t 330 9router && docker rm 9router
 
 **首次登录不工作**
 - 检查 `.env` 中的 `INITIAL_PASSWORD`
-- 如果未设置，回退密码是 `123456`
+- 如果未设置，首次运行密码将为每次安装随机生成，打印在服务器启动日志中并保存在 `~/.9router/initial-password`
 
 **`logs/` 下没有请求日志**
 - 设置 `ENABLE_REQUEST_LOGS=true`

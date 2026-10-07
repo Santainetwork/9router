@@ -105,7 +105,7 @@ npm start
 ### Đăng nhập Dashboard
 
 **Credentials mặc định:**
-- Mật khẩu: `123456`
+- Mật khẩu: `INITIAL_PASSWORD` bạn đặt, hoặc mật khẩu ngẫu nhiên theo bản cài in trong log khởi động
 
 **⚠️ Đổi mật khẩu ngay:**
 1. Đăng nhập dashboard

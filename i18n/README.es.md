@@ -1205,7 +1205,7 @@ docker pull decolua/9router:latest   # actualiza a la última versión
 | Variable                                             | Por defecto                                | Descripción                                                                          |
 | ---------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------ |
 | `JWT_SECRET`                                         | Generado automáticamente (`~/.9router/jwt-secret`) | Secreto de firma JWT para la cookie de autenticación del panel (sobreescríbelo para compartir entre instancias) |
-| `INITIAL_PASSWORD`                                   | `123456`                                   | Contraseña del primer inicio de sesión cuando no existe un hash guardado             |
+| `INITIAL_PASSWORD`                                   | Aleatoria por instalación (registrada al inicio, en `~/.9router/initial-password`) | Contraseña del primer inicio de sesión cuando no existe un hash guardado; defínela para anular la generada |
 | `DATA_DIR`                                           | `~/.9router`                               | Ubicación principal de datos de la app (SQLite en `$DATA_DIR/db/data.sqlite`)        |
 | `PORT`                                               | por defecto del framework                  | Puerto del servicio (`20128` en los ejemplos)                                        |
 | `HOSTNAME`                                           | por defecto del framework                  | Host de enlace (Docker usa `0.0.0.0` por defecto)                                    |
@@ -1348,7 +1348,7 @@ Notas:
 **El primer inicio de sesión no funciona**
 
 - Revisa `INITIAL_PASSWORD` en `.env`
-- Si no está configurada, la contraseña de respaldo es `123456`
+- Si no está configurada, la contraseña de primera vez se genera por instalación, se imprime en el registro de arranque y se guarda en `~/.9router/initial-password`
 
 **No hay registros de solicitudes en `logs/`**
 

@@ -1286,7 +1286,7 @@ docker pull decolua/9router:latest   # atualizar para a versão mais recente
 | Variável | Padrão | Descrição |
 | ---------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- |
 | `JWT_SECRET` | Gerado automaticamente (`~/.9router/jwt-secret`) | Segredo de assinatura JWT para cookie de autenticação do painel (substituir para compartilhar entre instâncias) |
-| `INITIAL_PASSWORD` | `123456` | Primeira senha de login quando não existe hash salvo |
+| `INITIAL_PASSWORD` | Aleatório por instalação (registrado na inicialização, salvo em `~/.9router/initial-password`) | Primeira senha de login quando não existe hash salvo |
 | `DATA_DIR` | `~/.9router` | Localização principal dos dados do aplicativo (SQLite em `$DATA_DIR/db/data.sqlite`) |
 | `PORT` | padrão da estrutura | Porta de serviço (`20128` nos exemplos) |
 | `HOSTNAME` | padrão da estrutura | Host de vinculação (o padrão do Docker é `0.0.0.0`) |
@@ -1429,7 +1429,7 @@ Notas:
 **Primeiro login não funciona**
 
 - Verifique `INITIAL_PASSWORD` em `.env`
-- Se não definida, a senha substituta é `123456`
+- Se não definida, a senha de primeira execução é gerada por instalação, impressa no log de inicialização do servidor e salva em `~/.9router/initial-password`
 
 **Nenhum registro de solicitação em `logs/`**
 

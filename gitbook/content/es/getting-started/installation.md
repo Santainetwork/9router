@@ -105,7 +105,7 @@ npm start
 ### Login del dashboard
 
 **Credenciales por defecto:**
-- Contraseña: `123456`
+- Contraseña: el `INITIAL_PASSWORD` que definiste, o la contraseña generada por instalación impresa en el registro de arranque
 
 **⚠️ Cambia la contraseña inmediatamente:**
 1. Inicia sesión en el dashboard
