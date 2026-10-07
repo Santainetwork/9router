@@ -132,9 +132,12 @@ if [ -f "$ENV_FILE" ]; then
   # a fixed template, so an uncharted topology key silently disappears and the
   # next boot fails the SQLITE_MULTICORE preflight. Inheriting them
   # unconditionally would instead resurrect the Redis writer on a rollback to
-  # API_WORKERS=1, where no process consumes the broker and a stopped Redis
-  # would fail the single-writer preflight for nothing. None of these keys are
-  # read back once the caller sets one, so clearing a key clears it.
+  # API_WORKERS=1. The topology preflight tolerates that combination (it only
+  # demands the broker when more than one worker needs shared SQLite), so the
+  # silent break shows up later, at boot: the writer connects to Redis inside
+  # instrumentation register() and every request fails against a dead broker.
+  # None of these keys are read back once the caller sets one, so clearing a
+  # key clears it.
   if [ "$API_WORKERS" -gt 1 ] 2>/dev/null; then
     for KEY in SQLITE_MULTICORE REDIS_URL REDIS_KEY_PREFIX REDIS_PASSWORD \
                SQLITE_QUEUE_ENCRYPTION_KEY; do
