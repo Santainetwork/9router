@@ -5,6 +5,8 @@
 - **Latest Version**: `v0.5.75-custom` (Upstream merged from `origin/master`)
 - **Status**: Production Ready ✅ (all tests passing)
 
+**Installer distDir pitfall**: `scripts/install.sh` builds with plain `npm run build` and defaults `DIST_DIR_NAME="${NEXT_DIST_DIR:-.next}"`. On this host the live bundle is `.next-tailadmin`, so `install.sh --upgrade` without `NEXT_DIST_DIR=.next-tailadmin` writes the santai build and `.dist-dir` then records `.next` wrongly. Always upgrade with `NEXT_DIST_DIR=.next-tailadmin` (or use the manual build:tailadmin flow below), then run `bash scripts/verify-release.sh` (it prefers the recorded `.dist-dir` and needs repo/release byte-identical on that dir).
+
 ---
 
 ## 📋 Core Customizations
@@ -194,24 +196,25 @@ cd hybrid-engine && go test ./... -race
 
 # Build standalone production bundle.
 # NOTE: the live service serves the tailadmin (friend) bundle, NOT the default
-# distDir. npm run build writes .next (santai), which 9router.service never reads.
-# Deploying only .next leaves the pre-migration friend build in place.
+# distDir. next.config.mjs resolves distDir from NEXT_DIST_DIR (default .next,
+# the santai build), which 9router.service never reads. Set it explicitly:
+# a plain `npm run build` writes .next and the live build goes stale silently.
+# build:tailadmin also runs copy-standalone-assets.mjs, so the standalone tree
+# already carries $DIST/static, public/ and custom-server.js.
 npm run build:tailadmin
 
 # Deploy to configurable release directory and restart.
-# The served bundle is .next-tailadmin (friend). next.config.mjs defaults
-# distDir to .next (santai), which this deploy does NOT want, so set DIST
-# explicitly rather than parsing the config (a grep fallback resolves to .next).
-# NOTE: `cp -a src/. dst/` followed by `cp -a src/static dst/static` nests
-# static/static because dst/static already exists; remove first, then copy.
+# Mirror install.sh's stage+swap shape: copy the standalone tree, then run the
+# post-deploy gate (verify-release.sh) which requires repo and release to be
+# byte-identical on $DIST. Do NOT copy static/ separately once the standalone
+# bundle ships it, that is the static/static nesting the gate rejects.
 INSTALL_DIR="${INSTALL_DIR:-$(pwd)}"
 RELEASE_DIR="${RELEASE_DIR:-/opt/9router-release}"
 DIST="${DIST:-.next-tailadmin}"
 cp -a "$INSTALL_DIR/$DIST/standalone/." "$RELEASE_DIR/"
-rm -rf "$RELEASE_DIR/$DIST/static"
-cp -a "$INSTALL_DIR/$DIST/static" "$RELEASE_DIR/$DIST/static"
-cp -a "$INSTALL_DIR/public" "$RELEASE_DIR/public"
-cp -a "$INSTALL_DIR/custom-server.js" "$RELEASE_DIR/custom-server.js"
+mkdir -p "$RELEASE_DIR/$DIST/static"
+[ -d "$RELEASE_DIR/$DIST/static/static" ] && rm -rf "$RELEASE_DIR/$DIST/static/static"
+bash scripts/verify-release.sh || { echo 'gate failed, release not restarted'; exit 1; }
 printf '%s' "$DIST" > "$RELEASE_DIR/.dist-dir"
 systemctl restart 9router-hybrid-engine
 systemctl restart 9router

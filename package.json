@@ -22,7 +22,7 @@
     "start:bun": "bun ./.next/standalone/custom-server.js",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli",
-    "build:tailadmin": "NEXT_DIST_DIR=.next-tailadmin next build --webpack"
+    "build:tailadmin": "NEXT_DIST_DIR=.next-tailadmin next build --webpack && NEXT_DIST_DIR=.next-tailadmin node scripts/copy-standalone-assets.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
