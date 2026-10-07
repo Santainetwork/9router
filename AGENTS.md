@@ -212,13 +212,14 @@ INSTALL_DIR="${INSTALL_DIR:-$(pwd)}"
 RELEASE_DIR="${RELEASE_DIR:-/opt/9router-release}"
 DIST="${DIST:-.next-tailadmin}"
 cp -a "$INSTALL_DIR/$DIST/standalone/." "$RELEASE_DIR/"
-mkdir -p "$RELEASE_DIR/$DIST/static"
-[ -d "$RELEASE_DIR/$DIST/static/static" ] && rm -rf "$RELEASE_DIR/$DIST/static/static"
-bash scripts/verify-release.sh || { echo 'gate failed, release not restarted'; exit 1; }
+if [ -d "$RELEASE_DIR/$DIST/static/static" ]; then rm -rf "$RELEASE_DIR/$DIST/static/static"; fi
 printf '%s' "$DIST" > "$RELEASE_DIR/.dist-dir"
+bash scripts/verify-release.sh || { echo 'gate failed, release not restarted'; exit 1; }
 systemctl restart 9router-hybrid-engine
 systemctl restart 9router
-curl http://localhost:20128/api/health
+# Node needs a few seconds to bind; a bare curl right after restart races it.
+for i in $(seq 1 30); do curl -sf -m 2 http://localhost:20128/api/health && break; sleep 2; done
+curl -sf -m 5 http://localhost:20128/api/health >/dev/null || { echo 'health check failed'; exit 1; }
 ```
 
 ---
