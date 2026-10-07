@@ -1445,7 +1445,7 @@ npm run verify
 
 #### SQLite + Redis multicore (Systemd)
 
-Single command. Pass the broker keys in the installer environment; the installer persists them in `/etc/9router.env` and keeps them across later `--upgrade` runs, so this is needed once.
+Single command. Pass the broker keys in the installer environment; the installer persists them in `/etc/9router.env` and keeps them across later `--upgrade` runs as long as `API_WORKERS>1`, so this is needed once.
 
 ```bash
 QUEUE_KEY="$(openssl rand -hex 32)"

@@ -126,17 +126,24 @@ if [ -f "$ENV_FILE" ]; then
   if [ -z "${DB_TYPE+x}" ]; then
     DB_TYPE="$(grep -E '^DB_TYPE=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
   fi
-  # The SQLite multicore broker keys are read back the same way. Without this they
-  # would be dropped on every --upgrade: the env file below is regenerated from a
-  # fixed template, so an uncharted topology key silently disappears and the next
-  # boot fails the SQLITE_MULTICORE preflight.
-  for KEY in SQLITE_MULTICORE REDIS_URL REDIS_KEY_PREFIX REDIS_PASSWORD \
-             SQLITE_QUEUE_ENCRYPTION_KEY; do
-    if [ -z "${!KEY+x}" ]; then
-      VALUE="$(grep -E "^${KEY}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
-      [ -z "$VALUE" ] || export "$KEY=$VALUE"
-    fi
-  done
+  # The SQLite multicore broker keys are read back the same way, but only while
+  # the installed topology still has more than one worker. Without this they
+  # would be dropped on every --upgrade: the env file below is regenerated from
+  # a fixed template, so an uncharted topology key silently disappears and the
+  # next boot fails the SQLITE_MULTICORE preflight. Inheriting them
+  # unconditionally would instead resurrect the Redis writer on a rollback to
+  # API_WORKERS=1, where no process consumes the broker and a stopped Redis
+  # would fail the single-writer preflight for nothing. None of these keys are
+  # read back once the caller sets one, so clearing a key clears it.
+  if [ "$API_WORKERS" -gt 1 ] 2>/dev/null; then
+    for KEY in SQLITE_MULTICORE REDIS_URL REDIS_KEY_PREFIX REDIS_PASSWORD \
+               SQLITE_QUEUE_ENCRYPTION_KEY; do
+      if [ -z "${!KEY+x}" ]; then
+        VALUE="$(grep -E "^${KEY}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+        [ -z "$VALUE" ] || export "$KEY=$VALUE"
+      fi
+    done
+  fi
 fi
 # The env file and unit override both hardcode ENABLE_GO_HYBRID=true, so that is
 # the runtime truth the --check-config preflight must validate against: SQLite

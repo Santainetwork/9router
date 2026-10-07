@@ -238,7 +238,7 @@ sudo API_WORKERS=3 \
      bash scripts/install.sh --upgrade
 ```
 
-`--upgrade`, `--force-reinstall` and every later re-run keep the installed topology without an append step. Only `--uninstall --purge` deletes `/etc/9router.env`, so a purged host needs the broker keys passed again on reinstall. Verify the installed topology in the file at any time: `sudo grep -E 'API_WORKERS|SQLITE_MULTICORE|REDIS_URL|REDIS_KEY_PREFIX|SQLITE_QUEUE_ENCRYPTION_KEY|ENABLE_GO_HYBRID' /etc/9router.env`.
+`--upgrade`, `--force-reinstall` and every later re-run keep the installed topology without an append step, and only while `API_WORKERS>1`. Only `--uninstall --purge` deletes `/etc/9router.env`, so a purged host needs the broker keys passed again on reinstall. Rolling back to `API_WORKERS=1` drops the broker keys from the file, because a single process needs no writer bridge. Verify the installed topology in the file at any time: `sudo grep -E 'API_WORKERS|SQLITE_MULTICORE|REDIS_URL|REDIS_KEY_PREFIX|SQLITE_QUEUE_ENCRYPTION_KEY|ENABLE_GO_HYBRID' /etc/9router.env`.
 
 ### 3.4 Alternative: a systemd drop-in
 
@@ -485,9 +485,13 @@ so on a current installer you should not see this. You only get it if
 `ENABLE_GO_HYBRID=false` is set explicitly **in the installer's own environment**
 (`sudo ENABLE_GO_HYBRID=false bash scripts/install.sh --upgrade`) while
 `SQLITE_MULTICORE=redis` is active — drop the override. A line in
-`/etc/9router.env` cannot cause it: the installer reads that file key by key, it
-does not source it, and the units set `Environment=ENABLE_GO_HYBRID=true`, which
-takes precedence over the file at runtime.
+`/etc/9router.env` cannot cause this preflight error: the installer reads that
+file key by key, it does not source it, so the value never reaches the check.
+At runtime, however, the file wins: systemd reads `EnvironmentFile=` after
+`Environment=`, so a hand-written `ENABLE_GO_HYBRID=false` in `/etc/9router.env`
+overrides the control unit's drop-in and disables the engine. Fix that by
+editing `/etc/9router.env`, not the units.
+
 Other `validateWorkerConfig()` rejections: an `API_WORKERS` above 8 or not a
 positive integer, `WORKER_ROLE` outside `control`/`api`, a missing or reused
 `SQLITE_QUEUE_ENCRYPTION_KEY`, an invalid `REDIS_URL`, and `SQLITE_MULTICORE`
@@ -552,14 +556,15 @@ Verify nothing is left enabled:
 systemctl list-units '9router-worker@*' --no-pager   # expect none active
 systemctl is-enabled 9router-workers.target            # expect disabled
 grep '^API_WORKERS=' /etc/9router.env                   # expect API_WORKERS=1
+grep -c 'REDIS_URL' /etc/9router.env                    # expect 0
 ps -eo args | grep '[r]outer-engine' | head -1          # expect no -api-workers
 ```
 
-For SQLite + Redis, the control process keeps the writer role and keeps
-consuming the broker as long as `SQLITE_MULTICORE=redis` is still set, which is
-harmless: it is the single writer. Remove those variables from
-`/etc/9router.env` only if you also want to abandon the broker entirely, then
-`daemon-reload` and restart `9router`.
+For SQLite + Redis, the broker keys leave `/etc/9router.env` with the rollback:
+the installer reads them back only when more than one worker is being installed,
+so a single process never resurrects a writer it does not need. Re-enable the
+broker by passing the keys again on any `API_WORKERS>1` install. Redis itself
+keeps running as a systemd service and is untouched either way.
 
 If an upgrade left the host in a broken state, the installer's own rollback
 restores the previous env, units, and release:

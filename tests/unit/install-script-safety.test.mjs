@@ -633,10 +633,11 @@ test("SQLite multicore broker keys survive an upgrade", () => {
   }
 });
 
-test("Removing SQLITE_MULTICORE from the env file disables the broker on the next upgrade", () => {
-  // The read-back only exports a key when it already has a value, and the
-  // template only writes it when set. So clearing one key from the env file
-  // must drop it, not resurrect it from a stale copy.
+test("Rolling back to one worker drops the broker from the env file", () => {
+  // A rollback must not resurrect a writer the single process never uses: with
+  // API_WORKERS=1 the read-back is skipped, so no broker key is inherited and
+  // none is re-emitted. A stale SQLITE_MULTICORE=redis line is also harmless
+  // on its own, because the topology check only fires when workers > 1.
   const sb = sandbox();
   try {
     mkdirSync(sb.env.RELEASE_DIR, { recursive: true });
@@ -647,14 +648,33 @@ test("Removing SQLITE_MULTICORE from the env file disables the broker on the nex
     delete env.SQLITE_MULTICORE;
     let r = runInstaller(["--upgrade", "--dry-run"], env);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /api workers\s+1 total Node process/, "a single SQLITE_MULTICORE line must not fail the topology check");
-    assert.doesNotMatch(r.out, /requires PostgreSQL|requires a valid redis/, "inherited SQLITE_MULTICORE alone must satisfy preflight");
+    assert.match(r.out, /api workers\s+1 total Node process/, "a stale SQLITE_MULTICORE line must not fail the topology check");
+    assert.doesNotMatch(r.out, /requires PostgreSQL|requires a valid redis/, "broker keys must not be read back at API_WORKERS=1");
 
-    // Now the operator disables the broker by deleting the line. Nothing may re-add it.
-    writeFileSync(sb.env.ENV_FILE, "API_WORKERS=1\nDB_TYPE=sqlite\n");
+    // Clearing a non-pivotal key from a multicore install must drop it instead
+    // of resurrecting it from the file. Clearing SQLITE_MULTICORE itself at
+    // API_WORKERS=3 is a topology violation and must stay a hard failure.
+    writeFileSync(
+      sb.env.ENV_FILE,
+      "API_WORKERS=3\nDB_TYPE=sqlite\nSQLITE_MULTICORE=redis\n" +
+        "REDIS_URL=redis://127.0.0.1:6379/0\nREDIS_KEY_PREFIX=9router:sqlite\n",
+    );
+    delete env.SQLITE_MULTICORE;
+    env.REDIS_KEY_PREFIX = "";
     r = runInstaller(["--upgrade", "--dry-run"], env);
     assert.equal(r.code, 0, r.out);
-    assert.doesNotMatch(r.out, /SQLITE_MULTICORE/, "a cleared key must stay cleared");
+    assert.match(r.out, /api workers\s+3 total Node process/, "other worker counts must still inherit the topology");
+    assert.doesNotMatch(r.out, /REDIS_KEY_PREFIX=9router/,
+      "a cleared key must stay cleared instead of being re-added from the file");
+
+    // Removing the pivot from a multicore install is refused, not silently
+    // downgraded to plain SQLite with three workers.
+    writeFileSync(sb.env.ENV_FILE, "API_WORKERS=3\nDB_TYPE=sqlite\nSQLITE_MULTICORE=redis\n");
+    env.REDIS_KEY_PREFIX = "9router:sqlite";
+    env.SQLITE_MULTICORE = "";
+    r = runInstaller(["--upgrade", "--dry-run"], env);
+    assert.notEqual(r.code, 0, "clearing SQLITE_MULTICORE at API_WORKERS>1 must fail");
+    assert.match(r.out, /SQLITE_MULTICORE=redis/, "the failure must name the missing broker");
   } finally {
     sb.cleanup();
   }
