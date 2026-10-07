@@ -1110,9 +1110,10 @@ ${EXISTING_DBURL:-# DATABASE_URL=postgres://user:password@localhost:5432/9router
 ${EXISTING_DBTYPE:+DB_TYPE=${EXISTING_DBTYPE}}
 
 # ── SQLite multicore broker (SQLITE_MULTICORE=redis) ────────────────────────
-# Preserved across upgrades from the keys read at the top of this script. Pass
-# them in the installer environment once to enable, and every later --upgrade
-# keeps them. Leave SQLITE_MULTICORE unset for plain single-process SQLite.
+# Preserved across upgrades from the keys read at the top of this script, which
+# only reads them when API_WORKERS>1. Pass them in the installer environment
+# once to enable; a rollback to API_WORKERS=1 drops them. Leave
+# SQLITE_MULTICORE unset for plain single-process SQLite.
 ${SQLITE_MULTICORE:+SQLITE_MULTICORE=${SQLITE_MULTICORE}}
 ${REDIS_URL:+REDIS_URL=${REDIS_URL}}
 ${REDIS_KEY_PREFIX:+REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX}}
