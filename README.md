@@ -1477,8 +1477,8 @@ export HOSTNAME="0.0.0.0"
 export NODE_ENV="production"
 export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
 export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
-export API_KEY_SECRET="endpoint-proxy-api-key-secret"
-export MACHINE_ID_SALT="endpoint-proxy-salt"
+export API_KEY_SECRET="replace-with-a-long-random-hex-secret"
+export MACHINE_ID_SALT="replace-with-a-random-hex-salt"
 
 # Start
 npm run start
@@ -1575,7 +1575,7 @@ docker pull decolua/9router:latest   # update to latest
 | Variable                                             | Default                                  | Description                                                                         |
 | ---------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- |
 | `JWT_SECRET`                                         | Auto-generated (`~/.9router/jwt-secret`) | JWT signing secret for dashboard auth cookie (override to share across instances)   |
-| `INITIAL_PASSWORD`                                   | `123456`                                 | First login password when no saved hash exists                                      |
+| `INITIAL_PASSWORD`                                   | `123456` (default, change on first login; forced for non-local access) | First login password when no saved hash exists                          |
 | `DATA_DIR`                                           | `~/.9router`                             | Main app data location (SQLite at `$DATA_DIR/db/data.sqlite`)                       |
 | `PORT`                                               | framework default                        | Service port (`20128` in examples)                                                  |
 | `HOSTNAME`                                           | framework default                        | Bind host (Docker defaults to `0.0.0.0`)                                            |
@@ -1584,8 +1584,8 @@ docker pull decolua/9router:latest   # update to latest
 | `CLOUD_URL`                                          | `https://9router.com`                    | Server-side cloud sync endpoint base URL                                            |
 | `NEXT_PUBLIC_BASE_URL`                               | `http://localhost:3000`                  | Backward-compatible/public base URL (prefer `BASE_URL` for server runtime)          |
 | `NEXT_PUBLIC_CLOUD_URL`                              | `https://9router.com`                    | Backward-compatible/public cloud URL (prefer `CLOUD_URL` for server runtime)        |
-| `API_KEY_SECRET`                                     | `endpoint-proxy-api-key-secret`          | HMAC secret for generated API keys                                                  |
-| `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt`                    | Salt for stable machine ID hashing                                                  |
+| `API_KEY_SECRET`                                     | `endpoint-proxy-api-key-secret (public code default)`          | HMAC secret for generated API keys                                                  |
+| `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt (public code default)`                    | Salt for stable machine ID hashing                                                  |
 | `DATABASE_URL`                                       | empty (SQLite)                           | PostgreSQL connection URL; required when `API_WORKERS>1`                            |
 | `DB_TYPE`                                            | inferred                                 | Database driver override (`sqlite` or `postgres`)                                   |
 | `API_WORKERS`                                        | `1`                                      | Total Node processes; PostgreSQL installer defaults to `3`, maximum `8`             |

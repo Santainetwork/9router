@@ -959,8 +959,8 @@ export HOSTNAME="0.0.0.0"
 export NODE_ENV="production"
 export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
 export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
-export API_KEY_SECRET="endpoint-proxy-api-key-secret"
-export MACHINE_ID_SALT="endpoint-proxy-salt"
+export API_KEY_SECRET="replace-with-a-long-random-hex-secret"
+export MACHINE_ID_SALT="replace-with-a-random-hex-salt"
 
 # Khởi động
 npm run start
@@ -1026,8 +1026,8 @@ docker stop -t 330 9router && docker rm 9router
 | `CLOUD_URL` | `https://9router.com` | URL cơ sở endpoint đồng bộ đám mây phía máy chủ |
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | URL cơ sở tương thích ngược/công khai (ưu tiên `BASE_URL` cho runtime máy chủ) |
 | `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | URL đám mây tương thích ngược/công khai (ưu tiên `CLOUD_URL` cho runtime máy chủ) |
-| `API_KEY_SECRET` | `endpoint-proxy-api-key-secret` | B mật HMAC cho các API key được tạo |
-| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt cho việc băm ID máy ổn định |
+| `API_KEY_SECRET` | `endpoint-proxy-api-key-secret (public code default)` | B mật HMAC cho các API key được tạo |
+| `MACHINE_ID_SALT` | `endpoint-proxy-salt (public code default)` | Salt cho việc băm ID máy ổn định |
 | `ENABLE_REQUEST_LOGS` | `false` | Bật log request/response dưới `logs/` |
 | `AUTH_COOKIE_SECURE` | `false` | Buộc cookie xác thực `Secure` (đặt `true` phía reverse proxy HTTPS) |
 | `REQUIRE_API_KEY` | `false` | Thực thi Bearer API key trên các route `/v1/*` (khuyên dùng cho triển khai xúc internet) |

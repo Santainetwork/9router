@@ -1222,8 +1222,8 @@ export HOSTNAME="0.0.0.0"
 export NODE_ENV="production"
 export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
 export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
-export API_KEY_SECRET="endpoint-proxy-api-key-secret"
-export MACHINE_ID_SALT="endpoint-proxy-salt"
+export API_KEY_SECRET="replace-with-a-long-random-hex-secret"
+export MACHINE_ID_SALT="replace-with-a-random-hex-salt"
 
 # Iniciar
 npm run start
@@ -1295,8 +1295,8 @@ docker pull decolua/9router:latest   # atualizar para a versão mais recente
 | `CLOUD_URL` | `https://9router.com` | URL base do endpoint de sincronização na nuvem do lado do servidor |
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | URL de base pública/compatível com versões anteriores (prefira `BASE_URL` para tempo de execução do servidor) |
 | `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | URL de nuvem pública/compatível com versões anteriores (prefira `CLOUD_URL` para tempo de execução do servidor) |
-| `API_KEY_SECRET` | `endpoint-proxy-api-key-secret` | Segredo HMAC para chaves de API geradas |
-| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt para hashing estável de ID de máquina |
+| `API_KEY_SECRET` | `endpoint-proxy-api-key-secret (public code default)` | Segredo HMAC para chaves de API geradas |
+| `MACHINE_ID_SALT` | `endpoint-proxy-salt (public code default)` | Salt para hashing estável de ID de máquina |
 | `ENABLE_REQUEST_LOGS` | `false` | Habilita logs de solicitação/resposta em `logs/` |
 | `AUTH_COOKIE_SECURE` | `false` | Forçar cookie de autenticação `Secure` (definir `true` atrás do proxy reverso HTTPS) |
 | `REQUIRE_API_KEY` | `false` | Aplicar chave de API Bearer em rotas `/v1/*` (recomendado para implantações expostas à Internet) |

@@ -1141,8 +1141,8 @@ export HOSTNAME="0.0.0.0"
 export NODE_ENV="production"
 export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
 export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
-export API_KEY_SECRET="endpoint-proxy-api-key-secret"
-export MACHINE_ID_SALT="endpoint-proxy-salt"
+export API_KEY_SECRET="replace-with-a-long-random-hex-secret"
+export MACHINE_ID_SALT="replace-with-a-random-hex-salt"
 
 # Inicia
 npm run start
@@ -1214,8 +1214,8 @@ docker pull decolua/9router:latest   # actualiza a la última versión
 | `CLOUD_URL`                                          | `https://9router.com`                      | URL base del endpoint de sincronización en la nube del lado del servidor             |
 | `NEXT_PUBLIC_BASE_URL`                               | `http://localhost:3000`                    | URL base pública/compatible con versiones anteriores (prefiere `BASE_URL` para el runtime del servidor) |
 | `NEXT_PUBLIC_CLOUD_URL`                              | `https://9router.com`                      | URL de nube pública/compatible (prefiere `CLOUD_URL` para el runtime del servidor)   |
-| `API_KEY_SECRET`                                     | `endpoint-proxy-api-key-secret`            | Secreto HMAC para las claves API generadas                                           |
-| `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt`                      | Sal para el hash estable del ID de máquina                                           |
+| `API_KEY_SECRET`                                     | `endpoint-proxy-api-key-secret (public code default)`            | Secreto HMAC para las claves API generadas                                           |
+| `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt (public code default)`                      | Sal para el hash estable del ID de máquina                                           |
 | `ENABLE_REQUEST_LOGS`                                | `false`                                    | Habilita los registros de solicitudes/respuestas en `logs/`                          |
 | `AUTH_COOKIE_SECURE`                                 | `false`                                    | Fuerza la cookie `Secure` de autenticación (establece `true` detrás de un proxy HTTPS inverso) |
 | `REQUIRE_API_KEY`                                    | `false`                                    | Aplica clave API Bearer en las rutas `/v1/*` (recomendado para despliegues expuestos a Internet) |
