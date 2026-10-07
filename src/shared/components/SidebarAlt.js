@@ -147,13 +147,13 @@ export default function Sidebar({ onClose, compact = false }) {
           </Link>
           {updateInfo && !compact && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
-              <span className="text-xs font-semibold text-green-800 dark:text-amber-500">
+              <span className="text-xs font-semibold text-success dark:text-warning">
                 ↑ New version available: v{updateInfo.latestVersion}
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowUpdateModal(true)}
-                  className="px-2 py-1 rounded bg-green-700 hover:bg-green-800 dark:bg-amber-700 dark:hover:bg-amber-800 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                  className="px-2 py-1 rounded bg-success/25 hover:bg-success/25 dark:bg-warning/25 dark:hover:bg-warning/25 text-white text-[11px] font-semibold transition-colors cursor-pointer"
                 >
                   Update now
                 </button>
@@ -162,7 +162,7 @@ export default function Sidebar({ onClose, compact = false }) {
                   title="Copy install command"
                   className="flex-1 text-left hover:opacity-80 transition-opacity cursor-pointer min-w-0"
                 >
-                  <code className="block text-[10px] text-green-700 dark:text-green-300 font-mono truncate">
+                  <code className="block text-[10px] text-success dark:text-success font-mono truncate">
                     {copied ? "✓ copied!" : INSTALL_CMD}
                   </code>
                 </button>
@@ -224,7 +224,7 @@ export default function Sidebar({ onClose, compact = false }) {
               <span className="material-symbols-outlined text-[18px]" aria-hidden="true">perm_media</span>
               <span className={cn("text-[13px] font-medium flex-1 text-left", compact && "lg:sr-only")}>Media Providers</span>
               {MEDIA_PROVIDER_KINDS.some((k) => VISIBLE_MEDIA_KINDS.includes(k.id) && k.isNew) && (
-                <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-800 dark:bg-green-500/20 dark:text-green-400", compact && "lg:hidden")}>NEW</span>
+                <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-success/15 text-success dark:bg-success/20 dark:text-success", compact && "lg:hidden")}>NEW</span>
               )}
               <span className={cn("material-symbols-outlined text-[14px] transition-transform", compact && "lg:hidden")} style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
                 expand_more
@@ -248,7 +248,7 @@ export default function Sidebar({ onClose, compact = false }) {
                     <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
                     <span className={cn("text-sm", compact && "lg:sr-only")}>{kind.label}</span>
                     {kind.isNew && (
-                      <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-800 dark:bg-green-500/20 dark:text-green-400", compact && "lg:hidden")}>NEW</span>
+                      <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-success/15 text-success dark:bg-success/20 dark:text-success", compact && "lg:hidden")}>NEW</span>
                     )}
                   </Link>
                 ))}
@@ -345,7 +345,7 @@ export default function Sidebar({ onClose, compact = false }) {
                 computer
               </span>
               <span className={cn("text-[13px] font-medium", compact && "lg:sr-only")}>9Remote</span>
-              <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-green-500/15 text-green-800 dark:bg-green-500/20 dark:text-green-400", compact && "lg:hidden")}>NEW</span>
+              <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-success/15 text-success dark:bg-success/20 dark:text-success", compact && "lg:hidden")}>NEW</span>
             </button>
 
             {/* 9English */}
@@ -432,11 +432,11 @@ export default function Sidebar({ onClose, compact = false }) {
             />
           ) : (
             <div className="text-center p-8">
-              <div className="flex items-center justify-center size-16 rounded-full bg-red-500/20 text-red-300 mx-auto mb-4">
+              <div className="flex items-center justify-center size-16 rounded-full bg-danger/20 text-danger mx-auto mb-4">
                 <span className="material-symbols-outlined text-[32px]">power_off</span>
               </div>
               <h2 className="text-xl font-semibold text-white mb-2">Server Disconnected</h2>
-              <p className="text-gray-400 mb-6">The proxy server has been stopped.</p>
+              <p className="text-text-muted mb-6">The proxy server has been stopped.</p>
               <Button variant="secondary" onClick={() => globalThis.location.reload()}>
                 Reload Page
               </Button>
@@ -456,9 +456,9 @@ Sidebar.propTypes = {
 function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdown, onCancel, countdown, isDisconnected }) {
   const isCountingDown = countdown > 0;
   return (
-    <div className="w-full max-w-lg rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
+    <div className="w-full max-w-lg rounded-xl bg-surface/95 border border-white/10 p-6 text-white">
       <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center size-11 rounded-full bg-amber-500/20 text-amber-300">
+        <div className="flex items-center justify-center size-11 rounded-full bg-warning/20 text-warning">
           <span className="material-symbols-outlined text-[24px]">content_copy</span>
         </div>
         <div>
@@ -475,13 +475,13 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
 
       <p className="text-sm text-white/80 mb-2">Install command:</p>
       <div className="w-full px-3 py-2 rounded bg-white/5 mb-4">
-        <code className="text-xs font-mono text-amber-300 break-all">{installCmd}</code>
+        <code className="text-xs font-mono text-warning break-all">{installCmd}</code>
       </div>
 
       <ol className="text-xs text-white/70 space-y-1 list-decimal list-inside mb-4">
         <li>Click <strong>Copy & Shutdown</strong> below.</li>
         <li>Paste the command into your terminal and press Enter.</li>
-        <li>Run <code className="px-1 rounded bg-white/10 text-green-300">9router</code> again after install.</li>
+        <li>Run <code className="px-1 rounded bg-white/10 text-success">9router</code> again after install.</li>
       </ol>
 
       {isDisconnected ? (

@@ -12,10 +12,10 @@ export default function StatusAlert({ status, className = "" }) {
   };
 
   return (
-    <div className={`p-2 rounded text-sm ${className} ${status.type === "success" ? "bg-green-500/10 text-green-800 dark:text-green-400" :
-        status.type === "warning" ? "bg-yellow-500/10 text-yellow-800 dark:text-yellow-400" :
-        status.type === "info" ? "bg-blue-500/10 text-blue-700 dark:text-blue-300" :
-          "bg-red-500/10 text-red-800 dark:text-red-300"
+    <div className={`p-2 rounded text-sm ${className} ${status.type === "success" ? "bg-success/10 text-success dark:text-success" :
+        status.type === "warning" ? "bg-warning/10 text-warning dark:text-warning" :
+        status.type === "info" ? "bg-info/10 text-info dark:text-info" :
+          "bg-danger/10 text-danger dark:text-danger"
       }`}>
       {renderMessage(status.message)}
     </div>

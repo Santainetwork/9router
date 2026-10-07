@@ -71,9 +71,9 @@ const QUICK_ACTIONS = [
 ];
 
 const GATEWAY_NODES = [
-  { port: ":20128", label: "Master gateway", detail: "UI + API front door", tone: "text-emerald-800 dark:text-emerald-500" },
-  { port: ":20129", label: "Go limiter", detail: "Atomic concurrency + queue", tone: "text-cyan-800 dark:text-cyan-500" },
-  { port: ":20140", label: "Public proxy", detail: "Usage check + docs", tone: "text-amber-800 dark:text-amber-500" },
+  { port: ":20128", label: "Master gateway", detail: "UI + API front door", tone: "text-success dark:text-success" },
+  { port: ":20129", label: "Go limiter", detail: "Atomic concurrency + queue", tone: "text-info dark:text-info" },
+  { port: ":20140", label: "Public proxy", detail: "Usage check + docs", tone: "text-warning dark:text-warning" },
 ];
 
 export default function DashboardOverviewClient() {
@@ -186,12 +186,12 @@ export default function DashboardOverviewClient() {
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border shadow-xs transition-colors",
                 queue.engine.type === "golang"
-                  ? "bg-cyan-500/10 text-cyan-800 dark:text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20"
-                  : "bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
+                  ? "bg-info/10 text-info dark:text-info border-info/20 hover:bg-info/20"
+                  : "bg-warning/10 text-warning dark:text-warning border-warning/20 hover:bg-warning/20"
               )}
               title={queue.engine.type === "golang" ? "Limiter: Go Hybrid Daemon Active on :20129" : "Limiter: JavaScript Fallback Active"}
             >
-              <span className={cn("size-2 rounded-full", queue.engine.type === "golang" ? "bg-cyan-500 animate-pulse" : "bg-amber-500")} />
+              <span className={cn("size-2 rounded-full", queue.engine.type === "golang" ? "bg-info/20 animate-pulse" : "bg-warning/20")} />
               {queue.engine.type === "golang" ? "Engine: Go Hybrid (:20129)" : "Engine: JS Fallback"}
             </Link>
           )}
@@ -200,7 +200,7 @@ export default function DashboardOverviewClient() {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-300">
+        <div className="rounded-xl border border-danger/30 bg-danger/5 p-4 text-sm text-danger dark:text-danger">
           {error}
         </div>
       ) : null}
@@ -222,7 +222,7 @@ export default function DashboardOverviewClient() {
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           {GATEWAY_NODES.map((node) => (
             <div key={node.port} className="flex items-start gap-3 rounded-xl border border-border/80 bg-surface-2/30 p-3">
-              <span className={cn("mt-1 size-2 shrink-0 rounded-full", !engineType ? "bg-surface-3" : goActive || node.port === ":20128" ? "bg-emerald-500" : "bg-amber-500")} aria-hidden="true" />
+              <span className={cn("mt-1 size-2 shrink-0 rounded-full", !engineType ? "bg-surface-3" : goActive || node.port === ":20128" ? "bg-success/20" : "bg-warning/20")} aria-hidden="true" />
               <div className="min-w-0">
                 <p className={cn("font-mono text-xs font-bold", node.tone)}>{node.port} · {node.label}</p>
                 <p className="mt-0.5 text-[11px] text-text-muted">{node.detail}</p>

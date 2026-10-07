@@ -19,13 +19,13 @@ const badgeVariants = cva(
         warning:
           "border-transparent bg-warning/10 text-warning border-warning/30",
         neoYellow:
-          "rounded-md border-2 border-black dark:border-white bg-yellow-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+          "rounded-md border-2 border-black dark:border-white bg-warning/15 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
         neoCyan:
-          "rounded-md border-2 border-black dark:border-white bg-cyan-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+          "rounded-md border-2 border-black dark:border-white bg-info/15 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
         neoPink:
-          "rounded-md border-2 border-black dark:border-white bg-pink-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+          "rounded-md border-2 border-black dark:border-white bg-surface-3 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
         neoGreen:
-          "rounded-md border-2 border-black dark:border-white bg-emerald-400 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
+          "rounded-md border-2 border-black dark:border-white bg-success/15 text-black font-black uppercase tracking-wider shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]",
       },
     },
     defaultVariants: {

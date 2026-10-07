@@ -684,7 +684,7 @@ export default function CombosPage() {
             <button
               type="button"
               onClick={resetFilters}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 dark:text-red-300 hover:text-red-700 dark:hover:text-red-300 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-danger dark:text-danger hover:text-danger dark:hover:text-danger transition-colors cursor-pointer"
             >
               <span className="material-symbols-outlined text-[14px]">restart_alt</span>
               Reset Filters
@@ -729,7 +729,7 @@ export default function CombosPage() {
                   if (el) el.indeterminate = someSelected && !allSelected;
                 }}
                 onChange={toggleSelectAll}
-                className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
               />
               <span>
                 {someSelected
@@ -860,7 +860,7 @@ const fmtK = (n) => {
 function StrategyBadge({ strategy }) {
   if (strategy === "round-robin") {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/25">
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-info/10 text-info dark:text-info border border-info/25">
         <span className="material-symbols-outlined text-[12px]">sync</span>
         Round Robin
       </span>
@@ -868,14 +868,14 @@ function StrategyBadge({ strategy }) {
   }
   if (strategy === "fusion") {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/25">
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-info/10 text-info dark:text-info border border-info/25">
         <span className="material-symbols-outlined text-[12px]">gavel</span>
         Fusion
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border border-emerald-500/25">
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success dark:text-success border border-success/25">
       <span className="material-symbols-outlined text-[12px]">alt_route</span>
       Fallback
     </span>
@@ -907,7 +907,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               onChange={onToggleSelect}
               onClick={(event) => event.stopPropagation()}
               aria-label={`Select ${combo.name}`}
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
             />
             <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 shadow-sm">
               <span className="material-symbols-outlined text-[20px]">layers</span>
@@ -1006,16 +1006,16 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
 
           {/* Fusion Judge Configuration */}
           {isFusion && (
-            <div className="mt-1 p-2.5 rounded-xl bg-purple-500/5 border border-purple-500/20 text-xs space-y-1.5">
+            <div className="mt-1 p-2.5 rounded-xl bg-info/5 border border-info/20 text-xs space-y-1.5">
               <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300 font-semibold text-[11px]">
+                <div className="flex items-center gap-1.5 text-info dark:text-info font-semibold text-[11px]">
                   <span className="material-symbols-outlined text-[14px]">gavel</span>
                   <span>Fusion Judge</span>
                 </div>
                 {judge && (
                   <button
                     onClick={() => onSetStrategy({ judgeModel: "" })}
-                    className="text-[10px] font-medium text-text-muted hover:text-red-700 dark:hover:text-red-300 transition-colors cursor-pointer"
+                    className="text-[10px] font-medium text-text-muted hover:text-danger dark:hover:text-danger transition-colors cursor-pointer"
                     title="Reset judge to auto-first model"
                   >
                     Reset Auto
@@ -1024,7 +1024,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               </div>
               <button
                 onClick={() => setShowJudgeSelect(true)}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg bg-surface-1 border border-dashed border-purple-500/30 text-purple-700 dark:text-purple-300 font-mono text-[11px] truncate hover:border-purple-500 hover:bg-purple-500/5 transition-colors block cursor-pointer"
+                className="w-full text-left px-2.5 py-1.5 rounded-lg bg-surface-1 border border-dashed border-info/30 text-info dark:text-info font-mono text-[11px] truncate hover:border-info/20 hover:bg-info/5 transition-colors block cursor-pointer"
                 title="Select judge model"
               >
                 {judge || `Auto — ${models[0] || "first model"}`}
@@ -1060,7 +1060,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             variant="ghost"
             size="sm"
             onClick={onDelete}
-            className="h-8 px-2 text-xs text-red-700 dark:text-red-300 hover:text-red-800 dark:hover:text-red-300 hover:bg-red-500/10"
+            className="h-8 px-2 text-xs text-danger dark:text-danger hover:text-danger dark:hover:text-danger hover:bg-danger/10"
             title="Delete combo"
             aria-label={`Delete ${combo.name}`}
           >
@@ -1215,7 +1215,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
                       <span className="truncate">{model}</span>
                       <CapacityBadges caps={getCaps?.(model)} />
                       {model === DEFAULT_FALLBACK_MODEL && (
-                        <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-sans text-[10px] font-medium text-emerald-800 dark:text-emerald-400">
+                        <span className="rounded bg-success/10 px-1.5 py-0.5 font-sans text-[10px] font-medium text-success dark:text-success">
                           free default
                         </span>
                       )}
@@ -1259,7 +1259,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
                       className={`p-1 rounded transition-colors ${
                         !enabled
                           ? "text-text-muted/20 cursor-not-allowed"
-                          : "text-text-muted hover:text-red-800 dark:hover:text-red-300 hover:bg-red-500/10"
+                          : "text-text-muted hover:text-danger dark:hover:text-danger hover:bg-danger/10"
                       }`}
                       title="Remove model"
                     >
@@ -1379,7 +1379,7 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
       {/* Remove */}
       <button
         onClick={onRemove}
-        className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-800 dark:hover:text-red-300 transition-all"
+        className="p-0.5 hover:bg-danger/10 rounded text-text-muted hover:text-danger dark:hover:text-danger transition-all"
         title="Remove"
       >
         <span className="material-symbols-outlined text-[12px]">close</span>

@@ -131,7 +131,7 @@ export default function MediaProviderDetailPage() {
 
       {/* Kind-specific notice (e.g. codex/image requires Plus) */}
       {!isCustom && provider.kindNotice?.[kind] && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-400">
+        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-warning/10 border border-warning/30 text-warning dark:text-warning">
           <span className="material-symbols-outlined text-[20px] mt-0.5">warning</span>
           <p className="text-sm">{provider.kindNotice[kind]}</p>
         </div>
@@ -139,15 +139,15 @@ export default function MediaProviderDetailPage() {
 
       {/* Provider notice text (only when there's actual text content) */}
       {!isCustom && provider.notice?.text && !provider.deprecated && (
-        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
-          <span className="material-symbols-outlined text-[16px] text-blue-700 dark:text-blue-300 shrink-0">info</span>
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-700 dark:text-blue-300">{provider.notice.text}</p>
+        <div className="flex flex-col gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 sm:flex-row sm:items-center">
+          <span className="material-symbols-outlined text-[16px] text-info dark:text-info shrink-0">info</span>
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-info dark:text-info">{provider.notice.text}</p>
           {provider.notice.apiKeyUrl && (
             <a
               href={provider.notice.apiKeyUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex justify-center rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700 sm:py-0.5"
+              className="inline-flex justify-center rounded bg-info/20 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-info/25 sm:py-0.5"
             >
               Get API Key →
             </a>

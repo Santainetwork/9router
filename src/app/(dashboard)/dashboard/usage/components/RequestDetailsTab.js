@@ -415,7 +415,7 @@ export default function RequestDetailsTab() {
                 <span className="text-text-muted">Status:</span>{" "}
                 <span className={cn(
                   "font-medium",
-                  selectedDetail.status === "success" ? "text-green-800 dark:text-green-500" : "text-red-700 dark:text-red-300"
+                  selectedDetail.status === "success" ? "text-success dark:text-success" : "text-danger dark:text-danger"
                 )}>
                   {selectedDetail.status}
                 </span>
@@ -464,8 +464,8 @@ export default function RequestDetailsTab() {
                   <span className={cn(
                     "text-xs px-2 py-0.5 rounded",
                     selectedDetail.pxpipe.applied
-                      ? "bg-green-500/15 text-green-800 dark:text-green-400"
-                      : "bg-amber-500/15 text-amber-800 dark:text-amber-500"
+                      ? "bg-success/15 text-success dark:text-success"
+                      : "bg-warning/15 text-warning dark:text-warning"
                   )}>
                     {selectedDetail.pxpipe.applied ? "Activated" : "Skipped"}
                   </span>
@@ -482,7 +482,7 @@ export default function RequestDetailsTab() {
                     </div>
                     <div>
                       <span className="text-text-muted block text-xs">Saved</span>
-                      <span className="font-mono text-green-800 dark:text-green-500">{selectedDetail.pxpipe.savedPct || 0}%</span>
+                      <span className="font-mono text-success dark:text-success">{selectedDetail.pxpipe.savedPct || 0}%</span>
                     </div>
                     <div>
                       <span className="text-text-muted block text-xs">Images</span>
@@ -531,7 +531,7 @@ export default function RequestDetailsTab() {
                       <span className="material-symbols-outlined text-[16px]">psychology</span>
                       Thinking Process
                     </h4>
-                    <pre className="max-h-[200px] max-w-full overflow-auto rounded-lg border border-amber-200 bg-amber-50 p-3 font-mono text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 sm:p-4">
+                    <pre className="max-h-[200px] max-w-full overflow-auto rounded-lg border border-warning/10 bg-warning/5 p-3 font-mono text-xs text-warning dark:border-warning/25 dark:bg-warning/30 dark:text-warning sm:p-4">
                       {selectedDetail.response.thinking}
                     </pre>
                   </div>

@@ -309,12 +309,12 @@ export default function ZedAuthModal({ isOpen, providerInfo, onSuccess, onClose 
 
         {phase === "ide-found" && ideSession && (
           <div className="space-y-3">
-            <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="bg-success/5 dark:bg-success/20 p-3 rounded-lg border border-success/10 dark:border-success/25">
               <div className="flex gap-2">
-                <span className="material-symbols-outlined text-green-700 dark:text-green-400">
+                <span className="material-symbols-outlined text-success dark:text-success">
                   check_circle
                 </span>
-                <p className="text-sm text-green-800 dark:text-green-200">
+                <p className="text-sm text-success dark:text-success">
                   Zed IDE session detected (user {ideSession.userId}). Import failed — retry or use browser sign-in below.
                 </p>
               </div>
@@ -326,7 +326,7 @@ export default function ZedAuthModal({ isOpen, providerInfo, onSuccess, onClose 
         )}
 
         {phase === "success" && (
-          <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800 text-sm text-green-800 dark:text-green-200">
+          <div className="bg-success/5 dark:bg-success/20 p-3 rounded-lg border border-success/10 dark:border-success/25 text-sm text-success dark:text-success">
             Connected successfully.
           </div>
         )}
@@ -383,8 +383,8 @@ export default function ZedAuthModal({ isOpen, providerInfo, onSuccess, onClose 
             </div>
 
             {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+              <div className="bg-danger/5 dark:bg-danger/20 p-3 rounded-lg border border-danger/10 dark:border-danger/25">
+                <p className="text-sm text-danger dark:text-danger">{error}</p>
               </div>
             )}
 

@@ -209,10 +209,10 @@ function KeyConfigModal({ keyData, allModels, isOpen, onClose, onSave, isSaving 
                     <div
                       className={`h-full rounded-full transition-all ${
                         (keyData.tokensUsed / keyData.tokenQuota) >= 1
-                          ? "bg-red-500"
+                          ? "bg-danger/20"
                           : (keyData.tokensUsed / keyData.tokenQuota) >= 0.8
-                          ? "bg-amber-500"
-                          : "bg-emerald-500"
+                          ? "bg-warning/20"
+                          : "bg-success/20"
                       }`}
                       style={{
                         width: `${Math.min(100, Math.round(((keyData.tokensUsed ?? 0) / keyData.tokenQuota) * 100))}%`,
@@ -272,7 +272,7 @@ function KeyConfigModal({ keyData, allModels, isOpen, onClose, onSave, isSaving 
                     <button
                       type="button"
                       onClick={() => setAllowedModels([])}
-                      className="text-xs text-red-700 dark:text-red-300 hover:text-red-700 dark:hover:text-red-300 underline"
+                      className="text-xs text-danger dark:text-danger hover:text-danger dark:hover:text-danger underline"
                     >
                       Clear all (Permit all models)
                     </button>
@@ -294,7 +294,7 @@ function KeyConfigModal({ keyData, allModels, isOpen, onClose, onSave, isSaving 
                         <button
                           type="button"
                           onClick={() => toggleModel(id)}
-                          className="hover:text-red-700 dark:hover:text-red-300 transition-colors ml-0.5"
+                          className="hover:text-danger dark:hover:text-danger transition-colors ml-0.5"
                         >
                           <span className="material-symbols-outlined text-[14px]">close</span>
                         </button>
@@ -479,7 +479,7 @@ export default function ApiKeysAccessPageClient() {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-300 flex items-center gap-2">
+        <div className="rounded-xl border border-danger/30 bg-danger/5 p-4 text-sm text-danger dark:text-danger flex items-center gap-2">
           <span className="material-symbols-outlined text-[18px]">error</span>
           {error}
         </div>
@@ -532,13 +532,13 @@ export default function ApiKeysAccessPageClient() {
                       {/* Status */}
                       <td className="py-3 px-4">
                         {key.isActive === false ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-800 dark:text-amber-500 px-2 py-0.5 text-xs font-medium">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                          <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning dark:text-warning px-2 py-0.5 text-xs font-medium">
+                            <span className="h-1.5 w-1.5 rounded-full bg-warning/20" />
                             Paused
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          <span className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success dark:text-success px-2 py-0.5 text-xs font-medium">
+                            <span className="h-1.5 w-1.5 rounded-full bg-success/20" />
                             Active
                           </span>
                         )}
@@ -600,7 +600,7 @@ export default function ApiKeysAccessPageClient() {
                                 key={m}
                                 className={`px-1.5 py-0.5 rounded text-[11px] font-mono border ${
                                   m.includes("*")
-                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-500 font-semibold"
+                                    ? "bg-warning/10 border-warning/30 text-warning dark:text-warning font-semibold"
                                     : "bg-surface-2 border-border text-text-main"
                                 }`}
                               >

@@ -376,9 +376,9 @@ export default function Header({ onMenuClick, showMenuButton = true, menuButtonR
       <div className="flex items-center gap-1 shrink-0">
         <span
           title={healthy === false ? "Gateway unreachable" : healthy ? "Gateway healthy" : "Checking gateway health"}
-          className={"hidden md:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold " + (healthy === false ? "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-300" : healthy ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-400" : "border-border bg-surface-2 text-text-muted")}
+          className={"hidden md:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold " + (healthy === false ? "border-danger/30 bg-danger/10 text-danger dark:text-danger" : healthy ? "border-success/30 bg-success/10 text-success dark:text-success" : "border-border bg-surface-2 text-text-muted")}
         >
-          <span className={"size-1.5 rounded-full " + (healthy === false ? "bg-red-700 dark:bg-red-400" : healthy ? "bg-emerald-700 dark:bg-emerald-400" : "bg-text-muted")} />
+          <span className={"size-1.5 rounded-full " + (healthy === false ? "bg-danger/25 dark:bg-danger/15" : healthy ? "bg-success/25 dark:bg-success/15" : "bg-text-muted")} />
           {healthy === false ? "Down" : healthy ? "Healthy" : "Checking"}
         </span>
         {displayName && (loginMethod === "OIDC" || loginMethod === "SAML") && (

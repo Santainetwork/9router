@@ -17,7 +17,7 @@ const buttonVariants = cva(
           "bg-surface-2 text-text-main shadow-soft hover:bg-surface-3",
         ghost: "hover:bg-surface-2 hover:text-text-main",
         link: "text-primary underline-offset-4 hover:underline",
-        neo: "border-2 border-black dark:border-white bg-yellow-400 hover:bg-yellow-300 text-black font-bold shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] hover:translate-x-[-1px] hover:translate-y-[-1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all",
+        neo: "border-2 border-black dark:border-white bg-warning/15 hover:bg-warning/15 text-black font-bold shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] hover:translate-x-[-1px] hover:translate-y-[-1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all",
         neoOutline: "border-2 border-black dark:border-white bg-surface text-text-main font-bold shadow-[3px_3px_0px_#000] dark:shadow-[3px_3px_0px_#fff] hover:translate-x-[-1px] hover:translate-y-[-1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all",
       },
       size: {

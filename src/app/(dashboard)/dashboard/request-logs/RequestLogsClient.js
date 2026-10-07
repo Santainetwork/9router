@@ -13,9 +13,9 @@ function formatNumber(value) {
 }
 
 function statusClass(status) {
-  if (status >= 500 || status === 499) return "text-red-700 dark:text-red-300";
-  if (status >= 400) return "text-amber-800 dark:text-amber-500";
-  return "text-green-800 dark:text-green-500";
+  if (status >= 500 || status === 499) return "text-danger dark:text-danger";
+  if (status >= 400) return "text-warning dark:text-warning";
+  return "text-success dark:text-success";
 }
 
 export default function RequestLogsClient() {
@@ -64,7 +64,7 @@ export default function RequestLogsClient() {
         <label className="flex items-center gap-2 text-sm text-text-muted"><input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} /> Auto refresh</label>
         <Button variant="secondary" size="sm" onClick={() => load()}>Refresh</Button>
       </div>
-      {error && <p className="p-4 text-sm text-red-700 dark:text-red-300">{error}</p>}
+      {error && <p className="p-4 text-sm text-danger dark:text-danger">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-surface-2 text-xs uppercase text-text-muted"><tr>{["Time", "Status", "API key", "IP", "Method / path", "Model", "In", "Out", "TPS", "Duration"].map((label) => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead>

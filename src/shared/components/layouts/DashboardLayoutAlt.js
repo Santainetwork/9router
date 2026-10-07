@@ -13,24 +13,24 @@ import HeaderAlt from "../HeaderAlt";
 function getToastStyle(type) {
   if (type === "success") {
     return {
-      wrapper: "border-green-500/30 bg-green-500/10 text-green-800 dark:text-green-400",
+      wrapper: "border-success/30 bg-success/10 text-success dark:text-success",
       icon: "check_circle",
     };
   }
   if (type === "error") {
     return {
-      wrapper: "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-300",
+      wrapper: "border-danger/30 bg-danger/10 text-danger dark:text-danger",
       icon: "error",
     };
   }
   if (type === "warning") {
     return {
-      wrapper: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-400",
+      wrapper: "border-warning/30 bg-warning/10 text-warning dark:text-warning",
       icon: "warning",
     };
   }
   return {
-    wrapper: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+    wrapper: "border-info/30 bg-info/10 text-info dark:text-info",
     icon: "info",
   };
 }

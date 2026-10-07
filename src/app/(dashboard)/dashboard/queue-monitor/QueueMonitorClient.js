@@ -24,7 +24,7 @@ function StatusBadge({ status }) {
   }
   if (status === "in_flight") {
     return (
-      <Badge variant="default" className="bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20">
+      <Badge variant="default" className="bg-info/10 text-info dark:text-info border-info/20">
         In-Flight
       </Badge>
     );
@@ -178,13 +178,13 @@ export default function QueueMonitorClient() {
       <div className={cn(
         "rounded-2xl border p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3",
         data?.engine?.type === "golang"
-          ? "bg-cyan-500/[0.04] border-cyan-500/25"
-          : "bg-amber-500/[0.04] border-amber-500/25"
+          ? "bg-info/20/[0.04] border-info/25"
+          : "bg-warning/20/[0.04] border-warning/25"
       )}>
         <div className="flex items-center gap-3">
           <div className={cn(
             "p-2.5 rounded-xl flex items-center justify-center",
-            data?.engine?.type === "golang" ? "bg-cyan-500/10 text-cyan-800 dark:text-cyan-400" : "bg-amber-500/10 text-amber-800 dark:text-amber-500"
+            data?.engine?.type === "golang" ? "bg-info/10 text-info dark:text-info" : "bg-warning/10 text-warning dark:text-warning"
           )}>
             <span className="material-symbols-outlined text-[22px]" aria-hidden="true">memory</span>
           </div>
@@ -194,7 +194,7 @@ export default function QueueMonitorClient() {
                 {data?.engine?.type === "golang" ? "Golang Hybrid Concurrency Engine" : "JavaScript In-Memory Limiter"}
               </span>
               <Badge variant={data?.engine?.type === "golang" ? "default" : "warning"} className={cn(
-                data?.engine?.type === "golang" ? "bg-cyan-700 text-white font-mono text-[10px]" : "text-[10px]"
+                data?.engine?.type === "golang" ? "bg-info/25 text-white font-mono text-[10px]" : "text-[10px]"
               )}>
                 {data?.engine?.type === "golang" ? "Active (:20129)" : "Fallback Mode"}
               </Badge>
@@ -215,7 +215,7 @@ export default function QueueMonitorClient() {
           <div className="h-6 w-px bg-border/70" />
           <div>
             <span className="text-[10px] uppercase tracking-wider block text-text-muted">Memory Guard</span>
-            <span className="text-emerald-800 dark:text-emerald-500 font-medium">Idle Reaping 10m</span>
+            <span className="text-success dark:text-success font-medium">Idle Reaping 10m</span>
           </div>
         </div>
       </div>
@@ -223,7 +223,7 @@ export default function QueueMonitorClient() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-xs">
           <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">In-Flight Concurrency</p>
-          <p className="mt-1.5 text-2xl font-bold tabular-nums text-blue-700 dark:text-blue-400">
+          <p className="mt-1.5 text-2xl font-bold tabular-nums text-info dark:text-info">
             {data?.totalActiveConcurrent ?? 0}
           </p>
           <p className="text-[11px] text-text-muted mt-0.5">active concurrent streams</p>
@@ -231,7 +231,7 @@ export default function QueueMonitorClient() {
 
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-xs">
           <p className="text-[11px] uppercase tracking-wider font-semibold text-text-muted">Waiting In Queue</p>
-          <p className="mt-1.5 text-2xl font-bold tabular-nums text-amber-800 dark:text-amber-500">
+          <p className="mt-1.5 text-2xl font-bold tabular-nums text-warning dark:text-warning">
             {data?.totalQueued ?? 0}
           </p>
           <p className="text-[11px] text-text-muted mt-0.5">requests buffered in queue</p>
@@ -251,10 +251,10 @@ export default function QueueMonitorClient() {
             <span
               className={cn(
                 "inline-flex size-2 rounded-full",
-                paused ? "bg-text-subtle" : "bg-emerald-500 animate-pulse"
+                paused ? "bg-text-subtle" : "bg-success/20 animate-pulse"
               )}
             />
-            <span className={paused ? "text-text-muted" : "text-emerald-800 dark:text-emerald-400"}>
+            <span className={paused ? "text-text-muted" : "text-success dark:text-success"}>
               {paused ? "Paused" : "Live Polling (3s)"}
             </span>
           </div>
@@ -265,7 +265,7 @@ export default function QueueMonitorClient() {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-300">
+        <div className="rounded-xl border border-danger/30 bg-danger/5 p-4 text-sm text-danger dark:text-danger">
           {error}
         </div>
       ) : null}
@@ -370,7 +370,7 @@ export default function QueueMonitorClient() {
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1 min-w-[120px]">
                           <div className="text-xs font-mono font-bold">
-                            <span className={active > 0 ? "text-blue-700 dark:text-blue-400" : "text-text-muted"}>
+                            <span className={active > 0 ? "text-info dark:text-info" : "text-text-muted"}>
                               {active}
                             </span>
                             <span className="text-text-muted font-normal"> / {cap > 0 ? cap : "Unl"}</span>
@@ -380,7 +380,7 @@ export default function QueueMonitorClient() {
                               <div
                                 className={cn(
                                   "h-full rounded-full transition-all",
-                                  pct >= 100 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500"
+                                  pct >= 100 ? "bg-danger/20" : pct >= 70 ? "bg-warning/20" : "bg-success/20"
                                 )}
                                 style={{ width: `${pct}%` }}
                               />
@@ -395,7 +395,7 @@ export default function QueueMonitorClient() {
                       </TableCell>
                       <TableCell className="text-right font-mono font-bold text-xs">
                         {k.queued > 0 ? (
-                          <span className="text-amber-800 dark:text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                          <span className="text-warning dark:text-warning bg-warning/10 px-1.5 py-0.5 rounded">
                             {k.queued}
                           </span>
                         ) : (
@@ -410,7 +410,7 @@ export default function QueueMonitorClient() {
                           <button
                             type="button"
                             onClick={() => handleReset("apikey", k.id)}
-                            className="text-xs text-red-700 dark:text-red-300 hover:underline font-medium"
+                            className="text-xs text-danger dark:text-danger hover:underline font-medium"
                           >
                             Release Slot
                           </button>
@@ -468,7 +468,7 @@ export default function QueueMonitorClient() {
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1 min-w-[120px]">
                           <div className="text-xs font-mono font-bold">
-                            <span className={active > 0 ? "text-blue-700 dark:text-blue-400" : "text-text-muted"}>
+                            <span className={active > 0 ? "text-info dark:text-info" : "text-text-muted"}>
                               {active}
                             </span>
                             <span className="text-text-muted font-normal"> / {cap > 0 ? cap : "Unl"}</span>
@@ -478,7 +478,7 @@ export default function QueueMonitorClient() {
                               <div
                                 className={cn(
                                   "h-full rounded-full transition-all",
-                                  pct >= 100 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500"
+                                  pct >= 100 ? "bg-danger/20" : pct >= 70 ? "bg-warning/20" : "bg-success/20"
                                 )}
                                 style={{ width: `${pct}%` }}
                               />
@@ -493,7 +493,7 @@ export default function QueueMonitorClient() {
                       </TableCell>
                       <TableCell className="text-right font-mono font-bold text-xs">
                         {p.queued > 0 ? (
-                          <span className="text-amber-800 dark:text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                          <span className="text-warning dark:text-warning bg-warning/10 px-1.5 py-0.5 rounded">
                             {p.queued}
                           </span>
                         ) : (
@@ -508,7 +508,7 @@ export default function QueueMonitorClient() {
                           <button
                             type="button"
                             onClick={() => handleReset("provider", p.id)}
-                            className="text-xs text-red-700 dark:text-red-300 hover:underline font-medium"
+                            className="text-xs text-danger dark:text-danger hover:underline font-medium"
                           >
                             Release Slot
                           </button>
@@ -550,17 +550,17 @@ export default function QueueMonitorClient() {
                         <div>{b.label || b.key}</div>
                         <div className="font-mono text-[10px] text-text-muted">{b.scope}:{b.key}</div>
                       </TableCell>
-                      <TableCell className="text-right font-mono font-bold text-blue-700 dark:text-blue-400 text-xs">
+                      <TableCell className="text-right font-mono font-bold text-info dark:text-info text-xs">
                         {b.activeConcurrency}
                       </TableCell>
-                      <TableCell className="text-right font-mono font-bold text-amber-800 dark:text-amber-500 text-xs">
+                      <TableCell className="text-right font-mono font-bold text-warning dark:text-warning text-xs">
                         {b.queued}
                       </TableCell>
                       <TableCell className="text-right">
                         <button
                           type="button"
                           onClick={() => handleReset(b.scope, b.resetKey || b.key)}
-                          className="text-xs text-red-700 dark:text-red-300 hover:underline font-medium"
+                          className="text-xs text-danger dark:text-danger hover:underline font-medium"
                         >
                           Clear
                         </button>

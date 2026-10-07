@@ -197,7 +197,7 @@ function CompareModelCard({ index, model, loading, result, onRetry, onStop }) {
   const isStopped = result?.status === "stopped";
 
   return (
-    <article className={`rounded-[26px] border ${isError ? "border-rose-500/30 bg-rose-500/5" : "border-white/10 bg-[#1f1f1f]"} p-4`}>
+    <article className={`rounded-[26px] border ${isError ? "border-danger/30 bg-danger/5" : "border-white/10 bg-[#1f1f1f]"} p-4`}>
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-white">
@@ -221,7 +221,7 @@ function CompareModelCard({ index, model, loading, result, onRetry, onStop }) {
       </div>
 
       {isError ? (
-        <div className="mt-3 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+        <div className="mt-3 rounded-[18px] border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
           {result?.error || "Failed to generate response"}
         </div>
       ) : null}
@@ -1165,7 +1165,7 @@ export default function BasicChatPageClient() {
                         key={group.providerId}
                         type="button"
                         onClick={() => { handleSelectProvider(group.providerId); setProviderMenuOpen(false); }}
-                        className={`w-full rounded-[14px] border px-3 py-3 text-left transition mb-1 ${isActive ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
+                        className={`w-full rounded-[14px] border px-3 py-3 text-left transition mb-1 ${isActive ? "border-info/40 bg-info/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="truncate text-sm font-medium text-white">{group.providerName}</span>
@@ -1208,9 +1208,9 @@ export default function BasicChatPageClient() {
                       onChange={(event) => setCustomModel(event.target.value)}
                       onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); handleAddCustomModel(); } }}
                       placeholder="Custom model ID, e.g. qd/ultimate"
-                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-white/55 focus:border-blue-400/50"
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-white/55 focus:border-info/50"
                     />
-                    <button type="button" onClick={handleAddCustomModel} disabled={!customModel.trim()} className="rounded-lg bg-blue-500/20 px-3 py-2 text-xs text-blue-800 dark:text-blue-300 disabled:opacity-40">
+                    <button type="button" onClick={handleAddCustomModel} disabled={!customModel.trim()} className="rounded-lg bg-info/20 px-3 py-2 text-xs text-info dark:text-info disabled:opacity-40">
                       Add
                     </button>
                   </div>
@@ -1232,7 +1232,7 @@ export default function BasicChatPageClient() {
               role={mode === "compare" ? "checkbox" : undefined}
               aria-checked={mode === "compare" ? compareModels.some((item) => item.id === model.id) : undefined}
               aria-label={`${model.name} from ${model.providerName}`}
-                          className={`rounded-[14px] border px-3 py-3 text-left transition ${(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
+                          className={`rounded-[14px] border px-3 py-3 text-left transition ${(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? "border-info/40 bg-info/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-2.5 min-w-0">
@@ -1242,7 +1242,7 @@ export default function BasicChatPageClient() {
                                 <p className="truncate text-[11px] text-white/55">{model.requestModel}</p>
                               </div>
                             </div>
-                            {(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? <span className="material-symbols-outlined text-[18px] text-blue-300 shrink-0">check_circle</span> : null}
+                            {(mode === "compare" ? compareModels.some((item) => item.id === model.id) : isActive) ? <span className="material-symbols-outlined text-[18px] text-info shrink-0">check_circle</span> : null}
                           </div>
                         </button>
                       );
@@ -1265,7 +1265,7 @@ export default function BasicChatPageClient() {
             <button
               type="button"
               onClick={() => setApiKeyOpen((value) => !value)}
-              className={`rounded-2xl border px-4 py-3 text-sm transition ${apiKey.trim() ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15" : "border-white/10 bg-white/5 text-white/80 hover:bg-white/8"}`}
+              className={`rounded-2xl border px-4 py-3 text-sm transition ${apiKey.trim() ? "border-success/40 bg-success/10 text-success hover:bg-success/15" : "border-white/10 bg-white/5 text-white/80 hover:bg-white/8"}`}
               title={apiKey.trim() ? "Using your API key" : "Set an API key to call the provider directly"}
             >
               <span className="material-symbols-outlined align-middle text-[18px]">key</span>
@@ -1331,7 +1331,7 @@ export default function BasicChatPageClient() {
                     key={session.id}
                     type="button"
                     onClick={() => handleSelectSession(session.id)}
-                    className={`w-full rounded-[16px] border px-3 py-3 text-left transition ${isActive ? "border-blue-400/40 bg-blue-500/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
+                    className={`w-full rounded-[16px] border px-3 py-3 text-left transition ${isActive ? "border-info/40 bg-info/15" : "border-white/10 bg-white/5 hover:bg-white/8"}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -1348,7 +1348,7 @@ export default function BasicChatPageClient() {
         ) : null}
 
         {loadError ? (
-          <div className="mt-4 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-rose-300">
+          <div className="mt-4 rounded-[18px] border border-danger/20 bg-danger/10 px-4 py-3 text-danger">
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined text-[20px]">error</span>
               <p className="text-sm leading-6">{loadError}</p>
@@ -1470,7 +1470,7 @@ export default function BasicChatPageClient() {
                             Retry
                           </button>
                           {message.status === "error" ? (
-                            <span className="text-xs text-rose-300/80">failed</span>
+                            <span className="text-xs text-danger/80">failed</span>
                           ) : null}
                         </div>
                       ) : null}

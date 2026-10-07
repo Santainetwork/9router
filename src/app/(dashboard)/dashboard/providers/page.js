@@ -698,10 +698,10 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
   const isNoAuth = !!provider.noAuth;
 
   const dotColors = {
-    free: "bg-green-500",
-    oauth: "bg-blue-500",
-    apikey: "bg-amber-500",
-    compatible: "bg-orange-500",
+    free: "bg-success/20",
+    oauth: "bg-info/20",
+    apikey: "bg-warning/20",
+    compatible: "bg-warning/20",
   };
   const dotLabels = {
     free: "Free",
@@ -817,10 +817,10 @@ function ApiKeyProviderCard({
   );
 
   const dotColors = {
-    free: "bg-green-500",
-    oauth: "bg-blue-500",
-    apikey: "bg-amber-500",
-    compatible: "bg-orange-500",
+    free: "bg-success/20",
+    oauth: "bg-info/20",
+    apikey: "bg-warning/20",
+    compatible: "bg-warning/20",
   };
   const dotLabels = {
     free: "Free",

@@ -41,13 +41,12 @@ for (const [mode, selector] of [['friend-light', 'html[data-ui-variant="friend"]
 test('friend variant status badges stay readable on their translucent tints', () => {
   const header = read('shared/components/HeaderAlt.js');
   const sidebar = read('shared/components/SidebarAlt.js');
-  // Health badge: emerald-500/10 tint over a light surface needs the darker
-  // emerald + a dark-mode override; emerald-500 alone measured 2.25:1.
-  assert.match(header, /bg-emerald-500\/10 text-emerald-800 dark:text-emerald-400/);
-  assert.match(header, /bg-red-500\/10 text-red-800 dark:text-red-300/);
+  // Health badge uses semantic tokens; token-level contrast is asserted above.
+  assert.match(header, /bg-success\/10 text-success dark:text-success/);
+  assert.match(header, /bg-danger\/10 text-danger dark:text-danger/);
   // NEW badge: green-400 on green-500/15 tint measured 1.55:1 in light mode.
   assert.doesNotMatch(sidebar, /bg-green-500\/15 text-green-400/);
-  assert.match(sidebar, /bg-green-500\/15 text-green-800 dark:bg-green-500\/20 dark:text-green-400/);
+  assert.match(sidebar, /bg-success\/15 text-success dark:bg-success\/20 dark:text-success/);
   // Section labels rendered at /60 opacity failed in both variants.
   for (const file of [header, sidebar, read('shared/components/Sidebar.js')]) {
     assert.doesNotMatch(file, /text-text-muted\/60/);

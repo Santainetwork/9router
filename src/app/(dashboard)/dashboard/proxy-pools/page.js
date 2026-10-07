@@ -594,7 +594,7 @@ export default function ProxyPoolsPage() {
             </Button>
 
             {showRelayMenu && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-xl border border-black/10 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-zinc-900 sm:left-auto sm:right-0">
+              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-xl border border-black/10 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-surface sm:left-auto sm:right-0">
                 <button
                   onClick={() => {
                     openCloudflareModal();
@@ -602,7 +602,7 @@ export default function ProxyPoolsPage() {
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-orange-800 dark:text-orange-400">cloud</span>
+                  <span className="material-symbols-outlined text-[20px] text-warning dark:text-warning">cloud</span>
                   Cloudflare Relay
                 </button>
                 <button
@@ -612,7 +612,7 @@ export default function ProxyPoolsPage() {
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-blue-700 dark:text-blue-400">cloud_upload</span>
+                  <span className="material-symbols-outlined text-[20px] text-info dark:text-info">cloud_upload</span>
                   Vercel Relay
                 </button>
                 <button
@@ -622,7 +622,7 @@ export default function ProxyPoolsPage() {
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-green-800 dark:text-green-500">terminal</span>
+                  <span className="material-symbols-outlined text-[20px] text-success dark:text-success">terminal</span>
                   Deno Relay
                 </button>
               </div>
@@ -766,7 +766,7 @@ export default function ProxyPoolsPage() {
                   </button>
                   <button
                     onClick={() => handleDelete(pool)}
-                    className="p-2 rounded hover:bg-red-500/10 text-red-700 dark:text-red-300"
+                    className="p-2 rounded hover:bg-danger/10 text-danger dark:text-danger"
                     title="Delete"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>
@@ -814,7 +814,7 @@ export default function ProxyPoolsPage() {
         onClose={closeVercelModal}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-lg bg-blue-500/5 border border-blue-500/10 p-3 flex flex-col gap-1.5">
+          <div className="rounded-lg bg-info/5 border border-info/10 p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Vercel Relay?</p>
             <p className="text-xs text-text-muted">
               Deploys an edge relay function to Vercel. All AI provider requests will be forwarded through Vercel&apos;s edge network, masking your real IP from providers.
@@ -862,7 +862,7 @@ export default function ProxyPoolsPage() {
         onClose={closeCloudflareModal}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-lg bg-orange-500/5 border border-orange-500/10 p-3 flex flex-col gap-1.5">
+          <div className="rounded-lg bg-warning/5 border border-warning/10 p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Cloudflare Relay?</p>
             <p className="text-xs text-text-muted">
               Deploys a Cloudflare Worker as a proxy relay. All AI provider requests will be forwarded through Cloudflare&apos;s global edge network.
@@ -872,7 +872,7 @@ export default function ProxyPoolsPage() {
               <li>Free tier: 100,000 requests per day</li>
               <li>Requires Cloudflare Account ID and a Workers API Token (Edit Workers permission)</li>
             </ul>
-            <div className="mt-2 pt-2 border-t border-orange-500/10 text-xs text-text-muted">
+            <div className="mt-2 pt-2 border-t border-warning/10 text-xs text-text-muted">
               <p className="font-medium text-text-main mb-1">How to generate your API Token:</p>
               <ol className="list-decimal pl-4 space-y-0.5">
                 <li>Go to <b>My Profile</b> → <b>API Tokens</b> → <b>Create Token</b></li>

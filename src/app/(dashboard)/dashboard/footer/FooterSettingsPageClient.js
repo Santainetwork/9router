@@ -224,7 +224,7 @@ export default function FooterSettingsPageClient() {
       <Card>
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium">Live preview</p>
-          {savedFlash ? <span className="text-xs text-green-800 dark:text-green-500">Saved</span> : null}
+          {savedFlash ? <span className="text-xs text-success dark:text-success">Saved</span> : null}
         </div>
         <div className="mt-3 rounded-xl border border-border bg-bg p-4">
           <p className="text-sm">Hello! How can I help you with your coding today?</p>
@@ -337,7 +337,7 @@ export default function FooterSettingsPageClient() {
             <button
               onClick={clearLogs}
               disabled={logsLoading}
-              className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              className="px-3 py-1 text-xs bg-danger/20 text-white rounded hover:bg-danger/25 disabled:opacity-50"
             >
               Clear
             </button>
@@ -345,7 +345,7 @@ export default function FooterSettingsPageClient() {
         </div>
 
         {logsError && (
-          <div className="mt-3 p-2 text-xs text-red-700 bg-red-100 rounded">
+          <div className="mt-3 p-2 text-xs text-danger bg-danger/10 rounded">
             {logsError}
           </div>
         )}
