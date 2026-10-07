@@ -600,6 +600,72 @@ test("upgrade preserves installed PostgreSQL worker topology unless caller overr
   }
 });
 
+test("SQLite multicore broker keys survive an upgrade", () => {
+  // install.sh regenerates /etc/9router.env from a fixed template. If the
+  // SQLite broker keys are not read back, the first --upgrade after enabling
+  // multicore drops them and the next boot fails the SQLITE_MULTICORE preflight.
+  for (const key of ["SQLITE_MULTICORE", "REDIS_URL", "REDIS_KEY_PREFIX", "REDIS_PASSWORD", "SQLITE_QUEUE_ENCRYPTION_KEY"]) {
+    const emit = SRC.includes('${' + key + ':+' + key + '=');
+    const readBack = SRC.includes(`${key}=`);
+    assert.ok(emit, `env template must re-emit ${key} when it is set`);
+    assert.ok(readBack, `installer must read ${key} back from the existing env file`);
+  }
+  const sb = sandbox();
+  try {
+    mkdirSync(sb.env.RELEASE_DIR, { recursive: true });
+    writeFileSync(
+      sb.env.ENV_FILE,
+      "API_WORKERS=3\nDB_TYPE=sqlite\nSQLITE_MULTICORE=redis\n" +
+        "REDIS_URL=redis://127.0.0.1:6379/0\nREDIS_KEY_PREFIX=9router:sqlite\n" +
+        "SQLITE_QUEUE_ENCRYPTION_KEY=" + "a".repeat(64) + "\n",
+    );
+    const env = { ...sb.env };
+    delete env.API_WORKERS;
+    delete env.DB_TYPE;
+    delete env.SQLITE_MULTICORE;
+    delete env.REDIS_URL;
+    const r = runInstaller(["--upgrade", "--dry-run"], env);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /api workers\s+3 total Node process/, "upgrade must inherit the installed SQLite multicore topology");
+    assert.doesNotMatch(r.out, /requires PostgreSQL/, "inherited SQLITE_MULTICORE=redis must satisfy the topology check");
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test("Removing SQLITE_MULTICORE from the env file disables the broker on the next upgrade", () => {
+  // The read-back only exports a key when it already has a value, and the
+  // template only writes it when set. So clearing one key from the env file
+  // must drop it, not resurrect it from a stale copy.
+  const sb = sandbox();
+  try {
+    mkdirSync(sb.env.RELEASE_DIR, { recursive: true });
+    writeFileSync(sb.env.ENV_FILE, "API_WORKERS=1\nDB_TYPE=sqlite\nSQLITE_MULTICORE=redis\n");
+    const env = { ...sb.env };
+    delete env.API_WORKERS;
+    delete env.DB_TYPE;
+    delete env.SQLITE_MULTICORE;
+    let r = runInstaller(["--upgrade", "--dry-run"], env);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /api workers\s+1 total Node process/, "a single SQLITE_MULTICORE line must not fail the topology check");
+    assert.doesNotMatch(r.out, /requires PostgreSQL|requires a valid redis/, "inherited SQLITE_MULTICORE alone must satisfy preflight");
+
+    // Now the operator disables the broker by deleting the line. Nothing may re-add it.
+    writeFileSync(sb.env.ENV_FILE, "API_WORKERS=1\nDB_TYPE=sqlite\n");
+    r = runInstaller(["--upgrade", "--dry-run"], env);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /SQLITE_MULTICORE/, "a cleared key must stay cleared");
+  } finally {
+    sb.cleanup();
+  }
+});
+
+test("ENABLE_GO_HYBRID defaults to the runtime truth for the config preflight", () => {
+  assert.match(SRC, /export ENABLE_GO_HYBRID="\$\{ENABLE_GO_HYBRID:-true\}"/,
+    "check-config rejects SQLite multicore without ENABLE_GO_HYBRID=true, and the units hardcode it");
+  assert.doesNotMatch(SRC, /ENABLE_GO_HYBRID=\$\{ENABLE_GO_HYBRID:-true\}\nENABLE_GO_HYBRID=true/);
+});
+
 test("health checks cover every public surface and can trigger rollback", () => {
   for (const url of ["/api/health", "/login", "/usage-check", "/health"]) {
     assert.ok(SRC.includes(url), `health checks must cover ${url}`);

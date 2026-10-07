@@ -126,7 +126,23 @@ if [ -f "$ENV_FILE" ]; then
   if [ -z "${DB_TYPE+x}" ]; then
     DB_TYPE="$(grep -E '^DB_TYPE=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
   fi
+  # The SQLite multicore broker keys are read back the same way. Without this they
+  # would be dropped on every --upgrade: the env file below is regenerated from a
+  # fixed template, so an uncharted topology key silently disappears and the next
+  # boot fails the SQLITE_MULTICORE preflight.
+  for KEY in SQLITE_MULTICORE REDIS_URL REDIS_KEY_PREFIX REDIS_PASSWORD \
+             SQLITE_QUEUE_ENCRYPTION_KEY; do
+    if [ -z "${!KEY+x}" ]; then
+      VALUE="$(grep -E "^${KEY}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+      [ -z "$VALUE" ] || export "$KEY=$VALUE"
+    fi
+  done
 fi
+# The env file and unit override both hardcode ENABLE_GO_HYBRID=true, so that is
+# the runtime truth the --check-config preflight must validate against: SQLite
+# multicore is rejected without it. Defaulting here removes the need to pass it
+# on the installer command line.
+export ENABLE_GO_HYBRID="${ENABLE_GO_HYBRID:-true}"
 
 # ─── Output helpers ──────────────────────────────────────────────────────────
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -1085,6 +1101,16 @@ RELEASE_DIR=${RELEASE_DIR}
 ${EXISTING_DBURL:+DATABASE_URL=${EXISTING_DBURL}}
 ${EXISTING_DBURL:-# DATABASE_URL=postgres://user:password@localhost:5432/9router}
 ${EXISTING_DBTYPE:+DB_TYPE=${EXISTING_DBTYPE}}
+
+# ── SQLite multicore broker (SQLITE_MULTICORE=redis) ────────────────────────
+# Preserved across upgrades from the keys read at the top of this script. Pass
+# them in the installer environment once to enable, and every later --upgrade
+# keeps them. Leave SQLITE_MULTICORE unset for plain single-process SQLite.
+${SQLITE_MULTICORE:+SQLITE_MULTICORE=${SQLITE_MULTICORE}}
+${REDIS_URL:+REDIS_URL=${REDIS_URL}}
+${REDIS_KEY_PREFIX:+REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX}}
+${REDIS_PASSWORD:+REDIS_PASSWORD=${REDIS_PASSWORD}}
+${SQLITE_QUEUE_ENCRYPTION_KEY:+SQLITE_QUEUE_ENCRYPTION_KEY=${SQLITE_QUEUE_ENCRYPTION_KEY}}
 
 # ── Feature toggles ─────────────────────────────────────────────────────────
 ENABLE_GO_HYBRID=true
