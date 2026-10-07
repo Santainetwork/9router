@@ -192,16 +192,27 @@ node --test tests/unit/db-postgres-adapter.test.mjs
 # Run Go hybrid engine tests with race detector
 cd hybrid-engine && go test ./... -race
 
-# Build standalone production bundle
-npm run build
+# Build standalone production bundle.
+# NOTE: the live service serves the tailadmin (friend) bundle, NOT the default
+# distDir. npm run build writes .next (santai), which 9router.service never reads.
+# Deploying only .next leaves the pre-migration friend build in place.
+npm run build:tailadmin
 
-# Deploy to configurable release directory and restart
+# Deploy to configurable release directory and restart.
+# The served bundle is .next-tailadmin (friend). next.config.mjs defaults
+# distDir to .next (santai), which this deploy does NOT want, so set DIST
+# explicitly rather than parsing the config (a grep fallback resolves to .next).
+# NOTE: `cp -a src/. dst/` followed by `cp -a src/static dst/static` nests
+# static/static because dst/static already exists; remove first, then copy.
 INSTALL_DIR="${INSTALL_DIR:-$(pwd)}"
 RELEASE_DIR="${RELEASE_DIR:-/opt/9router-release}"
-cp -a "$INSTALL_DIR/.next/standalone/." "$RELEASE_DIR/"
-cp -a "$INSTALL_DIR/.next/static" "$RELEASE_DIR/.next/static"
+DIST="${DIST:-.next-tailadmin}"
+cp -a "$INSTALL_DIR/$DIST/standalone/." "$RELEASE_DIR/"
+rm -rf "$RELEASE_DIR/$DIST/static"
+cp -a "$INSTALL_DIR/$DIST/static" "$RELEASE_DIR/$DIST/static"
 cp -a "$INSTALL_DIR/public" "$RELEASE_DIR/public"
 cp -a "$INSTALL_DIR/custom-server.js" "$RELEASE_DIR/custom-server.js"
+printf '%s' "$DIST" > "$RELEASE_DIR/.dist-dir"
 systemctl restart 9router-hybrid-engine
 systemctl restart 9router
 curl http://localhost:20128/api/health
