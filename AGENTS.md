@@ -204,17 +204,33 @@ cd hybrid-engine && go test ./... -race
 npm run build:tailadmin
 
 # Deploy to configurable release directory and restart.
-# Mirror install.sh's stage+swap shape: copy the standalone tree, then run the
-# post-deploy gate (verify-release.sh) which requires repo and release to be
-# byte-identical on $DIST. Do NOT copy static/ separately once the standalone
-# bundle ships it, that is the static/static nesting the gate rejects.
+# Same shape as install.sh: stage the whole standalone tree in a SIBLING dir,
+# record the dist dir there, swap it into place, then run the post-deploy gate
+# (verify-release.sh). Staging inside $RELEASE_DIR lands .dist-dir in the wrong
+# direction for the gate, and cp -a straight into the live release merges with
+# the previous build so the old static/<BUILD_ID> dir survives the diff.
+# Scripts are release-only, so copy them across the swap.
 INSTALL_DIR="${INSTALL_DIR:-$(pwd)}"
 RELEASE_DIR="${RELEASE_DIR:-/opt/9router-release}"
 DIST="${DIST:-.next-tailadmin}"
-cp -a "$INSTALL_DIR/$DIST/standalone/." "$RELEASE_DIR/"
-if [ -d "$RELEASE_DIR/$DIST/static/static" ]; then rm -rf "$RELEASE_DIR/$DIST/static/static"; fi
-printf '%s' "$DIST" > "$RELEASE_DIR/.dist-dir"
-bash scripts/verify-release.sh || { echo 'gate failed, release not restarted'; exit 1; }
+STAGE="${RELEASE_DIR}.staging.$$"
+rm -rf "$STAGE"
+cp -a "$INSTALL_DIR/$DIST/standalone/." "$STAGE/"
+# The release tree needs its own copy of the worker topology helper (what
+# install.sh ships); the gate below runs from the repo, not the release.
+mkdir -p "$STAGE/scripts"
+cp -a "$INSTALL_DIR/scripts/systemd-worker-topology.sh" "$STAGE/scripts/"
+printf '%s' "$DIST" > "$STAGE/.dist-dir"
+rm -rf "${RELEASE_DIR}.old"
+if [ -d "$RELEASE_DIR" ]; then mv "$RELEASE_DIR" "${RELEASE_DIR}.old"; fi
+mv "$STAGE" "$RELEASE_DIR"
+if ! bash scripts/verify-release.sh; then
+  echo 'gate failed, rolling back'
+  rm -rf "$RELEASE_DIR"
+  mv "${RELEASE_DIR}.old" "$RELEASE_DIR"
+  exit 1
+fi
+rm -rf "${RELEASE_DIR}.old"
 systemctl restart 9router-hybrid-engine
 systemctl restart 9router
 # Node needs a few seconds to bind; a bare curl right after restart races it.
