@@ -16,7 +16,13 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   extractApiKey: () => "client-key",
   isValidApiKey: vi.fn(),
 }));
-vi.mock("@/lib/localDb", () => ({ getSettings: async () => ({ requireApiKey: false }) }));
+vi.mock("@/lib/localDb", () => ({
+  getSettings: async () => ({ requireApiKey: false }),
+  // Fork's embeddings handler runs the rateLimitGate, which reads limits
+  // through localDb; the mock must carry these even for a persistence test.
+  getApiKeyLimits: async () => null,
+  getApiKeyTokenUsage: async () => 0,
+}));
 vi.mock("../../src/sse/services/model.js", () => ({
   getModelInfo: async () => ({ provider: "openai", model: "text-embedding-3-small" }),
 }));
