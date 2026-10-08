@@ -98,7 +98,7 @@ async function testSelectiveDisable() {
   }
 }
 
-async testMinimizeTokens() {
+async function testMinimizeTokens() {
   console.log("\n=== Test 5: Maximum Token Savings (All Features ON) ===");
   
   const body = JSON.stringify({

@@ -170,7 +170,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
-    try { releaseApiKey(); } catch {}
+    try { safeReleaseApiKey(); } catch {}
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
@@ -183,7 +183,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
   const keyAccess = await getKeyAccessContext(request);
   const keyAccessDenied = await enforceKeyAccess(keyAccess, modelStr);
   if (keyAccessDenied) {
-    try { releaseApiKey(); } catch {}
+    try { safeReleaseApiKey(); } catch {}
     return keyAccessDenied;
   }
 
@@ -191,7 +191,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
   {
     const denied = await enforceApiKeyAccess(apiKey, modelStr);
     if (denied) {
-      try { releaseApiKey(); } catch {}
+      try { safeReleaseApiKey(); } catch {}
       return denied;
     }
   }
@@ -200,7 +200,7 @@ async function doHandleChat(request, clientRawRequest, setReleaseApiKey, safeRel
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) {
-    try { releaseApiKey(); } catch {}
+    try { safeReleaseApiKey(); } catch {}
     return bypassResponse.response || bypassResponse;
   }
 

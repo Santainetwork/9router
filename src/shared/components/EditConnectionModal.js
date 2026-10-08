@@ -189,13 +189,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       
       // Add Azure-specific data if this is an Azure connection
       if (isCompatible) {
-      providerSpecificData = {
-        ...((connection?.providerSpecificData) || {}),
-        creditCheckType,
-        customCreditUrl: creditCheckType === "custom" ? customCreditUrl : undefined,
-        customCreditPath: creditCheckType === "custom" ? customCreditPath : undefined,
-      };
-    } else if (isAzure) {
+        updates.providerSpecificData = {
+          ...((connection?.providerSpecificData) || {}),
+          creditCheckType,
+          customCreditUrl: creditCheckType === "custom" ? customCreditUrl : undefined,
+          customCreditPath: creditCheckType === "custom" ? customCreditPath : undefined,
+        };
+      } else if (isAzure) {
         updates.providerSpecificData = {
           azureEndpoint: azureData.azureEndpoint,
           apiVersion: azureData.apiVersion,
