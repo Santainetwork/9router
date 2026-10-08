@@ -11,7 +11,6 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import useSettingsStore from "@/store/settingsStore";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
-import NineRemotePromoModal from "./NineRemotePromoModal";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
 const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt", "systemone"];
@@ -53,7 +52,6 @@ const systemItems = [
 export default function Sidebar({ onClose, compact = false }) {
   const pathname = usePathname();
   const [mediaOpen, setMediaOpen] = useState(false);
-  const [showRemoteModal, setShowRemoteModal] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -336,8 +334,11 @@ export default function Sidebar({ onClose, compact = false }) {
             })}
 
             {/* Remote */}
-            <button
-              onClick={() => setShowRemoteModal(true)}
+            <a
+              href="https://9remote.cc"
+              target="_blank"
+              rel="noreferrer"
+              onClick={onClose}
               aria-label={compact ? "9Remote" : undefined}
               title={compact ? "9Remote" : undefined}
               className={cn(
@@ -353,7 +354,7 @@ export default function Sidebar({ onClose, compact = false }) {
               <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-warning/15 text-warning dark:text-warning", compact && "lg:hidden")}>
                 HOT
               </span>
-            </button>
+            </a>
 
             {/* 9English */}
             <a
@@ -409,8 +410,6 @@ export default function Sidebar({ onClose, compact = false }) {
         </div>
       </aside>
 
-      {/* Remote Promo Modal */}
-      <NineRemotePromoModal isOpen={showRemoteModal} onClose={() => setShowRemoteModal(false)} />
 
       {/* Update Confirmation Modal */}
       <ConfirmModal

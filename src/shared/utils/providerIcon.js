@@ -25,6 +25,9 @@ const ICON_ALIASES = {
   "yogathedev": "openai",
   "minervax": "openai",
   "nexus": "openai",
+  // MiniMax Code rides the existing MiniMax brand mark
+  "minimax-code": "minimax",
+  "minimax-code-global": "minimax",
 };
 
 // Runtime only — first 404 remembers id for the whole session

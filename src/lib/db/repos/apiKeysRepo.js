@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { bumpDbVersion } from "../dbVersion.js";
+import { keyAccessFromColumns, keyAccessToColumns } from "@/shared/utils/keyAccess.js";
+import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -16,6 +18,7 @@ function rowToKey(row) {
     queueTimeoutMs: row.queueTimeoutMs ?? 0,
     allowedModels: parseAllowedModels(row.allowedModels),
     tokenQuota: row.tokenQuota ?? 0,
+    access: keyAccessFromColumns(row.accessRestricted, row.accessAllow),
   };
 }
 
@@ -48,6 +51,14 @@ export async function getApiKeyById(id) {
   return rowToKey(row);
 }
 
+// Used by the /v1 handlers to read the presented key's access settings.
+export async function getApiKeyByKey(key) {
+  if (!key) return null;
+  const db = await getAdapter();
+  const row = db.get(`SELECT * FROM apiKeys WHERE key = ?`, [key]);
+  return rowToKey(row);
+}
+
 export async function createApiKey(name, machineId) {
   if (!machineId) throw new Error("machineId is required");
   const db = await getAdapter();
@@ -63,11 +74,13 @@ export async function createApiKey(name, machineId) {
     rpm: 0,
     concurrency: 0,
     queueTimeoutMs: 0,
+    access: { restricted: false, allow: [] },
   };
+  const cols = keyAccessToColumns(KEY_ACCESS_UNRESTRICTED);
   db.transaction(() => {
     db.run(
-      `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, rpm, concurrency, queueTimeoutMs, allowedModels, tokenQuota) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, 0, 0, 0, null, 0]
+      `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, rpm, concurrency, queueTimeoutMs, allowedModels, tokenQuota, accessRestricted, accessAllow) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, 0, 0, 0, null, 0, cols.accessRestricted, cols.accessAllow]
     );
     bumpDbVersion(db);
   });
@@ -86,11 +99,12 @@ export async function updateApiKey(id, data) {
     const queueTimeoutMs = Number.isFinite(Number(merged.queueTimeoutMs)) ? Math.max(0, Math.floor(Number(merged.queueTimeoutMs))) : 0;
     const tokenQuota = Number.isFinite(Number(merged.tokenQuota)) ? Math.max(0, Math.floor(Number(merged.tokenQuota))) : 0;
     const allowedModelsJson = serializeAllowedModels(merged.allowedModels);
+    const cols = keyAccessToColumns(merged.access);
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, rpm = ?, concurrency = ?, queueTimeoutMs = ?, allowedModels = ?, tokenQuota = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, rpm, concurrency, queueTimeoutMs, allowedModelsJson, tokenQuota, id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, rpm = ?, concurrency = ?, queueTimeoutMs = ?, allowedModels = ?, tokenQuota = ?, accessRestricted = ?, accessAllow = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, rpm, concurrency, queueTimeoutMs, allowedModelsJson, tokenQuota, cols.accessRestricted, cols.accessAllow, id]
     );
-    result = { ...merged, rpm, concurrency, queueTimeoutMs, tokenQuota, allowedModels: parseAllowedModels(allowedModelsJson) };
+    result = { ...merged, rpm, concurrency, queueTimeoutMs, tokenQuota, allowedModels: parseAllowedModels(allowedModelsJson), access: keyAccessFromColumns(cols.accessRestricted, cols.accessAllow) };
     bumpDbVersion(db);
   });
   return result;
@@ -143,26 +157,6 @@ export async function getApiKeyTokenUsage(key) {
 // Public metadata + limits for a raw key value. Returns null if the key does
 // not exist. Never returns the raw key back. Used by the self-service usage
 // endpoint so a caller can inspect only their own key.
-export async function getApiKeyByKey(key) {
-  const db = await getAdapter();
-  const row = db.get(
-    `SELECT id, name, isActive, createdAt, rpm, concurrency, queueTimeoutMs, allowedModels, tokenQuota FROM apiKeys WHERE key = ?`,
-    [key]
-  );
-  if (!row) return null;
-  return {
-    id: row.id,
-    name: row.name || "",
-    isActive: row.isActive === 1 || row.isActive === true,
-    createdAt: row.createdAt || null,
-    rpm: row.rpm ?? 0,
-    concurrency: row.concurrency ?? 0,
-    queueTimeoutMs: row.queueTimeoutMs ?? 0,
-    allowedModels: parseAllowedModels(row.allowedModels),
-    tokenQuota: row.tokenQuota ?? 0,
-  };
-}
-
 // Usage for a single key since `startDate` (ISO string). Aggregates request
 // count, prompt/completion tokens, plus per-model and per-day breakdowns.
 // Powers the self-service usage-check endpoint (period 1d–30d).

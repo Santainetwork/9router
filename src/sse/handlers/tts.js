@@ -5,6 +5,7 @@ import {
 import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { getKeyAccessContext, enforceKeyAccess } from "../services/keyAccess.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { providerNotWorkerSafeResponse } from "@/lib/db/providerEligibility.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -72,6 +73,10 @@ async function doHandleTts(request, apiKey, settings, modelStr, body) {
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
+
+  // Per-key access control: requested target, before combo expansion.
+  const keyAccessDenied = await enforceKeyAccess(await getKeyAccessContext(request), modelStr);
+  if (keyAccessDenied) return keyAccessDenied;
 
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
   const comboModels = await getComboModels(modelStr);

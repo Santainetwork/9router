@@ -8,6 +8,7 @@ import {
 import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings, getProviderConnectionById } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
+import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -125,7 +126,14 @@ async function doHandleVideoCreate(request, action) {
   if (resolved.error) return resolved.error;
   const { provider, model } = resolved;
 
-  // Per-API-key RBAC: model allowlist + total-token quota.
+  // Per-key access control: the routed provider/model must be listed. A body
+  // we cannot read a model from (multipart) is denied for restricted keys.
+  const keyAccessDenied = await enforceKeyAccessResolved(
+    await getKeyAccessContext(request), bodyInfo.parsed?.model ? String(bodyInfo.parsed.model) : "", provider, model
+  );
+  if (keyAccessDenied) return keyAccessDenied;
+
+  // Fork gate: wildcard model allowlist + total-token quota.
   {
     const apiKey = extractApiKey(request);
     const denied = await enforceApiKeyAccess(apiKey, bodyInfo.parsed?.model || model);

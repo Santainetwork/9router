@@ -9,6 +9,7 @@ import { withWorkerRefusal } from "@/lib/db/providerEligibility.js";
 import { enforceApiKeyRateLimit, enforceApiKeyAccess } from "../services/rateLimitGate.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
+import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -107,6 +108,10 @@ async function doHandleEmbeddingsInner(request, body, apiKey, modelStr, settings
   }
 
   const { provider, model } = modelInfo;
+
+  // Per-key access control: checked before any credential lookup.
+  const keyAccessDenied = await enforceKeyAccessResolved(await getKeyAccessContext(request), modelStr, provider, model);
+  if (keyAccessDenied) return keyAccessDenied;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);

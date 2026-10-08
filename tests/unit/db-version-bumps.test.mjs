@@ -24,7 +24,8 @@ const DDL = `
     id TEXT PRIMARY KEY, key TEXT UNIQUE NOT NULL, name TEXT, machineId TEXT,
     isActive INTEGER DEFAULT 1, createdAt TEXT NOT NULL, rpm INTEGER DEFAULT 0,
     concurrency INTEGER DEFAULT 0, queueTimeoutMs INTEGER DEFAULT 0,
-    allowedModels TEXT, tokenQuota INTEGER DEFAULT 0
+    allowedModels TEXT, tokenQuota INTEGER DEFAULT 0,
+    accessRestricted INTEGER DEFAULT 0, accessAllow TEXT
   );
   CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL);
   CREATE TABLE kv (scope TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (scope, key));

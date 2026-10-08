@@ -9,6 +9,7 @@ import {
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getApiKeyLimits } from "@/lib/localDb";
 import { isModelAllowedBy } from "@/sse/services/rateLimitGate";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
@@ -673,12 +674,18 @@ export async function GET(request) {
   try {
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
-    let data = await buildModelsList([LLM_KIND], { skipDynamicFetch });
+    // Two independent per-key gates, applied in sequence; either one narrows
+    // the catalog to what the key may actually call.
+    //
+    // 1. Upstream restricted-access: exact combo/model allow list stored on the
+    //    key (`access.restricted`), no wildcards.
+    // 2. Fork wildcard allowlist (`limits.allowedModels`, prefix masks like
+    //    `hx/*`). Fail open: a lookup problem must not break the catalog.
+    let data = await filterModelsListForKey(
+      await getKeyAccessContext(request),
+      await buildModelsList([LLM_KIND], { skipDynamicFetch })
+    );
 
-    // Per-key RBAC: when the calling API key has a model allowlist, only list
-    // the models it may actually call, so the catalog matches what requests are
-    // permitted to use. Keys with no allowlist (or non-key callers such as the
-    // dashboard/CLI token) still see everything.
     const key = extractApiKeyFromRequest(request);
     if (key) {
       try {

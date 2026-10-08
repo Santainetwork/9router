@@ -3,7 +3,10 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 5;
+// Upstream v0.5.99 is at 2; this fork stays ahead (6) because it added the
+// per-key access columns below, and the number only drives the pre-change
+// backup — syncSchemaFromTables() still adds the columns itself.
+export const SCHEMA_VERSION = 6;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -112,6 +115,10 @@ export const TABLES = {
       queueTimeoutMs: "INTEGER DEFAULT 0",
       allowedModels: "TEXT",
       tokenQuota: "INTEGER DEFAULT 0",
+      // Per-key access control. Additive columns, picked up by
+      // syncSchemaFromTables() on boot; existing rows read as unrestricted (0).
+      accessRestricted: "INTEGER DEFAULT 0",
+      accessAllow: "TEXT",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
   },

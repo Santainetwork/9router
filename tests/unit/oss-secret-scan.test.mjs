@@ -50,6 +50,10 @@ const looksPlaceholder = (s) => {
   const body = s.replace(CREDENTIAL_PREFIX, '').replace(/[^A-Za-z0-9]/g, '')
   if (body.length < 12) return true
   if (PLACEHOLDER_WORDS.test(body)) return true
+  // AWS documents its sample access key ids as `...EXAMPLE` (AWS SDK docs),
+  // so upstream's unit fixtures carry AKIAIOSFODNN7EXAMPLE. A body that spells
+  // out EXAMPLE is documentation, never an issued credential.
+  if (/EXAMPLE/i.test(body)) return true
   if (/abcdef|9876543210/i.test(body)) return true
   // A long run of one character is filler, not entropy (e.g. T00000000B00000000).
   if (/(.)\1{5,}/.test(body)) return true
@@ -214,6 +218,7 @@ test('credential patterns still fire (guard self-test)', () => {
     'sk-abcdefabcdefabcdefabcdefabcdefabcdefabcd',
     'ghp_abcdefghijklmnopqrstuvwxyz',
     'AKIAXXXXXXXXXXXXXXXX',
+    'AKIAIOSFODNN7EXAMPLE', // AWS docs' published sample access key id
     'xoxb-0000000000-0000000000-0000000000-abcdefabcdefabcdefabcdefabcdef',
     'Configuration: "AKIA...replace with your key"',
     'https://hooks.slack.com' + '/services/T00000000/B00000000/xxxxxxxxxxxxxxxxxxxxxxxx',

@@ -14,6 +14,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -101,6 +102,11 @@ async function doHandleSearch(request, apiKey, settings, url, providerInput, que
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();
   const comboModels = getComboModelsFromData(providerInput, combos);
+
+  // Per-key access control: the provider IS the model here, so a
+  // restricted key needs the provider id (or the combo) on its list.
+  const keyAccessDenied = await enforceKeyAccessProvider(await getKeyAccessContext(request), providerInput, comboModels);
+  if (keyAccessDenied) return keyAccessDenied;
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
