@@ -53,7 +53,7 @@ export async function handleTts(request) {
   }
 
   try {
-    return await doHandleTts(request, apiKey, settings, modelStr, body);
+    return await doHandleTts(request, apiKey, settings, modelStr, body, responseFormat, language, style);
   } catch (err) {
     const refusal = providerNotWorkerSafeResponse(err);
     if (refusal) return refusal;
@@ -63,7 +63,7 @@ export async function handleTts(request) {
   }
 }
 
-async function doHandleTts(request, apiKey, settings, modelStr, body) {
+async function doHandleTts(request, apiKey, settings, modelStr, body, responseFormat, language, style) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {

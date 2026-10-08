@@ -71,7 +71,7 @@ export async function handleSearch(request) {
   }
 
   try {
-    return await doHandleSearch(request, apiKey, settings, url, providerInput, query, count);
+    return await doHandleSearch(request, apiKey, settings, url, providerInput, query, body);
   } catch (err) {
     const refusal = providerNotWorkerSafeResponse(err);
     if (refusal) return refusal;
@@ -81,7 +81,7 @@ export async function handleSearch(request) {
   }
 }
 
-async function doHandleSearch(request, apiKey, settings, url, providerInput, query, count) {
+async function doHandleSearch(request, apiKey, settings, url, providerInput, query, body) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {

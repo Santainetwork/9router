@@ -20,6 +20,11 @@ vi.mock("../../src/sse/services/auth.js", () => ({
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: async () => ({ requireApiKey: false }),
+  // Fork's rateLimitGate reads limits through localDb; the handler runs the
+  // fork RPM gate unconditionally, so the mock must carry these even though
+  // this test is only about usage persistence.
+  getApiKeyLimits: async () => null,
+  getApiKeyTokenUsage: async () => 0,
 }));
 
 vi.mock("../../src/sse/services/model.js", () => ({

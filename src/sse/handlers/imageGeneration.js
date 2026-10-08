@@ -76,7 +76,7 @@ export async function handleImageGeneration(request) {
   }
 
   try {
-    return await doHandleImageGeneration(request, body, apiKey, modelStr, settings, url);
+    return await doHandleImageGeneration(request, body, apiKey, modelStr, settings, url, wantsStream, binaryOutput, preferredConnectionId);
   } catch (err) {
     const refusal = providerNotWorkerSafeResponse(err);
     if (refusal) return refusal;
@@ -86,7 +86,7 @@ export async function handleImageGeneration(request) {
   }
 }
 
-async function doHandleImageGeneration(request, body, apiKey, modelStr, settings, url) {
+async function doHandleImageGeneration(request, body, apiKey, modelStr, settings, url, wantsStream, binaryOutput, preferredConnectionId) {
 
   // Per-API-key RBAC: model allowlist + total-token quota.
   {

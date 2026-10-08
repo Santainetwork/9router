@@ -23,6 +23,20 @@ vi.mock("@/lib/localDb", () => ({
   getProviderConnections: async () => [],
   getProviderConnectionById: async () => null,
   getCustomModels: async () => [],
+  // Fork gate (rateLimitGate) reads per-key RPM/quota through localDb. These
+  // fixture keys shape only upstream's access field, so fork limits default to
+  // unrestricted and the upstream gate owns every assertion here.
+  getApiKeyLimits: async (k) => (fx.keys[k]
+    ? {
+      id: fx.keys[k].id,
+      rpm: 0,
+      concurrency: 0,
+      queueTimeoutMs: 0,
+      allowedModels: fx.keys[k].allowedModels ?? null,
+      tokenQuota: fx.keys[k].tokenQuota ?? 0,
+    }
+    : null),
+  getApiKeyTokenUsage: async () => 0,
 }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
 vi.mock("@/lib/db/repos/combosRepo.js", () => ({ getCombos: async () => fx.combos }));
@@ -102,7 +116,9 @@ beforeEach(() => {
 const chat = (model, k) => handleChat(post("/v1/chat/completions", { model, stream: true, messages: [{ role: "user", content: "hi" }] }, k));
 
 describe("chat (/v1/chat/completions, /v1/messages, /v1/responses all use handleChat)", () => {
-  beforeEach(() => mocks.getProviderCredentials.mockResolvedValue({ connectionId: "conn", connectionName: "mock" }));
+  // Production credentials always carry apiKey/accessToken (or id "noauth");
+  // without one the fork's credential-validity loop never accepts this account.
+  beforeEach(() => mocks.getProviderCredentials.mockResolvedValue({ connectionId: "conn", connectionName: "mock", apiKey: "sk-mock-conn" }));
 
   it("unrestricted key reaches the provider for the combo and models", async () => {
     for (const m of ["Main", "openai/model-b"]) {
