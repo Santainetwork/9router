@@ -444,6 +444,39 @@ test("release staging is atomic and keeps a rollback copy", () => {
   );
 });
 
+test("reap_stage never rewrites the installer's exit code", () => {
+  // A trailing `[ -e "$STAGE_DIR" ]` that fails (the normal case: the stage was
+  // swapped away, so it no longer exists) makes the EXIT trap itself return 1.
+  // Under `set -E` + `trap on_error ERR`, that non-zero return re-enters the ERR
+  // trap *during* the EXIT trap: a successful upgrade printed the full success
+  // banner and then reported "aborted at line 1 (exit 1)", and a real exit 3
+  // (existing install detected) was masked as 1. Run the shipped handler line
+  // verbatim so a future edit that drops the explicit `return 0` fails here.
+  const handlerLine = SRC.split("\n").find((l) => l.startsWith("reap_stage() {"));
+  assert.ok(handlerLine, "the trap handler must be defined");
+  const script = [
+    "set -euo pipefail",
+    "set -E",
+    'trap \'rc=$?; echo "ERR-trap fired rc=$rc" >&2; exit "$rc"\' ERR',
+    `STAGE_DIR=${"${"}TMPDIR:-/tmp}/9router-reap-absent-$$`,
+    handlerLine,
+    "trap reap_stage EXIT",
+    "exit ${PRESET_EXIT:-0}",
+  ].join("\n");
+  for (const preset of ["0", "3"]) {
+    const r = spawnSync("bash", ["-c", script], {
+      env: { ...process.env, PRESET_EXIT: preset },
+      encoding: "utf8",
+    });
+    assert.equal(
+      r.status,
+      Number(preset),
+      `exit code ${preset} must survive the EXIT trap; stderr=${r.stderr}`,
+    );
+    assert.doesNotMatch(r.stderr, /ERR-trap fired/, "the EXIT trap must not trip the ERR trap");
+  }
+});
+
 test("secrets survive an upgrade", () => {
   assert.match(SRC, /^preserve_secret\(\)/m, "must have a secret-preservation helper");
   for (const key of ["JWT_SECRET", "MACHINE_ID_SALT", "API_KEY_SECRET", "DATABASE_URL"]) {

@@ -985,7 +985,7 @@ STAGE_DIR="${RELEASE_DIR}.staging.$$"
 # does not run rollback(), so without this trap each failed upgrade leaves a full
 # ~112 MB release copy in ${RELEASE_DIR}.staging.<pid> until the next install
 # starts. After a successful swap STAGE_DIR no longer exists, so this is a no-op.
-reap_stage() { [ -n "${STAGE_DIR:-}" ] && [ -e "$STAGE_DIR" ] && rm -rf "$STAGE_DIR"; }
+reap_stage() { [ -n "${STAGE_DIR:-}" ] && [ -e "$STAGE_DIR" ] && rm -rf "$STAGE_DIR"; return 0; }
 trap reap_stage EXIT
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
