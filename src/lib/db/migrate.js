@@ -7,6 +7,7 @@ import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
 import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
+import { validateContextWindowInput } from "../../shared/utils/contextWindow.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
 const MIGRATED_MARKER = path.join(DB_DIR, ".migrated-from-json");
@@ -176,9 +177,13 @@ function importLegacyMain(adapter, data) {
   }, (k) => ({ id: k.id ?? null, name: k.name ?? null }));
 
   importWithAssertion(adapter, "combos", data.combos || [], (c) => {
+    // Legacy JSON dumps predate this column; a missing value imports as NULL
+    // (no override), and a malformed one falls back to NULL rather than
+    // aborting the whole migration.
+    const ctx = validateContextWindowInput(c.contextWindow);
     adapter.run(
-      `INSERT OR REPLACE INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
-      [c.id, c.name, c.kind || null, stringifyJson(c.models || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
+      `INSERT OR REPLACE INTO combos(id, name, kind, models, contextWindow, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+      [c.id, c.name, c.kind || null, stringifyJson(c.models || []), ctx.ok ? ctx.value : null, c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
     );
   }, (c) => ({ id: c.id ?? null, name: c.name ?? null }));
 

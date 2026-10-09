@@ -9,6 +9,7 @@ import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModa
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { normalizeContextWindow } from "@/shared/utils/contextWindow.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -780,7 +781,9 @@ export default function CombosPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {(() => {
-              const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
+              const comboByName = Object.fromEntries(
+                combos.map((c) => [c.name, { models: c.models, contextWindow: c.contextWindow }]),
+              );
               return filteredCombos.map((combo) => (
                 <ComboCard
                   key={combo.id}
@@ -892,6 +895,10 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   // generic patterns and under-report the limits. getCaps carries the server's
   // answer for /api/models.
   const comboCaps = aggregateComboCapabilities(combo.models, comboByName, getCaps);
+  // The card previews what /v1/models will publish: a combo's own override wins
+  // over the derived min across its seats.
+  const ctxOverride = normalizeContextWindow(combo.contextWindow);
+  const shownContextWindow = ctxOverride ?? comboCaps?.contextWindow;
   const models = combo.models || [];
   const visibleModels = expanded ? models : models.slice(0, 4);
 
@@ -932,9 +939,13 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 <span className="text-[11px] text-text-muted font-medium">
                   {models.length} {models.length === 1 ? "model" : "models"}
                 </span>
-                {comboCaps && (
+                {(comboCaps || ctxOverride) && (
                   <span className="text-[10px] text-text-muted">
-                    ctx {fmtK(comboCaps.contextWindow)} · max {fmtK(comboCaps.maxOutput)}
+                    ctx {fmtK(shownContextWindow)}
+                    {ctxOverride ? (
+                      <span className="text-primary font-semibold" title="Pinned context window (overrides the smallest seat)"> · pinned</span>
+                    ) : null}
+                    {comboCaps ? <>{` · max ${fmtK(comboCaps.maxOutput)}`}</> : null}
                   </span>
                 )}
               </div>
@@ -981,8 +992,8 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                     <div className="shrink-0 flex items-center gap-1">
                       <CapacityBadges
                         caps={
-                          comboByName[model]
-                            ? aggregateComboCapabilities(comboByName[model], comboByName, getCaps)
+                          comboByName[model]?.models
+                            ? aggregateComboCapabilities(comboByName[model].models, comboByName, getCaps)
                             : getCaps?.(model)
                         }
                         size={14}
@@ -1392,6 +1403,9 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
+  // Empty means "no override" — /v1/models then publishes the smallest seat.
+  const [ctxInput, setCtxInput] = useState(combo?.contextWindow ? String(combo.contextWindow) : "");
+  const [ctxError, setCtxError] = useState("");
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -1451,6 +1465,23 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     else setNameError("");
   };
 
+  // Accepts a plain integer (optionally with _ separators) or empty for "auto".
+  const parseCtxInput = (raw) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return { ok: true, value: null };
+    const digits = trimmed.replace(/[_,\s]/g, "");
+    if (!/^\d+$/.test(digits) || Number(digits) <= 0) {
+      return { ok: false, error: "Use a positive whole number, or leave empty for auto" };
+    }
+    return { ok: true, value: Number(digits) };
+  };
+
+  const handleCtxChange = (e) => {
+    const value = e.target.value;
+    setCtxInput(value);
+    setCtxError(parseCtxInput(value).ok ? "" : "Use a positive whole number, or leave empty for auto");
+  };
+
   const handleAddModel = (model) => {
     if (!models.includes(model.value)) {
       setModels([...models, model.value]);
@@ -1481,8 +1512,14 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
 
   const handleSave = async () => {
     if (!validateName(name)) return;
+    const ctx = parseCtxInput(ctxInput);
+    if (!ctx.ok) {
+      setCtxError(ctx.error);
+      return;
+    }
     setSaving(true);
-    await onSave({ name: name.trim(), models });
+    // Always sent: null clears a stored override on edit.
+    await onSave({ name: name.trim(), models, contextWindow: ctx.value });
     setSaving(false);
   };
 
@@ -1508,6 +1545,19 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             <p className="text-[10px] text-text-muted mt-0.5">
               Only letters, numbers, -, _ and . allowed
             </p>
+          </div>
+
+          {/* Context window override */}
+          <div>
+            <Input
+              label="Context window (optional)"
+              value={ctxInput}
+              onChange={handleCtxChange}
+              placeholder="e.g. 200000"
+              error={ctxError}
+              hint="Published as context_length in /v1/models. Empty = smallest seat wins."
+              inputMode="numeric"
+            />
           </div>
 
           {/* Models */}

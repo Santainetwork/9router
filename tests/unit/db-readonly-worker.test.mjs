@@ -221,8 +221,9 @@ test("driver: multicore api worker rejects sql.js when no native adapter opens",
 
 test("schema: receipt ledger and dbVersion tables are declared at one bumped version", () => {
   // v0.5.99 merge: upstream's per-key access columns joined TABLES, so the
-  // "schema changed" backup must fire once for them too (6).
-  assert.equal(SCHEMA_VERSION, 6, "requestLogs table bumps schema version once");
+  // "schema changed" backup must fire once for them too (6). The fork's
+  // combos.contextWindow override bumps it again (7).
+  assert.equal(SCHEMA_VERSION, 7, "requestLogs table bumps schema version once");
   assert.deepEqual(Object.keys(TABLES.sqliteMutationReceipts.columns), ["receiptId", "type", "workerId", "appliedAt", "result"]);
   assert.match(TABLES.sqliteMutationReceipts.columns.receiptId, /PRIMARY KEY/);
   assert.deepEqual(Object.keys(TABLES.dbVersion.columns), ["id", "version", "updatedAt"]);

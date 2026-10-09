@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
+import { validateContextWindowInput } from "@/shared/utils/contextWindow.js";
 import { resetComboRotation } from "open-sse/services/combo.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
@@ -41,6 +42,16 @@ export async function PUT(request, { params }) {
       }
     }
     
+    // Published context window override: an absent key keeps the stored value,
+    // while null / "" clears it. Anything else must be a positive integer.
+    if (body.contextWindow !== undefined) {
+      const ctx = validateContextWindowInput(body.contextWindow);
+      if (!ctx.ok) {
+        return NextResponse.json({ error: ctx.error }, { status: 400 });
+      }
+      body.contextWindow = ctx.value;
+    }
+
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
     const combo = await updateCombo(id, body);

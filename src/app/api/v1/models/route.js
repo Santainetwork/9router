@@ -21,6 +21,7 @@ import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { normalizeContextWindow } from "@/shared/utils/contextWindow.js";
 
 // Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
 // credentials carry the provider id so qoderModels picks the right region's
@@ -308,8 +309,13 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
     if (name) visiting.delete(name);
   }
 
+  // An explicit per-combo override is the window the combo declares, so it wins
+  // over the derived minimum — both for the combo's own published entry and for
+  // a parent combo that expands it as a nested seat.
+  const override = normalizeContextWindow(combo?.contextWindow);
+
   return {
-    contextWindow: Number.isFinite(contextWindow) ? contextWindow : undefined,
+    contextWindow: override ?? (Number.isFinite(contextWindow) ? contextWindow : undefined),
     maxOutput: Number.isFinite(maxOutput) ? maxOutput : undefined,
   };
 }
@@ -372,8 +378,12 @@ export async function buildModelsList(kindFilter, options = {}) {
     combos.filter((c) => typeof c?.name === "string").map((c) => [c.name, c]),
   );
 
-  // Lookup map so aggregateComboCapabilities can recursively resolve nested combos
-  const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
+  // Lookup map so aggregateComboCapabilities can recursively resolve nested
+  // combos. Entries carry the combo's own context-window override so a parent
+  // combo's aggregate matches what the nested entry itself publishes.
+  const comboByName = Object.fromEntries(
+    combos.map((c) => [c.name, { models: c.models, contextWindow: c.contextWindow }]),
+  );
 
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
@@ -387,7 +397,12 @@ export async function buildModelsList(kindFilter, options = {}) {
       entry.kind = combo.kind;
     } else {
       const comboCaps = aggregateComboCapabilities(combo.models, comboByName, comboSeatCapabilities);
-      if (comboCaps) entry.capabilities = comboCaps;
+      // The combo's own override is authoritative for the window it publishes,
+      // in the camelCase capabilities block just as in context_length.
+      const ownCtx = normalizeContextWindow(combo.contextWindow);
+      if (comboCaps) {
+        entry.capabilities = ownCtx ? { ...comboCaps, contextWindow: ownCtx } : comboCaps;
+      }
       // Any seat can serve the request, so the only window a combo can promise is
       // its smallest. Combo entries were the only models on this endpoint that
       // published no limits at all, which leaves a client to guess from the name —

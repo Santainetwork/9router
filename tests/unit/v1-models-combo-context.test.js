@@ -81,3 +81,59 @@ describe("/v1/models combo limits", () => {
     });
   });
 });
+
+describe("/v1/models combo contextWindow override", () => {
+  it("publishes the override instead of the derived seat minimum", async () => {
+    const models = await modelsWithCombo("opencode-go", "mimo-v2.5", [
+      { name: "pinned-combo", models: ["ocg/mimo-v2.5"], contextWindow: 999000 },
+    ]);
+    const combo = models.find((model) => model.id === "pinned-combo");
+
+    expect(combo).toMatchObject({
+      context_length: 999000,
+      capabilities: { contextWindow: 999000 },
+    });
+    // The derived min still owns max_completion_tokens.
+    expect(combo.max_completion_tokens).toBe(16000);
+  });
+
+  it("keeps the derived minimum when the override is absent or junk", async () => {
+    const models = await modelsWithCombo("opencode-go", "mimo-v2.5", [
+      { name: "no-override", models: ["ocg/mimo-v2.5"] },
+      { name: "junk-override", models: ["ocg/mimo-v2.5"], contextWindow: 0 },
+      { name: "blank-override", models: ["ocg/mimo-v2.5"], contextWindow: "" },
+    ]);
+
+    for (const id of ["no-override", "junk-override", "blank-override"]) {
+      expect(models.find((model) => model.id === id)).toMatchObject({
+        context_length: 180000,
+        capabilities: { contextWindow: 180000 },
+      });
+    }
+  });
+
+  it("lets a nested combo's override win inside its own entry but not raise the parent's min", async () => {
+    const models = await modelsWithCombo("opencode-go", "mimo-v2.5", [
+      { name: "small-seat", models: ["ocg/mimo-v2.5"] },
+      { name: "pinned-inner", models: ["small-seat"], contextWindow: 999000 },
+      { name: "outer-combo", models: ["pinned-inner"] },
+    ]);
+
+    const inner = models.find((model) => model.id === "pinned-inner");
+    expect(inner).toMatchObject({ context_length: 999000, capabilities: { contextWindow: 999000 } });
+
+    // The parent cannot promise more than its smallest seat, and the nested
+    // entry itself publishes 999000 — so the parent's min is that override.
+    const outer = models.find((model) => model.id === "outer-combo");
+    expect(outer).toMatchObject({ context_length: 999000, capabilities: { contextWindow: 999000 } });
+
+    const parent = await modelsWithCombo("opencode-go", "mimo-v2.5", [
+      { name: "small-seat", models: ["ocg/mimo-v2.5"] },
+      { name: "pinned-inner", models: ["small-seat"], contextWindow: 999000 },
+      { name: "wide-outer", models: ["pinned-inner", "ocg/mimo-v2.5"] },
+    ]);
+    const wide = parent.find((model) => model.id === "wide-outer");
+    // min(pinned-inner 999000, ocg/mimo-v2.5 180000) — the sibling still caps it.
+    expect(wide).toMatchObject({ context_length: 180000, capabilities: { contextWindow: 180000 } });
+  });
+});

@@ -37,6 +37,9 @@
 
 import { matchPattern } from "./pricing.js";
 import { looksLikeVisionModel } from "./visionPatterns.js";
+// Relative (not `@/`) on purpose: open-sse is also loaded by bare-node tests
+// that install no path-alias resolver. Mirrors services/rateLimiter.js.
+import { normalizeContextWindow } from "../../src/shared/utils/contextWindow.js";
 
 /**
  * Safe floor — every resolved result is merged over this so consumers
@@ -519,7 +522,9 @@ export const PATTERN_CAPABILITIES = [
  * Conservative: contextWindow = min; maxOutput = max
  *
  * @param {string[]} comboModels
- * @param {Object|null} [comboLookup] optional map of combo name → models array for nested resolution
+ * @param {Object|null} [comboLookup] optional map of combo name → models array
+ *   (or `{ models, contextWindow }`) for nested resolution. The object form
+ *   carries a nested combo's own published window into its parent's aggregate.
  * @param {Function|null} [resolveCaps] optional (fullId) → caps override. The synced model
  *   catalog is server-only (it reads a file), so a browser-side resolution cannot see the
  *   limits it supplies and silently falls back to the generic patterns below. Callers that
@@ -528,14 +533,32 @@ export const PATTERN_CAPABILITIES = [
  * @param {number} [_depth] internal recursion depth guard
  * @returns {object|null} full capabilities object, or null for empty input
  */
+function readComboLookupEntry(entry) {
+  if (Array.isArray(entry)) return { models: entry, contextWindow: null };
+  if (entry && typeof entry === "object") {
+    return {
+      models: Array.isArray(entry.models) ? entry.models : null,
+      contextWindow: normalizeContextWindow(entry.contextWindow),
+    };
+  }
+  return { models: null, contextWindow: null };
+}
+
 export function aggregateComboCapabilities(comboModels, comboLookup = null, resolveCaps = null, _depth = 0) {
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
     // Nested combo: bare name (no slash) that exists in the lookup — recurse
     if (!fullId.includes("/") && comboLookup?.[fullId]) {
-      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, resolveCaps, _depth + 1)
+      const nested = readComboLookupEntry(comboLookup[fullId]);
+      const nestedCaps = nested.models
+        ? aggregateComboCapabilities(nested.models, comboLookup, resolveCaps, _depth + 1)
+        : null;
+      const resolved = nestedCaps
           ?? resolveCaps?.(fullId)
           ?? getCapabilitiesForModel(null, fullId);
+      // The nested combo's declared window is authoritative for that seat,
+      // exactly as it is for its own /v1/models entry.
+      return nested.contextWindow ? { ...resolved, contextWindow: nested.contextWindow } : resolved;
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);

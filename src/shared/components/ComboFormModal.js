@@ -57,6 +57,9 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     : "";
   const [name, setName] = useState(initialName);
   const [models, setModels] = useState(combo?.models || []);
+  // Empty means "no override" — /v1/models then publishes the smallest seat.
+  const [ctxInput, setCtxInput] = useState(combo?.contextWindow ? String(combo.contextWindow) : "");
+  const [ctxError, setCtxError] = useState("");
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -83,6 +86,23 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     if (value) validateName(value); else setNameError("");
   };
 
+  // Accepts a plain integer (optionally with _ separators) or empty for "auto".
+  const parseCtxInput = (raw) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return { ok: true, value: null };
+    const digits = trimmed.replace(/[_,\s]/g, "");
+    if (!/^\d+$/.test(digits) || Number(digits) <= 0) {
+      return { ok: false, error: "Use a positive whole number, or leave empty for auto" };
+    }
+    return { ok: true, value: Number(digits) };
+  };
+
+  const handleCtxChange = (e) => {
+    const value = e.target.value;
+    setCtxInput(value);
+    setCtxError(parseCtxInput(value).ok ? "" : "Use a positive whole number, or leave empty for auto");
+  };
+
   const handleAddModel = (model) => {
     if (!models.includes(model.value)) setModels([...models, model.value]);
   };
@@ -101,8 +121,14 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
 
   const handleSave = async () => {
     if (!validateName(name)) return;
+    const ctx = parseCtxInput(ctxInput);
+    if (!ctx.ok) {
+      setCtxError(ctx.error);
+      return;
+    }
     setSaving(true);
-    await onSave({ name: forcePrefix + name.trim(), models });
+    // Always sent: null clears a stored override on edit.
+    await onSave({ name: forcePrefix + name.trim(), models, contextWindow: ctx.value });
     setSaving(false);
   };
 
@@ -129,6 +155,18 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
             <p className="text-[10px] text-text-muted mt-0.5">
               {forcePrefix ? `Auto-prefixed with "${forcePrefix}". ` : ""}Only letters, numbers, -, _ and . allowed
             </p>
+          </div>
+
+          <div>
+            <Input
+              label="Context window (optional)"
+              value={ctxInput}
+              onChange={handleCtxChange}
+              placeholder="e.g. 200000"
+              error={ctxError}
+              hint="Published as context_length in /v1/models. Empty = smallest seat wins."
+              inputMode="numeric"
+            />
           </div>
 
           <div>

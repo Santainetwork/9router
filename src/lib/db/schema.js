@@ -3,10 +3,11 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-// Upstream v0.5.99 is at 2; this fork stays ahead (6) because it added the
-// per-key access columns below, and the number only drives the pre-change
-// backup — syncSchemaFromTables() still adds the columns itself.
-export const SCHEMA_VERSION = 6;
+// Upstream v0.5.99 is at 2; this fork stays ahead (7) because it added the
+// per-key access columns and combos.contextWindow below, and the number only
+// drives the pre-change backup — syncSchemaFromTables() still adds the columns
+// itself.
+export const SCHEMA_VERSION = 7;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -128,6 +129,9 @@ export const TABLES = {
       name: "TEXT UNIQUE NOT NULL",
       kind: "TEXT",
       models: "TEXT NOT NULL",
+      // Optional per-combo override for the published context window. NULL means
+      // "derive it from the seats" (min across the chain, the historic behaviour).
+      contextWindow: "INTEGER",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },

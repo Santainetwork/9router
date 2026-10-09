@@ -31,7 +31,7 @@ const DDL = `
   CREATE TABLE kv (scope TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (scope, key));
   CREATE TABLE combos (
     id TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, kind TEXT, models TEXT NOT NULL,
-    createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+    contextWindow INTEGER, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
   );
   CREATE TABLE providerNodes (
     id TEXT PRIMARY KEY, type TEXT, name TEXT, data TEXT NOT NULL,

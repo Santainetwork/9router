@@ -6,6 +6,21 @@ Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
 
 ---
 
+## 2026-10-09: Per-Combo Context Window Override
+
+### Published Context Window Override (`combos.contextWindow`)
+- Added an optional per-combo `contextWindow` (SQLite/PostgreSQL `INTEGER`, `SCHEMA_VERSION` 6 → 7) that overrides the `context_length` a combo publishes in `/v1/models`. Clients (jcode among them) cache that number, and the derived value (the minimum across seats) is sometimes wrong for the combo as a product, or absent entirely (`null`) when no seat resolves.
+- An override also applies when the combo is expanded as a **nested seat** of a parent combo: the nested combo's own published window is authoritative for that seat, while the parent still takes the minimum across all its seats (an override cannot raise a parent above a smaller sibling).
+- Emission honours the override in both places a combo advertises its window: snake_case `context_length` and the camelCase `capabilities.contextWindow` block.
+- Combo form (`/dashboard/combos`) gained a "Context window (optional)" field; empty means "smallest seat wins". `ComboCard` marks a pinned combo so the override is visible at a glance. Both form implementations (dashboard page and the shared `ComboFormModal` used by Cowork) were updated, plus the Cowork combo-creation path.
+- Validation is split: the API (`POST /api/combos`, `PUT /api/combos/[id]`) and `importDb` reject a malformed value with a 400 / thrown error naming the combo, while the storage layer coerces junk to `NULL` rather than failing a read. `PUT` treats an absent key as "keep stored value" and an explicit `null` as "clear it".
+- Backup/restore carries the column; a backup written before this version restores as "no override" (previous behaviour), and the legacy JSON migration path imports a malformed value as `NULL` without aborting the migration.
+
+### Installer Fix (found while deploying this change)
+- `scripts/install.sh` reported `aborted at line 1 (exit 1)` after a fully successful upgrade. `reap_stage()` ended on `[ -e "$STAGE_DIR" ]`, which is false in the normal success path (the stage was just swapped into place), so the EXIT trap returned 1; with `set -E` + `trap on_error ERR` that re-entered the ERR trap during exit. The upgrade itself was already verified and the rollback disarmed. Only the exit status lied. The same defect also masked genuine non-zero exits (e.g. the `exit 3` refusal) as 1. Fixed by making the handler return 0 explicitly; `tests/unit/install-script-safety.test.mjs` now runs the shipped handler verbatim under `set -E` and asserts both exit 0 and exit 3 survive.
+
+---
+
 ## 2026-09-15 — Golang Master Gateway Cutover, PostgreSQL Dual-Database & Memory Hardening
 
 ### Golang Master Gateway on Port :20128 & Public Proxy on :20140

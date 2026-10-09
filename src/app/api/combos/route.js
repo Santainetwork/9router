@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { validateContextWindowInput } from "@/shared/utils/contextWindow.js";
 
 export const dynamic = "force-dynamic";
 
@@ -32,13 +33,24 @@ export async function POST(request) {
       return NextResponse.json({ error: "Name can only contain letters, numbers, -, _ and ." }, { status: 400 });
     }
 
+    // Published context window override: null/absent means "derive from seats".
+    const ctx = validateContextWindowInput(body.contextWindow);
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: 400 });
+    }
+
     // Check if name already exists
     const existing = await getComboByName(name);
     if (existing) {
       return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], kind: kind || null });
+    const combo = await createCombo({
+      name,
+      models: models || [],
+      kind: kind || null,
+      contextWindow: ctx.value,
+    });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {
