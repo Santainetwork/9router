@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { footerSettingsPatch } from "@/shared/utils/footerSettings.js";
 import { getWorkerTopology } from "@/shared/utils/systemHealth.js";
 import { getInitialPassword } from "@/lib/auth/dashboardSession";
+import { CREDIT_GUARD_MIN_PERCENT, CREDIT_GUARD_MAX_PERCENT } from "@/sse/services/codebuddyCreditGuard.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -49,6 +50,26 @@ export async function PATCH(request) {
 
     if (Object.prototype.hasOwnProperty.call(body, "appName")) {
       body.appName = String(body.appName ?? "").trim().slice(0, 50) || "SantaiNetwork";
+    }
+
+    // CodeBuddy credit guard: keep the shape { enabled, thresholdPercent } and clamp
+    // the threshold to the band the guard enforces, so a stray value cannot store
+    // "disable everything" or "never disable" by accident.
+    if (Object.prototype.hasOwnProperty.call(body, "codebuddyCreditGuard")) {
+      const incoming = body.codebuddyCreditGuard;
+      if (incoming === null || typeof incoming !== "object" || Array.isArray(incoming)) {
+        delete body.codebuddyCreditGuard;
+      } else {
+        const current = (await getSettings()).codebuddyCreditGuard || {};
+        const merged = { ...current, ...incoming };
+        const pct = Number(merged.thresholdPercent);
+        body.codebuddyCreditGuard = {
+          enabled: merged.enabled !== false,
+          thresholdPercent: Number.isFinite(pct)
+            ? Math.min(CREDIT_GUARD_MAX_PERCENT, Math.max(CREDIT_GUARD_MIN_PERCENT, Math.round(pct)))
+            : 10,
+        };
+      }
     }
 
     // Normalize admin-controlled Basic Chat footer values at the API boundary.

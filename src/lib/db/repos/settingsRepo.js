@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS = {
     videoInput: { enabled: false, roundRobin: false, models: [] },
   },
   appName: process.env.APP_NAME || process.env.NEXT_PUBLIC_APP_NAME || "SantaiNetwork",
+  // CodeBuddy credit guard: disable seats when remaining credits fall to thresholdPercent.
+  codebuddyCreditGuard: { enabled: true, thresholdPercent: 10 },
   requireLogin: true,
   requireApiKey: true,
   tunnelDashboardAccess: true,

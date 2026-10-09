@@ -36,6 +36,12 @@ export default function ProfilePage() {
   const uiVariant = useUiVariantStore((s) => s.variant);
   const setUiVariant = useUiVariantStore((s) => s.setVariant);
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
+  // CodeBuddy credit guard (global): enable switch + threshold percent.
+  const [cbGuardEnabled, setCbGuardEnabled] = useState(true);
+  const [cbGuardPercent, setCbGuardPercent] = useState("10");
+  const [cbGuardLoading, setCbGuardLoading] = useState(false);
+  const [cbGuardStatus, setCbGuardStatus] = useState({ type: "", message: "" });
+
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
@@ -110,6 +116,12 @@ export default function ProfilePage() {
       .then((data) => {
         setSettings(data);
         if (data?.appName) setAppName(data.appName);
+        if (data?.codebuddyCreditGuard) {
+          setCbGuardEnabled(data.codebuddyCreditGuard.enabled !== false);
+          if (Number.isFinite(Number(data.codebuddyCreditGuard.thresholdPercent))) {
+            setCbGuardPercent(String(data.codebuddyCreditGuard.thresholdPercent));
+          }
+        }
         setOidcForm({
           authMode: data?.authMode || "password",
           oidcIssuerUrl: data?.oidcIssuerUrl || "",
@@ -242,6 +254,34 @@ export default function ProfilePage() {
       setProxyStatus({ type: "error", message: "An error occurred" });
     } finally {
       setProxyLoading(false);
+    }
+  };
+
+  const handleSaveCreditGuard = async () => {
+    const pct = Number(cbGuardPercent);
+    if (!Number.isFinite(pct) || pct < 1 || pct > 90) {
+      setCbGuardStatus({ type: "error", message: "Threshold must be between 1 and 90 percent" });
+      return;
+    }
+    setCbGuardLoading(true);
+    setCbGuardStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codebuddyCreditGuard: { enabled: cbGuardEnabled, thresholdPercent: Math.round(pct) } }),
+      });
+      if (res.ok) {
+        setCbGuardStatus({ type: "success", message: "Credit guard saved" });
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setCbGuardStatus({ type: "error", message: d.error || "Failed to save credit guard" });
+      }
+    } catch {
+      setCbGuardStatus({ type: "error", message: "Failed to save credit guard" });
+    } finally {
+      setCbGuardLoading(false);
+      setTimeout(() => setCbGuardStatus({ type: "", message: "" }), 3000);
     }
   };
 
@@ -1085,6 +1125,48 @@ export default function ProfilePage() {
                 }`}
               >
                 {brandStatus.message}
+              </p>
+            )}
+          </div>
+        </Card>
+
+        {/* CodeBuddy Credit Guard */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[20px]">shield</span>
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-semibold">CodeBuddy Credit Guard</h3>
+              <p className="text-xs sm:text-sm text-text-muted">
+                Disable a CodeBuddy account once its remaining credits reach the threshold, so it does not run out mid-request. Re-enabled automatically when credits recover. Turn it off per account from the provider page.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm">Enabled</span>
+              <Toggle checked={cbGuardEnabled} onChange={setCbGuardEnabled} size="sm" />
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={cbGuardPercent}
+                  onChange={(e) => setCbGuardPercent(e.target.value)}
+                  placeholder="10"
+                  hint="Disable when remaining credits are at or below this percent (1 to 90)."
+                />
+              </div>
+              <Button variant="primary" onClick={handleSaveCreditGuard} loading={cbGuardLoading}>
+                Save
+              </Button>
+            </div>
+            {cbGuardStatus.message && (
+              <p className={`text-xs font-medium ${cbGuardStatus.type === "success" ? "text-success" : "text-danger"}`}>
+                {cbGuardStatus.message}
               </p>
             )}
           </div>

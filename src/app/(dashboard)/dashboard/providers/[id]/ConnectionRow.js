@@ -6,7 +6,7 @@ import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onUpdateLimits, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onUpdateLimits, onEdit, onDelete, oneByOneStatus = null, autoPing = null, creditGuard = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -289,6 +289,17 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 </div>
               )}
             </div>
+          )}
+          {creditGuard && (
+            <Tooltip text={creditGuard.on ? "Credit guard OFF for this account: it will not be auto-disabled" : "Credit guard ON: auto-disabled when credits reach the threshold"}>
+              <button
+                onClick={() => creditGuard.onToggle(!creditGuard.on)}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${creditGuard.on ? "text-text-muted hover:text-primary" : "text-primary"}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">{creditGuard.on ? "shield_off" : "shield"}</span>
+                <span className="text-[10px] leading-tight">Credit guard</span>
+              </button>
+            </Tooltip>
           )}
           {autoPing && (
             <Tooltip text={autoPingTooltip}>

@@ -9,6 +9,17 @@
 export const CREDIT_GUARD_THRESHOLD = 0.1;
 export const AUTO_DISABLED_BY = "creditGuard";
 
+// Settings store the threshold as a whole percent. Clamp to a sane band so a
+// mistyped value cannot disable every seat (100) or none at all (0 means never).
+export const CREDIT_GUARD_MIN_PERCENT = 1;
+export const CREDIT_GUARD_MAX_PERCENT = 90;
+export function thresholdFromPercent(percent) {
+  const n = Number(percent);
+  if (percent === null || percent === undefined || percent === "" || !Number.isFinite(n)) return CREDIT_GUARD_THRESHOLD;
+  const clamped = Math.min(CREDIT_GUARD_MAX_PERCENT, Math.max(CREDIT_GUARD_MIN_PERCENT, n));
+  return clamped / 100;
+}
+
 // Number(null) is 0, so a missing usage value would read as "fully unused" and
 // hide consumption. Only real numbers (or numeric strings) count.
 function finite(n) {
@@ -51,6 +62,16 @@ export function summarizeCredits(quotas) {
  * @returns {{ action: "disable"|"enable"|"none", reason: string, summary: object|null }}
  */
 export function decideCreditGuard({ connection, quotas, threshold = CREDIT_GUARD_THRESHOLD }) {
+  // Per-account opt-out (set from the dashboard): the guard must leave this seat alone.
+  // A guard-disabled seat that was opted out mid-way is restored, so the account does
+  // not stay stuck off with a marker the user no longer wants.
+  if (connection?.providerSpecificData?.creditGuardOptOut === true) {
+    const optedOut = connection.providerSpecificData?.creditGuard?.disabledBy === AUTO_DISABLED_BY;
+    return optedOut && connection.isActive === false
+      ? { action: "enable", reason: "credit guard opted out for this seat", summary: null }
+      : { action: "none", reason: "credit guard opted out for this seat", summary: null };
+  }
+
   const summary = summarizeCredits(quotas);
   const guard = connection?.providerSpecificData?.creditGuard || null;
   const autoDisabled = guard?.disabledBy === AUTO_DISABLED_BY;

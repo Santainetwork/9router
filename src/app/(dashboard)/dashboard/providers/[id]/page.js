@@ -901,6 +901,26 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Per-account credit guard opt-out. Stored as providerSpecificData.creditGuardOptOut;
+  // the guard's own "creditGuard" marker is never written from the UI.
+  const handleToggleCreditGuard = async (id, guardOn) => {
+    const optOut = !guardOn;
+    try {
+      const res = await fetch(`/api/providers/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerSpecificData: { creditGuardOptOut: optOut } }),
+      });
+      if (res.ok) {
+        setConnections(prev => prev.map(c => c.id === id
+          ? { ...c, providerSpecificData: { ...(c.providerSpecificData || {}), creditGuardOptOut: optOut } }
+          : c));
+      }
+    } catch (error) {
+      console.log("Error updating credit guard:", error);
+    }
+  };
+
   const handleSwapPriority = async (index1, index2) => {
     // Optimistic update state
     const newConnections = [...connections];
@@ -1097,6 +1117,10 @@ export default function ProviderDetailPage() {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                   provider: providerId,
+                } : null}
+                creditGuard={(providerId === "codebuddy-intl" || providerId === "codebuddy-cn") ? {
+                  on: conn.providerSpecificData?.creditGuardOptOut !== true,
+                  onToggle: (on) => handleToggleCreditGuard(conn.id, on),
                 } : null}
                 onUpdateProxy={async (proxyPoolId) => {
                   try {

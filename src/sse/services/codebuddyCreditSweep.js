@@ -11,10 +11,10 @@
 // interval, and never disables an account on bad data.
 
 import * as log from "../utils/logger.js";
-import { getProviderConnections, updateProviderConnection } from "../../lib/localDb.js";
+import { getProviderConnections, updateProviderConnection, getSettings } from "../../lib/localDb.js";
 import { getUsageForProvider } from "../../../open-sse/services/usage.js";
 import { resolveConnectionProxyConfig } from "../../lib/network/connectionProxy.js";
-import { decideCreditGuard, AUTO_DISABLED_BY, CREDIT_GUARD_THRESHOLD } from "./codebuddyCreditGuard.js";
+import { decideCreditGuard, AUTO_DISABLED_BY, CREDIT_GUARD_THRESHOLD, thresholdFromPercent } from "./codebuddyCreditGuard.js";
 
 export const CODEBUDDY_PROVIDERS = new Set(["codebuddy-intl", "codebuddy-cn"]);
 
@@ -91,6 +91,12 @@ export async function runCodebuddyCreditGuardTick(deps = {}) {
   g.running = true;
   try {
     const getConnections = deps.getConnections || ((filter) => getProviderConnections(filter));
+    // Read the dashboard settings each tick, so a changed threshold or a disabled
+    // guard takes effect without a restart.
+    const settings = deps.getSettings ? await deps.getSettings() : await getSettings();
+    const guardCfg = settings?.codebuddyCreditGuard || {};
+    if (guardCfg.enabled === false) return;
+    const threshold = deps.threshold ?? thresholdFromPercent(guardCfg.thresholdPercent);
     for (const provider of CODEBUDDY_PROVIDERS) {
       let conns = [];
       try {
@@ -100,8 +106,9 @@ export async function runCodebuddyCreditGuardTick(deps = {}) {
         continue;
       }
       for (const conn of conns) {
+        // Per-seat opt-out is decided inside decideCreditGuard (it never disables an opted-out seat).
         try {
-          await applyCreditGuardToConnection(conn, deps);
+          await applyCreditGuardToConnection(conn, { ...deps, threshold });
         } catch (e) {
           log.warn("CREDIT_GUARD", `${provider}:${conn.id} sweep failed (swallowed): ${e.message}`);
         }

@@ -186,11 +186,84 @@ describe("runCodebuddyCreditGuardTick (fail-open)", () => {
     let release;
     const gate = new Promise((r) => (release = r));
     const getConnections = vi.fn(async () => { await gate; return []; });
-    const first = runCodebuddyCreditGuardTick({ getConnections });
-    const second = runCodebuddyCreditGuardTick({ getConnections });
-    await second;
-    expect(getConnections).toHaveBeenCalledTimes(1);
-    release();
-    await first;
+    const getSettings = async () => ({ codebuddyCreditGuard: { enabled: true, thresholdPercent: 10 } });
+    const first = runCodebuddyCreditGuardTick({ getConnections, getSettings });
+    const second = runCodebuddyCreditGuardTick({ getConnections, getSettings });
+    try {
+      await second;
+      expect(getConnections).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+      await first;
+    }
+  });
+});
+
+import { thresholdFromPercent, CREDIT_GUARD_MIN_PERCENT, CREDIT_GUARD_MAX_PERCENT } from "../../src/sse/services/codebuddyCreditGuard.js";
+
+describe("per-account opt-out (creditGuardOptOut)", () => {
+  const optOut = (over = {}) => seat({ providerSpecificData: { creditGuardOptOut: true }, ...over });
+
+  it("never disables an opted-out seat even when credits are exhausted", () => {
+    expect(decideCreditGuard({ connection: optOut(), quotas: exhausted(99, 100) }).action).toBe("none");
+  });
+
+  it("restores a guard-disabled seat that the user opted out of", () => {
+    const c = optOut({ isActive: false, providerSpecificData: { creditGuardOptOut: true, creditGuard: { disabledBy: AUTO_DISABLED_BY } } });
+    expect(decideCreditGuard({ connection: c, quotas: exhausted(99, 100) }).action).toBe("enable");
+  });
+
+  it("leaves a manually disabled opted-out seat alone", () => {
+    const c = optOut({ isActive: false, providerSpecificData: { creditGuardOptOut: true } });
+    expect(decideCreditGuard({ connection: c, quotas: LIVE_HEALTHY }).action).toBe("none");
+  });
+
+  it("opting out does not change behaviour for seats without the flag", () => {
+    expect(decideCreditGuard({ connection: seat(), quotas: exhausted(95, 100) }).action).toBe("disable");
+  });
+});
+
+describe("thresholdFromPercent clamp", () => {
+  it("converts whole percent to a fraction", () => {
+    expect(thresholdFromPercent(10)).toBeCloseTo(0.1, 10);
+    expect(thresholdFromPercent("25")).toBeCloseTo(0.25, 10);
+  });
+  it("clamps to the enforced band so a bad value cannot disable everything or nothing", () => {
+    expect(thresholdFromPercent(0)).toBe(CREDIT_GUARD_MIN_PERCENT / 100);
+    expect(thresholdFromPercent(100)).toBe(CREDIT_GUARD_MAX_PERCENT / 100);
+    expect(thresholdFromPercent(-50)).toBe(CREDIT_GUARD_MIN_PERCENT / 100);
+  });
+  it("falls back to the 10% default for junk", () => {
+    expect(thresholdFromPercent("abc")).toBeCloseTo(0.1, 10);
+    expect(thresholdFromPercent(undefined)).toBeCloseTo(0.1, 10);
+    expect(thresholdFromPercent(null)).toBeCloseTo(0.1, 10);
+  });
+});
+
+describe("runCodebuddyCreditGuardTick reads settings", () => {
+  it("does nothing when the guard is disabled in settings", async () => {
+    const getConnections = vi.fn(async () => [seat()]);
+    await runCodebuddyCreditGuardTick({
+      getSettings: async () => ({ codebuddyCreditGuard: { enabled: false, thresholdPercent: 10 } }),
+      getConnections,
+      getUsage: vi.fn(async () => ({ quotas: exhausted(99, 100) })),
+      update: vi.fn(),
+      resolveProxy: async () => ({}),
+    });
+    expect(getConnections).not.toHaveBeenCalled();
+  });
+
+  it("applies the configured threshold, not the 10% default", async () => {
+    const update = vi.fn(async () => ({}));
+    // 80% used -> 20% remaining. Default 10% would keep it on; configured 25% must disable.
+    await runCodebuddyCreditGuardTick({
+      getSettings: async () => ({ codebuddyCreditGuard: { enabled: true, thresholdPercent: 25 } }),
+      getConnections: async ({ provider }) => (provider === "codebuddy-intl" ? [seat({ id: "x" })] : []),
+      getUsage: async () => ({ quotas: exhausted(80, 100) }),
+      update,
+      resolveProxy: async () => ({}),
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][1].isActive).toBe(false);
   });
 });
