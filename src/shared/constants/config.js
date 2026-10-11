@@ -5,6 +5,9 @@ export const APP_CONFIG = {
   name: process.env.NEXT_PUBLIC_APP_NAME || "SantaiNetwork",
   description: "AI Infrastructure Management",
   version: pkg.version,
+  // Fork label, display only. pkg.version stays the upstream version used by update checks.
+  forkName: "SantaiNetwork",
+  forkVersion: "0.1.0",
 };
 
 // GitHub configuration
