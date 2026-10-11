@@ -1,9 +1,9 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
-import { keyAccessFromColumns, keyAccessToColumns, validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
-import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
-import { validateContextWindowInput } from "@/shared/utils/contextWindow.js";
+import { keyAccessFromColumns, keyAccessToColumns, validateKeyAccessInput } from "../../shared/utils/keyAccess.js";
+import { KEY_ACCESS_UNRESTRICTED } from "../../shared/constants/keyAccess.js";
+import { validateContextWindowInput } from "../../shared/utils/contextWindow.js";
 
 // Settings
 export {

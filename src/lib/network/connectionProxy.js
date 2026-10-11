@@ -1,7 +1,7 @@
 // Lazy import so this module loads without the Next.js/webpack `@/` alias
 // resolver (unit tests and open-sse relative imports).
 async function loadProxyPoolById() {
-  const { getProxyPoolById } = await import("@/models");
+  const { getProxyPoolById } = await import("../../models/index.js");
   return getProxyPoolById;
 }
 

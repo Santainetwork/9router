@@ -382,7 +382,7 @@ export async function getSharedActiveRequests() {
   try {
     const [{ isGoLimiterActive, goSnapshot }, { mapSharedProviderActivity }] = await Promise.all([
       import("open-sse/services/hybrid/goLimiterClient.js"),
-      import("@/shared/utils/usageActivity.js"),
+      import("../../../shared/utils/usageActivity.js"),
     ]);
     if (!await isGoLimiterActive()) return [];
     const [snapshot, connections] = await Promise.all([goSnapshot(), getConnectionListCached()]);

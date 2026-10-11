@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { bumpDbVersion } from "../dbVersion.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { normalizeContextWindow } from "@/shared/utils/contextWindow.js";
+import { normalizeContextWindow } from "../../../shared/utils/contextWindow.js";
 
 function rowToCombo(row) {
   if (!row) return null;

@@ -1,7 +1,7 @@
 import { getAdapter } from "../driver.js";
 import { bumpDbVersion } from "../dbVersion.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { DEFAULT_FOOTER_FIELDS } from "@/shared/utils/footerSettings.js";
+import { DEFAULT_FOOTER_FIELDS } from "../../../shared/utils/footerSettings.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
