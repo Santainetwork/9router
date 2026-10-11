@@ -177,7 +177,12 @@ export async function collectSystemHealth({ detail = false } = {}) {
     database: getDatabaseInfo(),
     limiter: engine.limiter,
   };
-  if (detail) out.process = getProcessInfo();
+  if (detail) {
+    out.process = getProcessInfo();
+    // Read-only: whether the CodeBuddy credit guard scheduler is running in this process.
+    const g = global.__codebuddyCreditGuard;
+    out.creditGuard = { scheduler: g?.interval ? "running" : "stopped", tickInFlight: g?.running === true };
+  }
   return out;
 }
 
