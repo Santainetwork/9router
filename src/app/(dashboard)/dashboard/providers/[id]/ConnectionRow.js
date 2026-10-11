@@ -294,7 +294,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             <Tooltip text={creditGuard.on ? "Credit guard ON: this account is auto-disabled at the threshold. Click to opt out" : "Credit guard OFF for this account: it will NOT be auto-disabled. Click to turn on"}>
               <button
                 onClick={() => creditGuard.onToggle(!creditGuard.on)}
-                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${creditGuard.on ? "text-primary" : "text-amber-500 hover:text-amber-600"}`}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${creditGuard.on ? "text-primary" : "text-warning hover:text-warning"}`}
               >
                 <span className="material-symbols-outlined text-[18px]">{creditGuard.on ? "shield" : "shield_off"}</span>
                 <span className="text-[10px] leading-tight">{creditGuard.on ? "Guard on" : "Guard off"}</span>

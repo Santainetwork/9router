@@ -177,12 +177,9 @@ export async function collectSystemHealth({ detail = false } = {}) {
     database: getDatabaseInfo(),
     limiter: engine.limiter,
   };
-  if (detail) {
-    out.process = getProcessInfo();
-    // Read-only: whether the CodeBuddy credit guard scheduler is running in this process.
-    const g = global.__codebuddyCreditGuard;
-    out.creditGuard = { scheduler: g?.interval ? "running" : "stopped", tickInFlight: g?.running === true };
-  }
+  if (detail) out.process = getProcessInfo();
+  // Read-only: whether the CodeBuddy credit guard scheduler is running in this process.
+  if (detail) out.creditGuard = { scheduler: global.__codebuddyCreditGuard?.interval ? "running" : "stopped", tickInFlight: global.__codebuddyCreditGuard?.running === true };
   return out;
 }
 

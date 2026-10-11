@@ -200,9 +200,7 @@ http.createServer = (...args) => {
   const server = origCreate(...rest, wrapped);
   installGracefulShutdown(server);
   server.once("listening", () => {
-    if (workerConfig.role !== "api") {
-      startBackgroundTokenRefreshFromCustomServer();
-    }
+    if (workerConfig.role !== "api") startBackgroundTokenRefreshFromCustomServer();
   });
   const origEmit = server.emit;
   // JBR 25 sends h2c upgrades that the HTTP/1.1 server would otherwise close.
