@@ -142,7 +142,8 @@ export default function Sidebar({ onClose, compact = false }) {
               <p className="text-lg font-semibold tracking-tight text-text-main truncate max-w-[170px]">
                 {appName || APP_CONFIG.name}
               </p>
-              <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
+              <span className="text-xs text-text-muted block">9Router v{APP_CONFIG.version}</span>
+              <span className="text-xs text-text-muted block">{APP_CONFIG.forkName} v{APP_CONFIG.forkVersion}</span>
             </div>
           </Link>
           {updateInfo && !compact && (
