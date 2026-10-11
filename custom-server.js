@@ -138,33 +138,6 @@ const PEER_TOKEN = crypto.randomBytes(24).toString("hex");
 process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
 
 let backgroundRefreshStarted = false;
-let creditGuardStarted = false;
-
-// CodeBuddy credit guard. Started here (control role only) because the Next app
-// bootstrap runs only when layout.js renders, and public pages are served from the
-// prerender cache, so the sweep otherwise never starts. Fail-open.
-function startCodebuddyCreditGuardFromCustomServer() {
-  if (creditGuardStarted) return;
-  creditGuardStarted = true;
-  const modPath = path.join(__dirname, "src", "sse", "services", "codebuddyCreditSweep.js");
-  import(pathToFileURL(modPath).href)
-    .then((m) => {
-      try {
-        m.startCodebuddyCreditGuard();
-      } catch (e) {
-        console.error("[CreditGuard] start failed:", e && e.message ? e.message : e);
-      }
-      const stop = () => {
-        try { m.stopCodebuddyCreditGuard(); } catch { /* ignore */ }
-      };
-      process.once("SIGINT", stop);
-      process.once("SIGTERM", stop);
-    })
-    .catch((e) => {
-      console.error("[CreditGuard] import failed:", e && e.message ? e.message : e);
-    });
-}
-
 
 function startBackgroundTokenRefreshFromCustomServer() {
   if (backgroundRefreshStarted) return;
@@ -229,7 +202,6 @@ http.createServer = (...args) => {
   server.once("listening", () => {
     if (workerConfig.role !== "api") {
       startBackgroundTokenRefreshFromCustomServer();
-      startCodebuddyCreditGuardFromCustomServer();
     }
   });
   const origEmit = server.emit;
