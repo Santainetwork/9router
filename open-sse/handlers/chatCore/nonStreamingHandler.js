@@ -3,7 +3,7 @@ import { needsTranslation } from "../../translator/index.js";
 import { fromOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
-import { createErrorResult } from "../../utils/error.js";
+import { createErrorResult, extractEmbeddedBodyError } from "../../utils/error.js";
 import { upstreamResponseHeaders } from "../../utils/upstreamHeaders.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
@@ -312,6 +312,18 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // bare OpenAI body and usage tracking sees data.usage. No-op unless the
   // provider opts in via transport.quirks.clineEnvelope.
   responseBody = unwrapClineEnvelope(responseBody, provider);
+
+  // Some upstreams (e.g. Lucif.ai on connection failure) answer HTTP 200 with an
+  // error envelope instead of a 4xx/5xx. Without this, the body is treated as a
+  // successful completion and combo never falls through to the next model.
+  const embeddedErr = (contentType.includes("application/json") || contentType === "")
+    ? extractEmbeddedBodyError(responseBody)
+    : null;
+  if (embeddedErr) {
+    appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+    if (log?.errorLine) log.errorLine(reqTag, "✗", `ERROR ${HTTP_STATUS.BAD_GATEWAY} · ${provider}/${model} · embedded error in 200 body: ${embeddedErr}`);
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, embeddedErr);
+  }
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
   if (onRequestSuccess) {

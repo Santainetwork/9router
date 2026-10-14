@@ -1,6 +1,30 @@
 import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
 
 /**
+ * Detect an error envelope delivered inside an otherwise-successful response body.
+ *
+ * Some upstreams answer HTTP 200 with `{ error: {...} }` (e.g. Lucif.ai on a
+ * connection failure) instead of a 4xx/5xx. Treating that as success makes a
+ * combo mark the model "succeeded" and skip fallback, so the caller receives an
+ * error wrapped in a 200.
+ *
+ * Strict by design: requires an `error` field AND no `choices` AND no `object`,
+ * so a valid completion that merely carries an optional `error` key is not
+ * misclassified. Returns the human-readable message, or null when not an error.
+ *
+ * @param {object} body - Parsed upstream response body
+ * @returns {string|null}
+ */
+export function extractEmbeddedBodyError(body) {
+  if (!body || typeof body !== "object") return null;
+  if (!body.error) return null;
+  if (body.choices || body.object) return null;
+  const err = body.error;
+  if (typeof err === "string") return err;
+  return err.message || err.code || err.type || JSON.stringify(err);
+}
+
+/**
  * Build OpenAI-compatible error response body
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
