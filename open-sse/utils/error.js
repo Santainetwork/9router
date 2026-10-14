@@ -18,7 +18,15 @@ import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
 export function extractEmbeddedBodyError(body) {
   if (!body || typeof body !== "object") return null;
   if (!body.error) return null;
-  if (body.choices || body.object) return null;
+  // A real error envelope is a body that carries an error but no usable payload.
+  // Upstreams may still set object:"chat.completion" with an empty choices array
+  // (observed live from Lucif.ai), so an empty choices list counts as absent.
+  const hasChoices = Array.isArray(body.choices) ? body.choices.length > 0 : Boolean(body.choices);
+  if (hasChoices) return null;
+  // A Responses-API object (object:"response") is a valid shape; only treat it as
+  // an error when it also fails — but it never carries a bare `error` at root, so
+  // keep the object check for non-chat objects that legitimately carry `error`.
+  if (body.object && body.object !== "chat.completion") return null;
   const err = body.error;
   if (typeof err === "string") return err;
   return err.message || err.code || err.type || JSON.stringify(err);

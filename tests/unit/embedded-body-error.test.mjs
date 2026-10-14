@@ -10,6 +10,15 @@ test("detects an error envelope delivered with HTTP 200", () => {
   assert.equal(extractEmbeddedBodyError({ error: { type: "server_error", message: "upstream connect timeout" } }), "upstream connect timeout");
 });
 
+test("detects the live Lucif.ai shape (object chat.completion, empty choices)", () => {
+  const real = { id: "chatcmpl-streamer", object: "chat.completion", created: 1791965085, model: "claude-opus-4.8", choices: [], error: { type: "server_error", message: "upstream error: upstream connect timeout" } };
+  assert.equal(extractEmbeddedBodyError(real), "upstream error: upstream connect timeout");
+});
+
+test("does not flag a chat.completion with a non-empty choices array", () => {
+  assert.equal(extractEmbeddedBodyError({ object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: "hi" } }] }), null);
+});
+
 test("accepts a string error", () => {
   assert.equal(extractEmbeddedBodyError({ error: "boom" }), "boom");
 });
