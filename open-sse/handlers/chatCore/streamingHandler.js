@@ -6,6 +6,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
+import { extractEmbeddedBodyError } from "../../utils/error.js";
 import { buildRequestDetail, extractRequestConfig, boundedProviderRequest, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
@@ -81,6 +82,29 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       }),
     };
+  }
+
+  // Upstream may answer a streaming request with application/json instead of an
+  // SSE stream — including a 200 that carries an error envelope (e.g. Lucif.ai on
+  // connection failure). Piping that through the SSE transform would emit a
+  // malformed stream; return a clean 502 instead so combo falls back.
+  if (upstreamContentType.includes('application/json')) {
+    const jsonBody = await providerResponse.json().catch(() => null);
+    const embeddedErr = extractEmbeddedBodyError(jsonBody);
+    if (embeddedErr) {
+      const status = providerResponse.status && providerResponse.status >= 400 ? providerResponse.status : HTTP_STATUS.BAD_GATEWAY;
+      if (log?.errorLine) log.errorLine(reqTag, "✗", `ERROR ${status} · ${provider}/${model} · embedded error in json body: ${embeddedErr}`);
+      streamController?.handleError?.(new Error(`upstream error envelope: ${embeddedErr}`));
+      return {
+        success: false,
+        response: new Response(JSON.stringify({ error: { message: embeddedErr } }), {
+          status,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }),
+      };
+    }
+    // A non-error JSON body on a streaming request is unexpected; let the existing
+    // JSON-to-SSE path below handle it.
   }
 
   const estimatedInputTokens = estimateInputTokens(body);
