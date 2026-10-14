@@ -153,24 +153,29 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const wasConnected = streamController.isConnected();
         // Controller already closed = downstream ended; not an upstream error, skip noisy log.
         const msg0 = error?.message || "";
-        const isControllerClosed = msg0.includes("already closed") || msg0.includes("Invalid state");
-        if (!isControllerClosed) finalize("handleError", error);
-        cleanupStream(error);
 
         // Treat network resets / socket hang up / abort as graceful close
-        const msg = error?.message || "";
         const code = error?.code || error?.cause?.code || "";
         const isNetworkClose =
           error.name === "AbortError" ||
-          msg.includes("aborted") ||
-          msg.includes("socket hang up") ||
-          msg.includes("ECONNRESET") ||
-          msg.includes("ETIMEDOUT") ||
-          msg.includes("EPIPE") ||
+          msg0.includes("aborted") ||
+          // undici raises a bare TypeError("terminated") when the upstream TLS
+          // socket closes mid-stream. Treat it as a graceful close, not a 502.
+          msg0.includes("terminated") ||
+          msg0.includes("socket hang up") ||
+          msg0.includes("ECONNRESET") ||
+          msg0.includes("ETIMEDOUT") ||
+          msg0.includes("EPIPE") ||
           code === "ECONNRESET" ||
           code === "ETIMEDOUT" ||
           code === "EPIPE" ||
           code === "UND_ERR_SOCKET";
+
+        // Not an upstream fault: downstream already closed, or a transport-level
+        // close. Skip the noisy ERROR log; the stream still closes gracefully below.
+        const isControllerClosed = msg0.includes("already closed") || msg0.includes("Invalid state");
+        if (!isControllerClosed && !isNetworkClose) finalize("handleError", error);
+        cleanupStream(error);
 
         // Graceful close on network/abort, or when a structured terminal is available
         // (Responses passthrough prefers response.failed + [DONE] over a raw transport error)
