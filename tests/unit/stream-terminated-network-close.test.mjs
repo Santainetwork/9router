@@ -33,18 +33,21 @@ async function drain(rs) {
   }
 }
 
-test("TypeError: terminated closes gracefully without handleError (no terminal bytes)", async () => {
+test("TypeError: terminated closes gracefully, releasing the slot via disconnect (no handleError)", async () => {
   const c = makeController();
   const out = await drain(createDisconnectAwareStream(throwingTransform(new TypeError("terminated")), c, null));
   assert.equal(out, "closed");
-  assert.deepEqual(c.events, []);
+  assert.equal(c.events.length, 1);
+  assert.equal(c.events[0][0], "disc");
+  assert.match(c.events[0][1], /terminated/);
 });
 
 test("TypeError: terminated with a structured terminal closes without handleError", async () => {
   const c = makeController();
   const out = await drain(createDisconnectAwareStream(throwingTransform(new TypeError("terminated")), c, () => new TextEncoder().encode("data: [DONE]\n\n")));
   assert.equal(out, "closed");
-  assert.deepEqual(c.events, []);
+  assert.equal(c.events.length, 1);
+  assert.equal(c.events[0][0], "disc");
 });
 
 test("a genuine application error still surfaces (not masked as network close)", async () => {

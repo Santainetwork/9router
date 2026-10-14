@@ -175,6 +175,12 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // close. Skip the noisy ERROR log; the stream still closes gracefully below.
         const isControllerClosed = msg0.includes("already closed") || msg0.includes("Invalid state");
         if (!isControllerClosed && !isNetworkClose) finalize("handleError", error);
+        else if (isNetworkClose && !isControllerClosed) {
+          // A transport-level close ends the turn without an app error. Release the
+          // request slot via handleDisconnect (no ERROR log) so the concurrency slot
+          // does not leak until timeout.
+          finalize("handleDisconnect", `network ${msg0 || code || "close"}`);
+        }
         cleanupStream(error);
 
         // Graceful close on network/abort, or when a structured terminal is available
