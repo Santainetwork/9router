@@ -1,4 +1,5 @@
 import { DefaultExecutor } from "./default.js";
+import { randomUUID, createHash } from "node:crypto";
 
 /**
  * CodeBuddyIntlExecutor — talks to https://www.codebuddy.ai/v2/chat/completions
@@ -7,10 +8,49 @@ import { DefaultExecutor } from "./default.js";
  * non-stream requests are rejected, and reasoning is surfaced only when the
  * request carries the IDE's OpenAI-style reasoning params. Force stream and
  * mirror reasoning_summary exactly like CodeBuddyExecutor.
+ *
+ * Since 2026-10-15 the intl gateway enforces channel verification: any chat
+ * request missing the X-Conversation-* header family is refused with 400 / code
+ * 11128 regardless of credentials. All three headers are required; two of them
+ * still fail. See decolua/9router#5005. The CN gateway has no such gate.
  */
 export class CodeBuddyIntlExecutor extends DefaultExecutor {
   constructor() {
     super("codebuddy-intl");
+  }
+
+  // Stable per-conversation id, derived deterministically so retries of the same
+  // turn (and account failovers) reuse one id, as the official client does.
+  _conversationId(credentials, body) {
+    const seed = body?.session_id || body?.prompt_cache_key || body?.conversation_id
+      || (Array.isArray(body?.messages)
+        ? JSON.stringify(body.messages.find((m) => m && m.role === "user") || body.messages[0] || "")
+        : "");
+    const key = `${credentials?.connectionId || credentials?.apiKey || ""}|${seed}`;
+    return createHash("sha256").update(key).digest("hex").slice(0, 32);
+  }
+
+  buildHeaders(credentials, stream = true, url = null, model = null, body = null) {
+    const headers = super.buildHeaders(credentials, stream, url, model, body);
+    if (!headers || typeof headers !== "object") {
+      throw new Error("codebuddy-intl: buildHeaders returned no header bag; X-Conversation-* gate would refuse the request");
+    }
+
+    // Case-insensitive lookup: a caller (or provider override) that already set
+    // one of these must be honoured, not duplicated (undici comma-joins dups).
+    const has = (name) => {
+      const lower = name.toLowerCase();
+      return Object.keys(headers).some((k) => k.toLowerCase() === lower);
+    };
+
+    if (!has("X-Conversation-ID")) headers["X-Conversation-ID"] = this._conversationId(credentials, body);
+    // Per-request ids; X-Request-ID mirrors the message id, as the official client sends it.
+    const messageId = randomUUID();
+    if (!has("X-Conversation-Request-ID")) headers["X-Conversation-Request-ID"] = randomUUID();
+    if (!has("X-Conversation-Message-ID")) headers["X-Conversation-Message-ID"] = messageId;
+    if (!has("X-Request-ID")) headers["X-Request-ID"] = messageId;
+
+    return headers;
   }
 
   transformRequest(model, body, stream, credentials) {
