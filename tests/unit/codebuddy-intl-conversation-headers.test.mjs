@@ -20,8 +20,15 @@ test("sends the full X-Conversation-* family", () => {
   assert.ok(h["X-Request-ID"], "missing X-Request-ID");
 });
 
-test("conversation id is stable across calls for the same conversation", () => {
-  assert.equal(build()["X-Conversation-ID"], build()["X-Conversation-ID"]);
+test("without an explicit session id, each request gets a fresh conversation id", () => {
+  // Two different conversations that happen to share the same prompt must not be
+  // joined upstream (decolua/9router#5086).
+  assert.notEqual(build()["X-Conversation-ID"], build()["X-Conversation-ID"]);
+});
+
+test("conversation id is stable for the same explicit session id", () => {
+  const withSession = { ...body, session_id: "session-a" };
+  assert.equal(build(creds, withSession)["X-Conversation-ID"], build(creds, withSession)["X-Conversation-ID"]);
 });
 
 test("per-request ids rotate between calls", () => {
@@ -38,14 +45,18 @@ test("conversation id is derived from the session seed when present", () => {
   assert.equal(a["X-Conversation-ID"], build(creds, { ...body, session_id: "session-a" })["X-Conversation-ID"]);
 });
 
-test("an existing family member is honoured, not duplicated or replaced", () => {
+test("a caller-supplied family member is honoured, not replaced", () => {
   const ex = new CodeBuddyIntlExecutor();
-  // Simulate a provider override already on the bag, in a different case.
-  const headers = ex.buildHeaders(creds, true, "url", "glm-5.2", body);
-  assert.ok(headers["X-Conversation-ID"]);
-  // Re-running buildHeaders on the SAME bag must not rotate X-Conversation-ID.
-  const again = ex.buildHeaders({ ...creds, providerSpecificData: {} }, true, "url", "glm-5.2", body);
-  assert.equal(again["X-Conversation-ID"], headers["X-Conversation-ID"]);
+  // A provider override puts the family on the bag before buildHeaders runs.
+  const withOverride = { ...creds, rawHeaders: { "x-conversation-id": "CALLER-ID", "x-conversation-request-id": "REQ-ID" } };
+  const headers = ex.buildHeaders(withOverride, true, "url", "glm-5.2", body);
+  // Case-insensitive: the caller's value wins, and no duplicate key is added.
+  const convKeys = Object.keys(headers).filter((k) => k.toLowerCase() === "x-conversation-id");
+  assert.equal(convKeys.length, 1);
+  assert.equal(headers[convKeys[0]], "CALLER-ID");
+  const reqKeys = Object.keys(headers).filter((k) => k.toLowerCase() === "x-conversation-request-id");
+  assert.equal(reqKeys.length, 1);
+  assert.equal(headers[reqKeys[0]], "REQ-ID");
 });
 
 test("X-Request-ID mirrors X-Conversation-Message-ID", () => {

@@ -19,14 +19,15 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     super("codebuddy-intl");
   }
 
-  // Stable per-conversation id, derived deterministically so retries of the same
-  // turn (and account failovers) reuse one id, as the official client does.
+  // Stable per-conversation id. Only an explicit client session may join turns:
+  // hashing the message text would collide two different conversations that
+  // happen to share a prompt, and would join them upstream. Without an explicit
+  // session, generate a fresh id per request instead of guessing.
+  // See decolua/9router#5086 for the same reasoning.
   _conversationId(credentials, body) {
-    const seed = body?.session_id || body?.prompt_cache_key || body?.conversation_id
-      || (Array.isArray(body?.messages)
-        ? JSON.stringify(body.messages.find((m) => m && m.role === "user") || body.messages[0] || "")
-        : "");
-    const key = `${credentials?.connectionId || credentials?.apiKey || ""}|${seed}`;
+    const sessionSeed = body?.session_id || body?.prompt_cache_key || body?.conversation_id || "";
+    if (!sessionSeed) return randomUUID();
+    const key = `${credentials?.connectionId || credentials?.apiKey || ""}|${sessionSeed}`;
     return createHash("sha256").update(key).digest("hex").slice(0, 32);
   }
 
@@ -42,6 +43,20 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
       const lower = name.toLowerCase();
       return Object.keys(headers).some((k) => k.toLowerCase() === lower);
     };
+
+    // Caller-supplied values (e.g. a provider override) win. Copy them across
+    // case-insensitively so the wire carries exactly one of each.
+    const raw = credentials?.rawHeaders || {};
+    const copyFromCaller = (name) => {
+      if (has(name)) return;
+      const value = typeof raw.get === "function"
+        ? raw.get(name)
+        : raw[Object.keys(raw).find((k) => k.toLowerCase() === name.toLowerCase()) || ""];
+      if (typeof value === "string" && value.trim()) headers[name] = value.trim();
+    };
+    for (const name of ["X-Conversation-ID", "X-Conversation-Request-ID", "X-Conversation-Message-ID"]) {
+      copyFromCaller(name);
+    }
 
     if (!has("X-Conversation-ID")) headers["X-Conversation-ID"] = this._conversationId(credentials, body);
     // Per-request ids; X-Request-ID mirrors the message id, as the official client sends it.
