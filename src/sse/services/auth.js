@@ -109,6 +109,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      // A connection marked unavailable with no active model lock is stale: the
+      // cooldown that produced the marker has expired, so it would only add an
+      // upstream round-trip to every request (observed: 48 qoder accounts all
+      // unavailable with empty locks -> 28-45s per request). Skip it until a
+      // successful probe clears the marker. A live lock still wins above, so a
+      // genuinely cooling account is never skipped twice.
+      if (c.testStatus === "unavailable" && !getEarliestModelLockUntil(c)) return false;
       const enabled = c.providerSpecificData?.enabledModels;
       if (providerId === "codex" && Array.isArray(enabled) && enabled.length && requestedModel && !enabled.includes(requestedModel)) return false;
       // Antigravity: skip if live quota exhausted for this model
