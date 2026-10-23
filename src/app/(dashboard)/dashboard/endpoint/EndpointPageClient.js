@@ -1174,7 +1174,7 @@ export default function APIPageClient({ machineId }) {
               Save this key now!
             </p>
             <p className="text-sm text-warning dark:text-warning">
-              This is the only time you will see this key. Store it securely.
+              Store this key securely. You can view or copy it later from the API Keys list.
             </p>
           </div>
           <div className="flex gap-2">

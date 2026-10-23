@@ -16,10 +16,13 @@ test("chat routing enables body-read fallback only for configured combos", () =>
   assert.equal((chatHandler.match(/allowBodyReadFallback: false/g) || []).length, 1);
 });
 
-test("body-read 400 remains non-fallback at provider-account scope", () => {
+test("body-read 400 is request-scoped, never an account fallback", () => {
+  // Upstream v0.5.105+ marks unmatched 4xx as requestScoped: the credential is
+  // healthy, only this request was rejected. shouldFallback stays false so the
+  // account is not cooled down; requestScoped lets the combo try a peer.
   assert.deepEqual(
     checkFallbackError(400, '[400]: {"error":{"message":"failed to read request body"}}'),
-    { shouldFallback: false, cooldownMs: 0 },
+    { shouldFallback: false, cooldownMs: 0, requestScoped: true },
   );
 });
 
@@ -60,7 +63,10 @@ test("combo falls through when one upstream cannot read a large valid body", asy
   assert.equal(body.messages[0].content.length, content.length);
 });
 
-test("capacity-adapter routing keeps the same body-read 400 terminal", async () => {
+test("capacity-adapter routing advances past a request-scoped 400", async () => {
+  // allowBodyReadFallback is omitted here, so the fork's transport-specific
+  // override is off. The upstream requestScoped contract still advances to the
+  // next member, and the first request-scoped failure is what the caller sees.
   let attempts = 0;
   const response = await handleComboChat({
     body: { model: "direct-model", messages: [{ role: "user", content: "x".repeat(1024 * 1024) }] },
@@ -75,10 +81,12 @@ test("capacity-adapter routing keeps the same body-read 400 terminal", async () 
   });
 
   assert.equal(response.status, 400);
-  assert.equal(attempts, 1);
+  assert.equal(attempts, 2);
 });
 
-test("combo still returns semantic 400 errors without trying another model", async () => {
+test("combo surfaces the semantic 400 after every member rejects it", async () => {
+  // Every member fails the same way, so the caller still gets the original 400
+  // instead of a synthetic 502: the first request-scoped response is returned.
   let attempts = 0;
   const response = await handleComboChat({
     body: { model: "combo", messages: [{ role: "user", content: "hello" }] },
@@ -95,5 +103,5 @@ test("combo still returns semantic 400 errors without trying another model", asy
   });
 
   assert.equal(response.status, 400);
-  assert.equal(attempts, 1);
+  assert.equal(attempts, 2);
 });

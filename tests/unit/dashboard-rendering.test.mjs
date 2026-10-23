@@ -61,7 +61,11 @@ test("ConsoleLogClient bounds log buffers and preserves stream cleanup", () => {
 });
 
 test("translator keeps Monaco lazy with a stable loading fallback and keeps detect semantics", () => {
-  assert.match(translator, /const Editor = dynamic\(\s*\(\) => import\("@monaco-editor\/react"\),\s*\{[^}]*ssr: false/);
+  // Upstream wraps the import in .then() to point Monaco at the local vs path;
+  // the contract is still "lazy chunk, ssr disabled, stable loading placeholder".
+  assert.match(translator, /const Editor = dynamic\(\s*\(\) => import\("@monaco-editor\/react"\)/);
+  assert.match(translator, /ssr: false/);
+  assert.match(translator, /MONACO_VS_PATH/);
   assert.match(translator, /loading:/);
   assert.match(translator, /motion-safe:animate-pulse/);
   // auto-detection behaviour preserved on both explicit paths

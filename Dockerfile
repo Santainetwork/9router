@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 ARG GO_IMAGE=golang:1.24-alpine
-ARG NODE_IMAGE=node:22-alpine
+ARG NODE_IMAGE=node:22.23.4-alpine
 ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 ARG APP_VERSION=unknown
@@ -88,11 +88,12 @@ COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
 COPY --from=builder /app/node_modules/node-machine-id ./node_modules/node-machine-id
 
 # Runtime requirements and directory setup
-RUN apk add --no-cache su-exec ca-certificates tzdata && \
+RUN apk add --no-cache su-exec ca-certificates tzdata ffmpeg && \
     mkdir -p /app/data /app/data-home && \
     chown -R node:node /app && \
     ln -sf /app/data-home /root/.9router 2>/dev/null || true
 
+# Fork keeps its own entrypoint (multi-process launcher: gateway, limiter, worker).
 COPY deploy/docker-entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh /app/router-engine
 

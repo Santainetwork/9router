@@ -1,4 +1,5 @@
 import { ensureDirs, DATA_FILE } from "./paths.js";
+import { stripNullBytes } from "./helpers/nullBytes.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
 if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false };
@@ -131,6 +132,29 @@ export async function initAdapter(deps = {}) {
     return adapter;
   }
 
+/**
+ * Make every bound string NUL-safe, once, for all drivers.
+ *
+ * SQLite stores TEXT as a NUL-terminated C string, so a bound string with an
+ * embedded NUL is rejected by better-sqlite3 ("String contains null byte") and
+ * silently truncated by node:sqlite. Values that carry raw bytes — a model id
+ * or endpoint from the request, tool output, a diff — can contain one, and the
+ * write then either aborts the flush worker or loses the tail without a
+ * trace. Sanitising at the binding boundary covers every driver and every
+ * column type with a single rule, instead of one call site at a time.
+ *
+ * @param {object} adapter
+ * @returns {object} adapter with NUL-safe run/get/all
+ */
+function withNullByteSafeParams(adapter) {
+  const clean = (params) => (Array.isArray(params) ? params.map(stripNullBytes) : params);
+  return {
+    ...adapter,
+    run: (sql, params = []) => adapter.run(sql, clean(params)),
+    get: (sql, params = []) => adapter.get(sql, clean(params)),
+    all: (sql, params = []) => adapter.all(sql, clean(params)),
+  };
+}
   ensureDirs();
   // Multicore API worker: native read-only only — sql.js is rejected outright
   // because each process would hold a stale private image of the database.
@@ -148,6 +172,8 @@ export async function initAdapter(deps = {}) {
       ? "[DB] SQLITE_MULTICORE=redis API worker requires a native SQLite adapter with read-only support (better-sqlite3, node:sqlite or bun:sqlite); sql.js is not supported in multicore mode"
       : "[DB] No SQLite driver available (bun/better/node/sql.js all failed)");
   }
+
+  adapter = withNullByteSafeParams(adapter);
 
   if (!state.logged) {
     console.log(`[DB] Driver: ${adapter.driver}${readOnly ? " (read-only worker)" : ""} | file: ${DATA_FILE}`);

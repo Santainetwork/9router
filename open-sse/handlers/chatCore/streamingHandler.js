@@ -42,7 +42,12 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
     return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey, customToolNames, credentials);
   }
 
-  return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey);
+  // The passthrough path has no format translation, so the fingerprint's tool
+  // rename map (read -> read_client) has to be handed over explicitly —
+  // otherwise the client receives a call to a tool it never declared (#4986).
+  // The request payload is NOT retained here: the caller already measured it
+  // into estimatedInputTokens, which keeps a large request out of stream state.
+  return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, estimatedInputTokens, onStreamComplete, apiKey, toolNameMap);
 }
 
 /**

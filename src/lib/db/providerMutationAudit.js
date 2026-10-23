@@ -19,6 +19,8 @@ export const KNOWN_MUTATION_SITES = Object.freeze({
   "src/app/api/oauth/xiaomi-mimo/api-key/route.js": MUTATION_CLASS.CONTROL_ONLY,
   "src/app/api/provider-nodes/[id]/route.js": MUTATION_CLASS.SYNC,
   "src/app/api/providers/[id]/route.js": MUTATION_CLASS.CONTROL_ONLY,
+  // Web-login capture stores a fresh browser credential; dashboard-only path.
+  "src/app/api/providers/web-login/route.js": MUTATION_CLASS.CONTROL_ONLY,
   "src/app/api/translator/send/route.js": MUTATION_CLASS.SYNC,
   "src/app/api/usage/[connectionId]/route.js": MUTATION_CLASS.SYNC,
   "src/sse/services/auth.js": MUTATION_CLASS.SYNC,
