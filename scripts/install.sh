@@ -1407,6 +1407,21 @@ fi
 
 # 6c. The gateway is restarted last: it is the only public listener.
 systemctl restart "$SERVICE_ENGINE"
+# The engine binds its listeners a moment after the unit reports "started", so
+# probing immediately races the bind and every gateway check reads 000 (which
+# used to trigger a spurious rollback of a healthy install). Wait for the
+# limiter port to answer before the verification block runs.
+GATEWAY_UP=0
+for i in $(seq 1 30); do
+  if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${LIMITER_PORT}/health" 2>/dev/null; then
+    GATEWAY_UP=1; info "gateway listening after ${i}s"; break
+  fi
+  sleep 1
+done
+if [ "$GATEWAY_UP" != 1 ]; then
+  warn "Gateway did not start listening on :${LIMITER_PORT} within 30s."
+  journalctl -u "$SERVICE_ENGINE" -n 20 --no-pager || true
+fi
 ok "Services restarted"
 
 # ─── 7. Health verification ──────────────────────────────────────────────────
@@ -1455,7 +1470,11 @@ fi
 
 check_http() { # check_http <label> <url> <expected>
   local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$2" 2>/dev/null || echo 000)"
+  # curl already prints 000 to stdout when the connection fails, so `|| echo 000`
+  # appended a second 000 and the label read "HTTP 000000". Read stdout only and
+  # default to 000 when curl produced nothing at all.
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$2" 2>/dev/null || true)"
+  [ -n "$code" ] || code="000"
   if [ "$code" = "$3" ]; then ok "$1 → HTTP $code"; else warn "$1 → HTTP $code (expected $3)"; return 1; fi
 }
 
