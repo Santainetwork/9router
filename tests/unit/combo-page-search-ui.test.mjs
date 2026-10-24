@@ -22,3 +22,11 @@ test("v0.5.85 combo compatibility remains enabled", () => {
   assert.match(source, /upgradeLegacyModel/);
   assert.match(source, /mimo-v2\.6-flash-free/);
 });
+
+// Regression: 9b4ea9eb shipped `normalizedQuery` in the toolbar without ever
+// declaring it, so the whole combos page threw ReferenceError before the first
+// paint and every user saw Next's "This page couldn't load" boundary instead.
+test("combo page uses only declared search identifiers", () => {
+  assert.doesNotMatch(source, /normalizedQuery/);
+  assert.match(source, /const searchQuery = comboSearch;/);
+});

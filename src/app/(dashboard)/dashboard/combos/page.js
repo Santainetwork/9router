@@ -786,7 +786,7 @@ export default function CombosPage() {
             </label>
 
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              {normalizedQuery && (
+              {comboSearch.trim() && (
                 <span className="text-xs text-text-muted">
                   {filteredCombos.length} of {combos.length} shown
                 </span>
