@@ -404,10 +404,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
-  // Accounts skipped by the instant concurrency probe. Once every account is
-  // busy we come back to one of them and wait in its queue (previous behavior).
-  const concurrencyFullCandidates = [];
-  let probeConcurrency = true;
+  // Accounts skipped by the instant limit probe because a counter was full
+  // (RPM window or concurrency slots). Both are treated the same: spill to the
+  // next account so the client is served instead of 429ing, and only when every
+  // account is exhausted come back to one of these and wait in its queue.
+  const limitFullCandidates = [];
+  let probeLimits = true;
   let lastError = null;
   let lastStatus = null;
   let lastHeaders = null;
@@ -415,18 +417,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   while (true) {
     let credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
 
-    // Every account was skipped only because its concurrency slot was busy:
-    // queue on one of them instead of failing the request. This also covers the
-    // mixed case (some accounts busy, the rest model-locked), where the previous
-    // behavior was to queue on the busy account rather than fail.
+    // Every account was skipped only because a limit was full: queue on one of
+    // them instead of failing the request. This also covers the mixed case
+    // (some accounts full, the rest model-locked), where the previous behavior
+    // was to queue on the busy account rather than fail.
     const noCredentials = !credentials || credentials.allRateLimited;
-    if (noCredentials && concurrencyFullCandidates.length > 0) {
-      const busyCount = concurrencyFullCandidates.length;
-      credentials = concurrencyFullCandidates[0];
-      for (const c of concurrencyFullCandidates) excludeConnectionIds.delete(c.connectionId);
-      concurrencyFullCandidates.length = 0;
-      probeConcurrency = false;
-      log.info("RATELIMIT", `[${provider}/${model}] all ${busyCount} account(s) at max concurrency → waiting in queue on ${credentials.connectionName}`);
+    if (noCredentials && limitFullCandidates.length > 0) {
+      const busyCount = limitFullCandidates.length;
+      credentials = limitFullCandidates[0];
+      for (const c of limitFullCandidates) excludeConnectionIds.delete(c.connectionId);
+      limitFullCandidates.length = 0;
+      probeLimits = false;
+      log.info("RATELIMIT", `[${provider}/${model}] all ${busyCount} account(s) at max rpm/concurrency → waiting in queue on ${credentials.connectionName}`);
     } else if (noCredentials) {
       doReleaseApiKey();
       if (credentials?.allRateLimited) {
@@ -460,7 +462,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         const timeoutMs = Number(credentials.queueTimeoutMs) > 0 ? credentials.queueTimeoutMs : 60000;
         // While another account may still have a free slot, probe this one with
         // timeout 0 so a full concurrency slot spills over instead of queueing.
-        const attemptTimeoutMs = probeConcurrency ? 0 : timeoutMs;
+        const attemptTimeoutMs = probeLimits ? 0 : timeoutMs;
         const releaseFn = await acquire("provider", credentials.connectionId, {
           rpm: credentials.rpm,
           concurrency: credentials.concurrency,
@@ -475,22 +477,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
       } catch (e) {
         if (e instanceof RateLimitTimeoutError) {
-          // Concurrency full on this account: try another account with a free
-          // slot before queueing/failing. The last resort (every account busy)
-          // is handled by concurrencyFullCandidates above.
-          if (probeConcurrency) {
-            if (isParallelLimitError(e.message)) {
-              // Concurrency slot full: try the next account before queueing.
-              concurrencyFullCandidates.push(credentials);
-              excludeConnectionIds.add(credentials.connectionId);
-              log.info("RATELIMIT", `[${provider}/${model}] ${credentials.connectionName} at max concurrency (${credentials.concurrency}) → trying next account`);
-              continue;
-            }
-            // RPM (not concurrency) is the blocker: stop probing and wait in the
-            // queue exactly as before, on the highest-priority account.
-            probeConcurrency = false;
-            for (const c of concurrencyFullCandidates) excludeConnectionIds.delete(c.connectionId);
-            concurrencyFullCandidates.length = 0;
+          // RPM window or concurrency slots full on this account: try the next
+          // account before queueing/failing, so a client is served by a free
+          // account instead of waiting out the window. The last resort (every
+          // account full) is handled by limitFullCandidates above.
+          if (probeLimits) {
+            const parallel = isParallelLimitError(e.message);
+            limitFullCandidates.push(credentials);
+            excludeConnectionIds.add(credentials.connectionId);
+            const limitLabel = parallel
+              ? `max concurrency (${credentials.concurrency})`
+              : `max rpm (${credentials.rpm})`;
+            log.info("RATELIMIT", `[${provider}/${model}] ${credentials.connectionName} at ${limitLabel} → trying next account`);
             continue;
           }
           const reason = credentials.concurrency > 0 && !(credentials.rpm > 0)

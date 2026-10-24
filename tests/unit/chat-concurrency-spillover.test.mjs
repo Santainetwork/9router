@@ -16,11 +16,12 @@
 //   (a) busy A + free B        -> 200 served by B, no wait on A (fails pre-fix)
 //   (b) A and B both full      -> request queues, succeeds after a slot frees
 //   (c) busy A + model-locked B -> request queues on A, succeeds after release
-//   (d) RPM-blocked A + free B -> request queues on A (preservation test: the
-//       fix's RPM branch must NOT be treated as concurrency-full)
+//   (d) RPM-blocked A + free B -> 200 served by B. RPM now spills over exactly
+//       like concurrency: the client is served instead of waiting out A's window
+//       (the pre-spillover behavior the earlier preservation test pinned).
 //   (e) busy A + RPM-blocked B  -> request still queues on A. This is the mixed
-//       case where the RPM branch must un-exclude the busy account it already
-//       skipped; without that, A stays excluded and the request 503s.
+//       case where every account is exhausted (A concurrency-full, B RPM-full);
+//       the request must re-admit the skipped busy account and queue on it.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -261,12 +262,10 @@ test("(c) busy A + model-locked B: request queues on A and succeeds when A frees
   }
 });
 
-// (d) PRESERVATION test: passes both pre- and post-fix. Its job is to pin the
-// fix's RPM branch — when RPM (not concurrency) blocks the priority account, the
-// request must still wait in that account's queue instead of spilling to the
-// next account. Removing the RPM branch makes (d) fail: A would be pushed onto
-// concurrencyFullCandidates, excluded, and the request would dispatch on B.
-test("(d) RPM-blocked A + free B: request queues on A instead of spilling", async () => {
+// (d) RPM-blocked A + free B: A is at its RPM ceiling, B has headroom, so the
+// request must spill over and be served by B — never 429 to the client while a
+// free account exists.
+test("(d) RPM-blocked A + free B: request spills over and is served by B", async () => {
   setFixtures([makeConn("conn-A", { rpm: 1 }), makeConn("conn-B")]);
   const ac = new AbortController();
   let reqPromise = null;
@@ -279,19 +278,15 @@ test("(d) RPM-blocked A + free B: request queues on A instead of spilling", asyn
 
     reqPromise = handleChat(makeRequest(ac.signal));
 
-    // Must not fail fast and must not be dispatched to B: RPM is not a
-    // concurrency block, so the request waits in A's queue (previous behavior).
-    const early = await racePending(reqPromise, 200);
-    assertStillPending(early);
-    await waitFor(
-      () => _stats("provider", "conn-A").queued === 1,
-      "the request to queue on RPM-blocked conn-A",
-    );
-
-    assert.equal(globalThis.__TEST_CORE_CALLS__.length, 0, "no upstream attempt may run yet");
-    // B was never touched, so its bucket may not exist at all.
-    assert.equal(_stats("provider", "conn-B")?.queued ?? 0, 0, "free B must not receive the request");
-    assert.equal(_stats("provider", "conn-B")?.activeConcurrency ?? 0, 0, "B must not take a limiter slot");
+    // Spill: the request must go to B instead of queueing on (or failing with)
+    // RPM-blocked A.
+    const res = await withTimeout(reqPromise, 3000, "spill to free B");
+    assert.equal(res.status, 200, "free B must serve the request RPM-blocked A rejects");
+    assert.notEqual(res.status, 429);
+    const calls = globalThis.__TEST_CORE_CALLS__;
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].connectionId, "conn-B", "the request must dispatch on free B");
+    assert.equal(_stats("provider", "conn-A").queued, 0, "A must not receive a waiter");
   } finally {
     ac.abort();
     await settleQuietly(reqPromise);
@@ -300,9 +295,9 @@ test("(d) RPM-blocked A + free B: request queues on A instead of spilling", asyn
 });
 
 // (e) Mixed case: A is concurrency-full (already pushed onto
-// concurrencyFullCandidates and excluded), then B is reached and turns out to be
-// RPM-blocked. The RPM branch must un-exclude A so the request queues on it —
-// the loop that re-admits skipped accounts is only reachable here.
+// limitFullCandidates and excluded), then B is reached and turns out to be
+// RPM-blocked too. Every account is exhausted: the request must re-admit the
+// skipped A and queue on it rather than 503.
 test("(e) busy A + RPM-blocked B: request queues on A, not 503", async () => {
   setFixtures([makeConn("conn-A"), makeConn("conn-B", { rpm: 1, concurrency: 0 })]);
   const ac = new AbortController();
