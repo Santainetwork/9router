@@ -6,6 +6,26 @@ Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
 
 ---
 
+## 2026-10-25 — RPM Spillover, Queue RPM Bar, Credit Multiplier Table
+
+### RPM-blocked account spills over like a concurrency-full one (`src/sse/handlers/chat.js`)
+- An account at its RPM ceiling used to make the request queue for the rest of the window even when another account had headroom, costing latency (and a 429 on a short queue timeout) with capacity sitting idle. The account-selection loop now treats both counters the same: skip the blocked account, try the next one, and only queue once every account is exhausted. `concurrencyFullCandidates`/`probeConcurrency` renamed to `limitFullCandidates`/`probeLimits`.
+- `tests/unit/chat-concurrency-spillover.test.mjs` case (d) updated: RPM-blocked A + free B now asserts a 200 served by B (previously pinned the queue-on-A behavior).
+
+### RPM usage bar in the Queue Monitor (`/dashboard/queue-monitor`)
+- The RPM column showed only the configured limit. It now renders `inWindow / limit` with the same bar treatment as Capacity (info, amber at 70%, red at full) on both the API key and provider tables. Header relabeled "RPM (used / min)".
+
+### CodeBuddy credit multiplier table (`/dashboard/usage`)
+- New reference table on each CodeBuddy CN/Intl connection card showing the published Credit multiplier (积分倍率) per model, sortable by model or multiplier. `src/shared/constants/codebuddyMultipliers.js` holds the values; `CodebuddyMultiplierTable.js` renders them. Display only, never fed to routing or billing.
+
+### Combo search crash fix (`/dashboard/combos`)
+- Upstream `9b4ea9eb` read `normalizedQuery` in the toolbar without declaring it, throwing `ReferenceError` before first paint so the whole page fell through to Next's error boundary. Fixed to use the declared `comboSearch` state, with a regression test in `tests/unit/combo-page-search-ui.test.mjs`.
+
+### Fork version
+- `forkVersion` moved off the placeholder `0.1.0` to `0.3.0`: 0.1 the original feature set, 0.2 the Go gateway + PostgreSQL rearchitecture, 0.3 this batch. `pkg.version` (upstream) is untouched.
+
+---
+
 ## 2026-10-09: Per-Combo Context Window Override
 
 ### Published Context Window Override (`combos.contextWindow`)
