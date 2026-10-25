@@ -24,6 +24,7 @@ import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 import CustomConfigCard from "./CustomConfigCard";
+import CodebuddyMultiplierCard from "./CodebuddyMultiplierCard";
 import AutoPingScheduleModal from "./AutoPingScheduleModal";
 import WebLoginButton, { WEB_LOGIN_PROVIDERS } from "../components/WebLoginButton.js";
 import { getScheduleSlotLabels } from "@/shared/services/quotaPingSchedule";
@@ -1954,6 +1955,11 @@ export default function ProviderDetailPage() {
 
       {/* Per-provider user overrides (custom headers / connect timeout) */}
       <CustomConfigCard providerId={providerId} />
+
+      {/* CodeBuddy/WorkBuddy credit multiplier reference (积分倍率) */}
+      {(providerId === "codebuddy-intl" || providerId === "codebuddy-cn") && (
+        <CodebuddyMultiplierCard />
+      )}
 
       {/* Models */}
       <Card>
