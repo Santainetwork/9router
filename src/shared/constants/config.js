@@ -6,8 +6,12 @@ export const APP_CONFIG = {
   description: "AI Infrastructure Management",
   version: pkg.version,
   // Fork label, display only. pkg.version stays the upstream version used by update checks.
+  // Semver for the fork's own feature line: major = breaking rearchitecture
+  // (Go gateway cutover), minor = feature sets (per-key quota, credit guard,
+  // branding), patch = fixes on top. Bump minor per feature batch in
+  // CHANGELOG.SantaiNetwork.md.
   forkName: "SantaiNetwork",
-  forkVersion: "0.1.0",
+  forkVersion: "0.3.0",
 };
 
 // GitHub configuration

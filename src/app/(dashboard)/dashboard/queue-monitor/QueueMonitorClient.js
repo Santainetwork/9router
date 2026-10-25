@@ -335,7 +335,7 @@ export default function QueueMonitorClient() {
               <TableRow>
                 <TableHead>Key Name</TableHead>
                 <TableHead>Token Mask</TableHead>
-                <TableHead className="text-right">RPM</TableHead>
+                <TableHead className="text-right">RPM (used / min)</TableHead>
                 <TableHead className="text-right">Capacity & In-Flight</TableHead>
                 <TableHead className="text-right">Buffer Timeout</TableHead>
                 <TableHead className="text-right">Queued</TableHead>
@@ -355,6 +355,9 @@ export default function QueueMonitorClient() {
                   const cap = k.concurrency || 0;
                   const active = k.activeConcurrency || 0;
                   const pct = cap > 0 ? Math.min(100, Math.round((active / cap) * 100)) : 0;
+                  const rpmCap = k.rpm || 0;
+                  const rpmUsed = k.inWindow || 0;
+                  const rpmPct = rpmCap > 0 ? Math.min(100, Math.round((rpmUsed / rpmCap) * 100)) : 0;
 
                   return (
                     <TableRow key={k.id}>
@@ -364,8 +367,27 @@ export default function QueueMonitorClient() {
                       <TableCell className="font-mono text-xs text-text-muted">
                         {k.maskedKey}
                       </TableCell>
-                      <TableCell className="text-right font-mono font-medium text-xs">
-                        {k.rpm > 0 ? `${k.rpm} /min` : <span className="text-text-muted">Unl</span>}
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-1 min-w-[120px]">
+                          <div className="text-xs font-mono font-bold">
+                            <span className={rpmPct >= 100 ? "text-danger dark:text-danger" : rpmPct >= 70 ? "text-warning dark:text-warning" : rpmUsed > 0 ? "text-info dark:text-info" : "text-text-muted"}>
+                              {rpmUsed}
+                            </span>
+                            <span className="text-text-muted font-normal"> / {rpmCap > 0 ? rpmCap : "Unl"}</span>
+                            <span className="text-text-muted font-normal"> /min</span>
+                          </div>
+                          {rpmCap > 0 ? (
+                            <div className="h-1.5 w-24 rounded-full bg-border overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all",
+                                  rpmPct >= 100 ? "bg-danger" : rpmPct >= 70 ? "bg-warning" : "bg-info"
+                                )}
+                                style={{ width: `${rpmPct}%` }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1 min-w-[120px]">
@@ -433,7 +455,7 @@ export default function QueueMonitorClient() {
               <TableRow>
                 <TableHead>Provider</TableHead>
                 <TableHead>Connection Name</TableHead>
-                <TableHead className="text-right">RPM</TableHead>
+                <TableHead className="text-right">RPM (used / min)</TableHead>
                 <TableHead className="text-right">Capacity & In-Flight</TableHead>
                 <TableHead className="text-right">Buffer Timeout</TableHead>
                 <TableHead className="text-right">Queued</TableHead>
@@ -453,6 +475,9 @@ export default function QueueMonitorClient() {
                   const cap = p.concurrency || 0;
                   const active = p.activeConcurrency || 0;
                   const pct = cap > 0 ? Math.min(100, Math.round((active / cap) * 100)) : 0;
+                  const rpmCap = p.rpm || 0;
+                  const rpmUsed = p.inWindow || 0;
+                  const rpmPct = rpmCap > 0 ? Math.min(100, Math.round((rpmUsed / rpmCap) * 100)) : 0;
 
                   return (
                     <TableRow key={p.id}>
@@ -462,8 +487,27 @@ export default function QueueMonitorClient() {
                       <TableCell className="font-medium text-text-muted text-xs truncate max-w-[200px]">
                         {p.name}
                       </TableCell>
-                      <TableCell className="text-right font-mono font-medium text-xs">
-                        {p.rpm > 0 ? `${p.rpm} /min` : <span className="text-text-muted">Unl</span>}
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-1 min-w-[120px]">
+                          <div className="text-xs font-mono font-bold">
+                            <span className={rpmPct >= 100 ? "text-danger dark:text-danger" : rpmPct >= 70 ? "text-warning dark:text-warning" : rpmUsed > 0 ? "text-info dark:text-info" : "text-text-muted"}>
+                              {rpmUsed}
+                            </span>
+                            <span className="text-text-muted font-normal"> / {rpmCap > 0 ? rpmCap : "Unl"}</span>
+                            <span className="text-text-muted font-normal"> /min</span>
+                          </div>
+                          {rpmCap > 0 ? (
+                            <div className="h-1.5 w-24 rounded-full bg-border overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all",
+                                  rpmPct >= 100 ? "bg-danger" : rpmPct >= 70 ? "bg-warning" : "bg-info"
+                                )}
+                                style={{ width: `${rpmPct}%` }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1 min-w-[120px]">
