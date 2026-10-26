@@ -11,10 +11,14 @@ const futureIso = () => new Date(Date.now() + 60_000).toISOString();
 const pastIso = () => new Date(Date.now() - 60_000).toISOString();
 
 // Mirrors the guard added to auth.js availability filtering.
-const isSkippable = (c) => c.testStatus === "unavailable" && !getEarliestModelLockUntil(c);
+const isSkippable = (c) => c.testStatus === "unavailable" && c.errorCode !== 429 && !getEarliestModelLockUntil(c);
 
 test("stale unavailable account with no lock is skipped", () => {
   assert.equal(isSkippable({ testStatus: "unavailable", lastErrorAt: pastIso() }), true);
+});
+
+test("stale 429 rate limit is NOT permanently skipped once lock expires", () => {
+  assert.equal(isSkippable({ testStatus: "unavailable", errorCode: 429, lastErrorAt: pastIso() }), false);
 });
 
 test("unavailable account with an expired lock is still skipped", () => {

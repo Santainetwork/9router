@@ -115,7 +115,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // unavailable with empty locks -> 28-45s per request). Skip it until a
       // successful probe clears the marker. A live lock still wins above, so a
       // genuinely cooling account is never skipped twice.
-      if (c.testStatus === "unavailable" && !getEarliestModelLockUntil(c)) return false;
+      // NOTE: Transient 429 (rate limits) must NEVER be permanently skipped once
+      // their cooldown expires.
+      if (c.testStatus === "unavailable" && c.errorCode !== 429 && !getEarliestModelLockUntil(c)) return false;
       const enabled = c.providerSpecificData?.enabledModels;
       if (providerId === "codex" && Array.isArray(enabled) && enabled.length && requestedModel && !enabled.includes(requestedModel)) return false;
       // Antigravity: skip if live quota exhausted for this model
@@ -354,14 +356,22 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";
   const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
 
-  await updateProviderConnection(connectionId, {
+  const updates = {
     ...lockUpdate,
-    testStatus: "unavailable",
     lastError: reason,
     errorCode: status,
     lastErrorAt: new Date().toISOString(),
     backoffLevel: newBackoffLevel ?? backoffLevel
-  });
+  };
+
+  // Only set connection testStatus to "unavailable" for permanent/auth errors (401, 403, etc.),
+  // NOT for transient rate limits (429). Otherwise, once the model lock expires, the account
+  // remains stuck in "unavailable" and is permanently skipped by getProviderCredentials!
+  if (status !== 429) {
+    updates.testStatus = "unavailable";
+  }
+
+  await updateProviderConnection(connectionId, updates);
 
   const lockKey = Object.keys(lockUpdate)[0];
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
