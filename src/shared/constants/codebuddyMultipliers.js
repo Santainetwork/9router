@@ -18,7 +18,7 @@ export const CODEBUDDY_MULTIPLIERS = [
   { id: "glm-5.0-turbo", label: "GLM-5.0-Turbo", multiplier: 0.79 },
   { id: "glm-5.1", label: "GLM-5.1", multiplier: 0.79 },
   { id: "glm-5.2", label: "GLM-5.2", multiplier: 0.79 },
-  { id: "glm-5.3-flash", label: "GLM-5.3-Flash", multiplier: 0.79 },
+  { id: "glm-5.3-flash", label: "GLM-5.3-Flash", multiplier: 0.06 },
   { id: "glm-5.3", label: "GLM-5.3", multiplier: 0.79 },
   { id: "claude-sonnet-4.6", label: "Claude-Sonnet-4.6", multiplier: 2.0 },
   { id: "claude-opus-4.8", label: "Claude-Opus-4.8", multiplier: 3.33 },
