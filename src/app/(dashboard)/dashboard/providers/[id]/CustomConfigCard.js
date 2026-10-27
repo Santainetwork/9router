@@ -83,8 +83,9 @@ export default function CustomConfigCard({ providerId }) {
     setRows(Object.entries(builtin).map(([name, value]) => ({ name, value })));
   };
 
-  // Only render when there is something to customize: registry headers or existing overrides
-  if (Object.keys(builtin).length === 0 && !hasOverride) return null;
+  // Always render: OpenAI-compatible endpoints commonly need extra auth/routing
+  // headers even when the registry defines none. With no built-ins the table
+  // starts empty and every row the user fills in becomes an override.
 
   return (
     <Card padding="xs">
