@@ -37,33 +37,33 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
       throw new Error("codebuddy-intl: buildHeaders returned no header bag; X-Conversation-* gate would refuse the request");
     }
 
-    // Case-insensitive lookup: a caller (or provider override) that already set
-    // one of these must be honoured, not duplicated (undici comma-joins dups).
-    const has = (name) => {
-      const lower = name.toLowerCase();
-      return Object.keys(headers).some((k) => k.toLowerCase() === lower);
-    };
-
-    // Caller-supplied values (e.g. a provider override) win. Copy them across
-    // case-insensitively so the wire carries exactly one of each.
+    // Case-insensitive helpers. The registry hook (codebuddyHeaders) has
+    // already seeded random ids by the time this runs, so "is it present" is
+    // never the question: every value below is decided here, with the caller's
+    // provider override winning when it supplied one.
     const raw = credentials?.rawHeaders || {};
-    const copyFromCaller = (name) => {
-      if (has(name)) return;
+    const callerValue = (name) => {
       const value = typeof raw.get === "function"
         ? raw.get(name)
         : raw[Object.keys(raw).find((k) => k.toLowerCase() === name.toLowerCase()) || ""];
-      if (typeof value === "string" && value.trim()) headers[name] = value.trim();
+      return typeof value === "string" && value.trim() ? value.trim() : null;
     };
-    for (const name of ["X-Conversation-ID", "X-Conversation-Request-ID", "X-Conversation-Message-ID"]) {
-      copyFromCaller(name);
-    }
+    const set = (name, value) => {
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === name.toLowerCase()) delete headers[key];
+      }
+      headers[name] = value;
+    };
 
-    if (!has("X-Conversation-ID")) headers["X-Conversation-ID"] = this._conversationId(credentials, body);
+    // A stable conversation id per client session is the fork contract: without
+    // it multi-turn requests look like separate conversations upstream, and
+    // hashing message text would join unrelated ones (decolua/9router#5086).
+    set("X-Conversation-ID", callerValue("X-Conversation-ID") || this._conversationId(credentials, body));
     // Per-request ids; X-Request-ID mirrors the message id, as the official client sends it.
     const messageId = randomUUID();
-    if (!has("X-Conversation-Request-ID")) headers["X-Conversation-Request-ID"] = randomUUID();
-    if (!has("X-Conversation-Message-ID")) headers["X-Conversation-Message-ID"] = messageId;
-    if (!has("X-Request-ID")) headers["X-Request-ID"] = messageId;
+    set("X-Conversation-Request-ID", callerValue("X-Conversation-Request-ID") || randomUUID());
+    set("X-Conversation-Message-ID", callerValue("X-Conversation-Message-ID") || messageId);
+    set("X-Request-ID", callerValue("X-Request-ID") || messageId);
 
     return headers;
   }
