@@ -273,7 +273,11 @@ parentPort.once("message", ({ port }) => {
         port.postMessage({ status: "ok" });
       }
     } catch (err) {
-      if (dedicatedClient && /transaction/i.test(err.message)) {
+      if (dedicatedClient && /transaction|savepoint|connection/i.test(err.message)) {
+        // The connection died mid-transaction: roll back whatever is left so a
+        // pooled replacement never inherits a half-open transaction, then drop
+        // the client so the next statement gets a fresh one outside any tx.
+        try { await dedicatedClient.query("ROLLBACK"); } catch {}
         try { dedicatedClient.release(true); } catch {}
         dedicatedClient = null;
       }
@@ -401,10 +405,17 @@ export async function createPostgresAdapter(connectionStringOrConfig, options = 
 
   let txDepth = 0;
   function transaction(fn) {
-    const sp = `sp_${++txDepth}_${Math.random().toString(36).slice(2, 8)}`;
-    if (txDepth === 1) {
+    const sp = `sp_${txDepth + 1}_${Math.random().toString(36).slice(2, 8)}`;
+    if (txDepth === 0) {
+      // Fresh top-level transaction. If a previous failure left the worker
+      // connection in a half-open state (e.g. connection dropped mid-tx and
+      // the worker swapped in a new client), BEGIN would fail or silently
+      // nest — force a clean slate first.
+      try { exec("ROLLBACK"); } catch {}
       exec("BEGIN");
+      txDepth = 1;
     } else {
+      txDepth++;
       exec(`SAVEPOINT ${sp}`);
     }
     try {
@@ -418,15 +429,19 @@ export async function createPostgresAdapter(connectionStringOrConfig, options = 
     } catch (err) {
       if (txDepth === 1) {
         try { exec("ROLLBACK"); } catch {}
-      } else {
-        try {
-          exec(`ROLLBACK TO SAVEPOINT ${sp}`);
-          exec(`RELEASE SAVEPOINT ${sp}`);
-        } catch {}
+        // The worker drops a dead connection on transaction errors, so the
+        // next BEGIN must start clean — never resume a depth that no longer
+        // exists server-side.
+        txDepth = 0;
+        throw err;
       }
+      try {
+        exec(`ROLLBACK TO SAVEPOINT ${sp}`);
+        exec(`RELEASE SAVEPOINT ${sp}`);
+      } catch {}
       throw err;
     } finally {
-      txDepth--;
+      if (txDepth > 0) txDepth--;
     }
   }
 
