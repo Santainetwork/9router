@@ -164,6 +164,8 @@ function buildQoderModelsResolver(providerId) {
               isReasoning: m.isReasoning,
               maxOutputTokens: m.maxOutputTokens,
               description: m.description,
+              // Upstream credit burn rate — display-only, null when unknown.
+              priceFactor: m.priceFactor ?? null,
             })),
           };
         }

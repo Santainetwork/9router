@@ -274,6 +274,12 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null, re
       isReasoning: !!entry.is_reasoning,
       maxOutputTokens: Number(entry.max_output_tokens) || 0,
       description: entry.description || "",
+      // Upstream credit burn rate (price_factor). Display-only reference —
+      // never used for routing or billing.
+      priceFactor:
+        entry.price_factor != null && Number.isFinite(Number(entry.price_factor))
+          ? Number(entry.price_factor)
+          : null,
     });
   }
 

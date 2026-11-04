@@ -25,6 +25,7 @@ import BulkImportCodexModal from "./BulkImportCodexModal";
 import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 import CustomConfigCard from "./CustomConfigCard";
 import CodebuddyMultiplierCard from "./CodebuddyMultiplierCard";
+import QoderMultiplierCard from "./QoderMultiplierCard";
 import AutoPingScheduleModal from "./AutoPingScheduleModal";
 import WebLoginButton, { WEB_LOGIN_PROVIDERS } from "../components/WebLoginButton.js";
 import MinimaxLeaseButton from "../components/MinimaxLeaseButton.js";
@@ -1968,6 +1969,15 @@ export default function ProviderDetailPage() {
       {/* CodeBuddy/WorkBuddy credit multiplier reference (积分倍率) */}
       {(providerId === "codebuddy-intl" || providerId === "codebuddy-cn") && (
         <CodebuddyMultiplierCard />
+      )}
+
+      {/* Qoder credit multiplier reference (live price_factor per model) */}
+      {(providerId === "qoder" || providerId === "qoder-cn") && (
+        <QoderMultiplierCard
+          connectionId={
+            (connections.find((conn) => conn.isActive !== false) || connections[0])?.id || null
+          }
+        />
       )}
 
       {/* Models */}
