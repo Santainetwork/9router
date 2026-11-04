@@ -29,13 +29,19 @@ import {
 
 const IMAGE_MIME_RE = /^image\//i;
 
-// Upload attempts against /api/v2/image/upload currently fail for PAT-derived
-// (jt-...) tokens — upstream answers 500 for every body shape we probed, and
-// multipart always fails signature validation. Remember the rejection briefly
-// so one bad image does not cost a round trip + warn log per request. The
-// inline/stub fallback below is unchanged.
-const UPLOAD_COOLDOWN_MS = 10 * 60 * 1000;
-const uploadBlockedUntil = new Map();
+// Uploads are OFF by default. Probing /algo/api/v2/image/upload against the
+// live gateway showed the transport cannot carry images at all:
+//   - multipart bodies always fail COSY validation (403 signature invalid),
+//     even when the signature matches the encoded envelope;
+//   - raw binary bodies are hard-rejected with the same 403 whenever the
+//     payload contains a UTF-8-encoded surrogate (bytes ED A0..BF) — which
+//     compressed image data hits almost immediately. Valid UTF-8 and plain
+//     ASCII bodies sign fine, other malformed sequences are replaced;
+//   - an ASCII (base64 JSON) body passes validation but the handler answers
+//     500 for PAT-derived (jt-...) tokens.
+// So images keep going inline (<= 512 KB) or get stubbed; set
+// QODER_IMAGE_UPLOAD=1 to re-enable the upload attempt if upstream changes.
+const UPLOAD_ENABLED = process.env.QODER_IMAGE_UPLOAD === "1";
 const DATA_URI_RE = /data:[^;]+;base64,[A-Za-z0-9+/=\s]+/g;
 
 function mimeExt(mime) {
@@ -151,27 +157,24 @@ async function uploadImageData({ base64, mediaType, credentials, proxyOptions, s
   const digest = createHash("sha256").update(buffer).digest("hex");
   if (cache?.has(digest)) return { url: cache.get(digest), bytes, mime: mediaType };
 
-  const doUpload = uploadFn || defaultUploadImage;
-  const cooldownKey = credentials?.providerSpecificData?.userId || credentials?.accessToken || "";
-  const blockedUntil = cooldownKey ? uploadBlockedUntil.get(cooldownKey) || 0 : 0;
-  if (!uploadFn && blockedUntil > Date.now()) {
-    return bytes <= QODER_INLINE_FALLBACK_MAX_BYTES
+  const inlineOrStub = () =>
+    bytes <= QODER_INLINE_FALLBACK_MAX_BYTES
       ? { keep: true, bytes, mime: mediaType }
       : { stub: true, bytes, mime: mediaType };
-  }
+  // Uploads disabled: keep the data URI inline when it is small enough.
+  if (!uploadFn && !UPLOAD_ENABLED) return inlineOrStub();
+
+  const doUpload = uploadFn || defaultUploadImage;
   try {
     const url = await doUpload({ buffer, mediaType, credentials, proxyOptions, signal });
     if (typeof url === "string" && url) {
       cache?.set(digest, url);
-      if (cooldownKey) uploadBlockedUntil.delete(cooldownKey);
       return { url, bytes, mime: mediaType };
     }
   } catch (err) {
-    if (cooldownKey) uploadBlockedUntil.set(cooldownKey, Date.now() + UPLOAD_COOLDOWN_MS);
-    log?.warn?.("QODER", `image upload failed (${err.message}); ${bytes <= QODER_INLINE_FALLBACK_MAX_BYTES ? "keeping inline" : "stubbing"} (uploads paused ${UPLOAD_COOLDOWN_MS / 60000}m for this account)`);
+    log?.warn?.("QODER", `image upload failed (${err.message}); ${bytes <= QODER_INLINE_FALLBACK_MAX_BYTES ? "keeping inline" : "stubbing"}`);
   }
-  if (bytes <= QODER_INLINE_FALLBACK_MAX_BYTES) return { keep: true, bytes, mime: mediaType };
-  return { stub: true, bytes, mime: mediaType };
+  return inlineOrStub();
 }
 
 function imageUrlBlock(url) {
