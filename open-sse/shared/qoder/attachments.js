@@ -28,6 +28,14 @@ import {
 } from "./constants.js";
 
 const IMAGE_MIME_RE = /^image\//i;
+
+// Upload attempts against /api/v2/image/upload currently fail for PAT-derived
+// (jt-...) tokens — upstream answers 500 for every body shape we probed, and
+// multipart always fails signature validation. Remember the rejection briefly
+// so one bad image does not cost a round trip + warn log per request. The
+// inline/stub fallback below is unchanged.
+const UPLOAD_COOLDOWN_MS = 10 * 60 * 1000;
+const uploadBlockedUntil = new Map();
 const DATA_URI_RE = /data:[^;]+;base64,[A-Za-z0-9+/=\s]+/g;
 
 function mimeExt(mime) {
@@ -82,15 +90,21 @@ function extractUrlFromUploadResponse(json) {
   return null;
 }
 
-async function defaultUploadImage({ buffer, mediaType, credentials, proxyOptions, signal }) {
+// For Qoder upload we must send raw bytes (multipart triggers gateway 403).
+// Body is passed as-is; the gateway normalizes UTF‑8 lossy when computing the
+// COSY signature. This mirrors qodercli's expected transport.
+export async function defaultUploadImage({ buffer, mediaType, credentials, proxyOptions, signal }) {
   const requestId = uuidv4();
   const url = `${qoderInferenceBase(credentials)}${`/algo${QODER_IMAGE_UPLOAD_SIG_PATH}`}?request_id=${requestId}`;
-  const { boundary, body } = buildMultipartFile(buffer, {
-    fileName: `image.${mimeExt(mediaType)}`,
-    mediaType: mediaType || "application/octet-stream",
-  });
   const psd = credentials?.providerSpecificData || {};
-  const cosyHeaders = buildCosyHeaders(body, url, {
+  // ⚠️ Do NOT set Content-Length; undici rejects manual Content-Length and
+  // causes immediate failure. ProxyAwareFetch computes it.
+  //
+  // Gateway normalizes body as UTF-8 (lossy) when computing signature. To match
+  // qodercli, compute Cosy headers over the UTF-8-decode/re-encode version of
+  // the binary payload, then send the original bytes.
+  const bodyForSig = Buffer.from(buffer.toString("utf8"), "utf8");
+  const cosyHeaders = buildCosyHeaders(bodyForSig, url, {
     userId: psd.userId,
     authToken: credentials.accessToken,
     name: credentials.displayName || "",
@@ -100,14 +114,14 @@ async function defaultUploadImage({ buffer, mediaType, credentials, proxyOptions
   const headers = {
     ...cosyHeaders,
     Accept: "application/json",
-    "Content-Type": `multipart/form-data; boundary=${boundary}`,
-    "Content-Length": String(body.length),
-    "AI-CLIENT-TIMESTAMP": String(Math.floor(Date.now() / 1000)),
+    "Content-Type": mediaType || "image/png",
     "Accept-Encoding": "identity",
+    // AI-CLIENT-TIMESTAMP observed in qodercli requests; some endpoints expect it.
+    "AI-CLIENT-TIMESTAMP": String(Math.floor(Date.now() / 1000)),
   };
   const res = await proxyAwareFetch(
     url,
-    { method: "PUT", headers, body, signal },
+    { method: "PUT", headers, body: buffer, signal },
     proxyOptions,
   );
   if (!res.ok) {
@@ -138,14 +152,23 @@ async function uploadImageData({ base64, mediaType, credentials, proxyOptions, s
   if (cache?.has(digest)) return { url: cache.get(digest), bytes, mime: mediaType };
 
   const doUpload = uploadFn || defaultUploadImage;
+  const cooldownKey = credentials?.providerSpecificData?.userId || credentials?.accessToken || "";
+  const blockedUntil = cooldownKey ? uploadBlockedUntil.get(cooldownKey) || 0 : 0;
+  if (!uploadFn && blockedUntil > Date.now()) {
+    return bytes <= QODER_INLINE_FALLBACK_MAX_BYTES
+      ? { keep: true, bytes, mime: mediaType }
+      : { stub: true, bytes, mime: mediaType };
+  }
   try {
     const url = await doUpload({ buffer, mediaType, credentials, proxyOptions, signal });
     if (typeof url === "string" && url) {
       cache?.set(digest, url);
+      if (cooldownKey) uploadBlockedUntil.delete(cooldownKey);
       return { url, bytes, mime: mediaType };
     }
   } catch (err) {
-    log?.warn?.("QODER", `image upload failed (${err.message}); ${bytes <= QODER_INLINE_FALLBACK_MAX_BYTES ? "keeping inline" : "stubbing"}`);
+    if (cooldownKey) uploadBlockedUntil.set(cooldownKey, Date.now() + UPLOAD_COOLDOWN_MS);
+    log?.warn?.("QODER", `image upload failed (${err.message}); ${bytes <= QODER_INLINE_FALLBACK_MAX_BYTES ? "keeping inline" : "stubbing"} (uploads paused ${UPLOAD_COOLDOWN_MS / 60000}m for this account)`);
   }
   if (bytes <= QODER_INLINE_FALLBACK_MAX_BYTES) return { keep: true, bytes, mime: mediaType };
   return { stub: true, bytes, mime: mediaType };
