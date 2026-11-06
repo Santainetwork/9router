@@ -50,7 +50,9 @@ sb="$(cat "$RELEASE_DIR/$DIST_DIR_NAME/BUILD_ID")"
 # the repo's build output and would always look "different" otherwise.
 REPO_BUILD_SUB="$REPO_DIR/$DIST_DIR_NAME/standalone/$DIST_DIR_NAME"
 [ -d "$REPO_BUILD_SUB" ] || REPO_BUILD_SUB="$REPO_DIR/$DIST_DIR_NAME"
-if ! diff -rq -x cache "$REPO_BUILD_SUB" "$RELEASE_DIR/$DIST_DIR_NAME" > "$DIFF_FILE" 2>&1; then
+# runtime/ and route-cache/ are written by the running server (Next route cache,
+# ISR/PPR output); they are not part of the build and always differ.
+if ! diff -rq -x cache -x route-cache "$REPO_BUILD_SUB" "$RELEASE_DIR/$DIST_DIR_NAME" > "$DIFF_FILE" 2>&1; then
   echo "FAIL: release build differs from repo ($(wc -l < "$DIFF_FILE") entries)"
   head -20 "$DIFF_FILE"
   exit 1
