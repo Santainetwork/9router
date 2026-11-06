@@ -10,16 +10,15 @@
 // upstream hiccup killed a healthy account.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getEarliestModelLockUntil } from "../../open-sse/services/accountFallback.js";
+import { getEarliestModelLockUntil, skipsStaleUnavailable } from "../../open-sse/services/accountFallback.js";
 
 const futureIso = () => new Date(Date.now() + 60_000).toISOString();
 const pastIso = () => new Date(Date.now() - 60_000).toISOString();
 
 // Mirrors the guard in auth.js availability filtering.
-const NON_CREDENTIAL_ERROR_CODES = new Set([400, 404, 406, 429, 500, 502, 503, 504]);
 const isSkippable = (c) =>
   c.testStatus === "unavailable" &&
-  !NON_CREDENTIAL_ERROR_CODES.has(Number(c.errorCode)) &&
+  skipsStaleUnavailable(c.errorCode) &&
   !getEarliestModelLockUntil(c);
 
 test("stale unavailable account with no lock is skipped", () => {

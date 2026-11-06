@@ -170,6 +170,27 @@ export function buildModelLockUpdate(model, cooldownMs) {
   return { [key]: new Date(Date.now() + cooldownMs).toISOString() };
 }
 
+// Which failures may leave a persistent "this credential is broken" marker.
+// Only real credential faults (bad/forbidden/expired auth, exhausted billing).
+// Everything else — a rejected request, a missing model, a rate limit, an
+// upstream 5xx — says nothing about the credential and must never disabled it.
+export const CREDENTIAL_ERROR_CODES = new Set([401, 402, 403]);
+
+// Statuses that are never credential evidence. They get a model lock instead,
+// and a stale unavailable marker carrying one of these must not keep the account
+// out of rotation.
+export const NON_CREDENTIAL_ERROR_CODES = new Set([400, 404, 406, 429, 500, 502, 503, 504]);
+
+/** True when this status may persist testStatus:"unavailable" on the connection. */
+export function persistsUnavailableMarker(status) {
+  return CREDENTIAL_ERROR_CODES.has(Number(status));
+}
+
+/** True when a stale marker with this errorCode should keep the account skipped. */
+export function skipsStaleUnavailable(errorCode) {
+  return !NON_CREDENTIAL_ERROR_CODES.has(Number(errorCode));
+}
+
 // A model that does not exist for a provider keeps not existing for a while, so
 // retrying it every couple of minutes only produces upstream 404s. Hold the miss
 // on that model for a long window, per connection: the credential is untouched

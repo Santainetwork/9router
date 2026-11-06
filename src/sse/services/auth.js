@@ -1,6 +1,6 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId, pickProxyPoolIdMulticore } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, modelLockMsForStatus } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, modelLockMsForStatus, NON_CREDENTIAL_ERROR_CODES, persistsUnavailableMarker, skipsStaleUnavailable } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
@@ -8,23 +8,12 @@ import { isSqliteMulticoreWorker } from "@/lib/db/driver.js";
 import { assertProviderWorkerSafe } from "@/lib/db/providerEligibility.js";
 import * as log from "../utils/logger.js";
 
-// Failures that describe the MODEL, the REQUEST, or the upstream's condition —
-// never the credential itself. These get a model lock (so a dead model is not
-// retried on every request) but must leave the connection's health markers
-// alone: marking the account "unavailable" here disables it permanently, because
-// the lock expires, the stale marker survives, and getProviderCredentials then
-// skips the account forever with no request left to clear it.
-// 400 rejected · 404 model missing · 406 unsupported · 429 rate limit · 5xx upstream
-const NON_CREDENTIAL_ERROR_CODES = new Set([400, 404, 406, 429, 500, 502, 503, 504]);
-
-// Only these say "this credential is broken" (bad/forbidden/expired auth or an
-// exhausted billing account). Everything else must not persist an unavailable
-// marker.
-const CREDENTIAL_ERROR_CODES = new Set([401, 402, 403]);
-
-// Model-not-found (404/406) is a model problem, never a credential problem: it
-// is held for a long window in accountFallback.js so a dead model is probed at
-// most once per window instead of every couple of minutes.
+// Failure classification lives in accountFallback.js so it stays unit-testable
+// without the database: 401/402/403 are the only statuses allowed to persist an
+// "unavailable" marker; 404/406/429/5xx get a model lock only, because marking
+// the credential "unavailable" there disables the account permanently once the
+// lock expires (getProviderCredentials keeps skipping it and no request is left
+// to clear the marker).
 
 // Mutex to prevent race conditions during account selection (single-process).
 // Multicore replaces this with atomic Redis routing state; never fall back.
@@ -139,7 +128,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       //   429 rate limited. A 404 used to poison the marker forever (the model
       // lock expires, then the account is skipped with no way back), which
       // turned one missing model into a dead credential.
-      if (c.testStatus === "unavailable" && !NON_CREDENTIAL_ERROR_CODES.has(Number(c.errorCode)) && !getEarliestModelLockUntil(c)) return false;
+      if (c.testStatus === "unavailable" && skipsStaleUnavailable(c.errorCode) && !getEarliestModelLockUntil(c)) return false;
       const enabled = c.providerSpecificData?.enabledModels;
       if (providerId === "codex" && Array.isArray(enabled) && enabled.length && requestedModel && !enabled.includes(requestedModel)) return false;
       // Antigravity: skip if live quota exhausted for this model
@@ -405,7 +394,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // Only permanent credential failures may persist the unavailable marker — see
   // CREDENTIAL_ERROR_CODES above. A transient limit or an upstream 5xx must never
   // leave the account stuck in "unavailable" once its model lock expires.
-  if (CREDENTIAL_ERROR_CODES.has(Number(status))) {
+  if (persistsUnavailableMarker(status)) {
     updates.testStatus = "unavailable";
   }
 
