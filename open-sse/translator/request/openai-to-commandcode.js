@@ -136,8 +136,11 @@ function convertMessages(messages = []) {
       const value = typeof m.content === "string" ? m.content : flattenText(m.content);
       const callId = m.tool_call_id || "";
       // m.name is non-standard (most OpenAI clients omit it); fall back to the
-      // name recorded on the matching assistant tool_call.
-      const toolName = m.name || toolNameById.get(callId) || "";
+      // name recorded on the matching assistant tool_call. Orphan results (their
+      // tool_call was trimmed from history) still need a non-empty name: Gemini
+      // rejects the whole request otherwise
+      // ("function_response.name: [REQUIRED_FIELD_MISSING]").
+      const toolName = m.name || toolNameById.get(callId) || "unknown_function";
       out.push({
         role: ROLE.TOOL,
         content: [{

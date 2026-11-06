@@ -277,7 +277,9 @@ describe("openaiToCommandCodeRequest — tool-result name resolution (Gemini pro
     expect(toolMsg.content[0].toolName).toBe("explicit");
   });
 
-  it("leaves toolName empty when no matching tool_call exists", () => {
+  it("falls back to a placeholder name for orphan tool results", () => {
+    // Gemini rejects function_response without a name, so a result whose
+    // tool_call was trimmed from history must still carry one.
     const out = openaiToCommandCodeRequest(MODEL, {
       messages: [
         { role: "user", content: "go" },
@@ -286,6 +288,6 @@ describe("openaiToCommandCodeRequest — tool-result name resolution (Gemini pro
     }, true);
 
     const toolMsg = out.params.messages[out.params.messages.length - 1];
-    expect(toolMsg.content[0].toolName).toBe("");
+    expect(toolMsg.content[0].toolName).toBe("unknown_function");
   });
 });
