@@ -3,6 +3,7 @@ import {
   parseCommandCodeError,
   inspectAndWrapCommandCodeResponse,
   CommandCodeExecutor,
+  commandCodeTransport,
 } from "../../open-sse/executors/commandcode.js";
 import { handleComboChat } from "../../open-sse/services/combo.js";
 
@@ -252,5 +253,28 @@ describe("CommandCode in Combo Fallback", () => {
     expect(handleSingleModel).toHaveBeenCalledTimes(2);
     expect(handleSingleModel).toHaveBeenNthCalledWith(1, expect.anything(), "commandcode/poolside/laguna-s-2.1-free");
     expect(handleSingleModel).toHaveBeenNthCalledWith(2, expect.anything(), "openai/gpt-4o-mini");
+  });
+});
+
+describe("CommandCode transport switch (alpha vs provider/v1)", () => {
+  it("defaults to the CLI envelope for connections without a flag", () => {
+    const ex = new CommandCodeExecutor();
+    expect(commandCodeTransport({ providerSpecificData: {} })).toBe("alpha");
+    expect(commandCodeTransport({})).toBe("alpha");
+    expect(ex.buildUrl("m", true, 0, {})).toBe("https://api.commandcode.ai/alpha/generate");
+  });
+
+  it("routes to the OpenAI-compatible gateway when the connection opts in", () => {
+    const ex = new CommandCodeExecutor();
+    const creds = { providerSpecificData: { commandcodeTransport: "v1" } };
+    expect(commandCodeTransport(creds)).toBe("v1");
+    expect(ex.buildUrl("m", true, 0, creds)).toBe("https://api.commandcode.ai/provider/v1/chat/completions");
+  });
+
+  it("ignores unknown transport values and keeps the default", () => {
+    const ex = new CommandCodeExecutor();
+    const creds = { providerSpecificData: { commandcodeTransport: "beta" } };
+    expect(commandCodeTransport(creds)).toBe("alpha");
+    expect(ex.buildUrl("m", true, 0, creds)).toBe("https://api.commandcode.ai/alpha/generate");
   });
 });

@@ -15,10 +15,34 @@ import { SSE_DONE } from "../utils/sseConstants.js";
  * We translate each event to an OpenAI chat.completion.chunk and emit it as SSE so
  * both the streaming and non-streaming (forced SSE → JSON) downstream handlers in
  * 9router can consume it without further format translation.
+ *
+ * Transport switch: Command Code also exposes a standards-compliant gateway at
+ * `/provider/v1/chat/completions` (OpenAI wire format, plan-gated per model). A
+ * connection can opt in with `providerSpecificData.commandcodeTransport = "v1"`;
+ * the response is already OpenAI SSE/JSON, so no NDJSON translation runs.
  */
+// Command Code also serves an OpenAI-compatible gateway (95 models, plan-gated
+// per model) alongside the CLI envelope. Base URL is env-overridable so a
+// self-hosted/staging gateway can be pointed at without touching the code.
+const COMMAND_CODE_V1_BASE = (process.env.COMMAND_CODE_API_BASE_URL || "https://api.commandcode.ai").replace(/\/$/, "");
+const COMMAND_CODE_V1_URL = `${COMMAND_CODE_V1_BASE}/provider/v1/chat/completions`;
+
+/**
+ * Which wire a connection asked for. Anything other than an explicit "v1"
+ * keeps the historical CLI envelope, so existing connections are unaffected.
+ */
+export function commandCodeTransport(credentials) {
+  return credentials?.providerSpecificData?.commandcodeTransport === "v1" ? "v1" : "alpha";
+}
+
 export class CommandCodeExecutor extends BaseExecutor {
   constructor() {
     super("commandcode", PROVIDERS.commandcode);
+  }
+
+  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    if (commandCodeTransport(credentials) === "v1") return COMMAND_CODE_V1_URL;
+    return super.buildUrl(model, stream, urlIndex, credentials);
   }
 
   transformRequest(model, body, stream, credentials) {
@@ -29,12 +53,16 @@ export class CommandCodeExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true, url, model, transformedBody) {
     return buildCommandCodeHeaders({
       apiKey: credentials?.apiKey || credentials?.accessToken,
-      sessionId: transformedBody?.threadId,
+      sessionId: commandCodeTransport(credentials) === "v1" ? undefined : transformedBody?.threadId,
       accept: stream ? "text/event-stream" : null,
     });
   }
 
   async execute(opts) {
+    // v1 returns OpenAI SSE/JSON verbatim — no NDJSON envelope to unwrap.
+    if (commandCodeTransport(opts?.credentials) === "v1") {
+      return super.execute(opts);
+    }
     const maxRetries = 2;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const result = await super.execute(opts);

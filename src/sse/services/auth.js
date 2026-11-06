@@ -444,7 +444,9 @@ export async function clearAccountError(connectionId, currentConnection, model =
     return expiry && new Date(expiry).getTime() > now;
   });
 
-  const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
+  // undefined (not null): the row is JSON.stringify'd on save, so undefined
+  // removes the lock key entirely instead of leaving a dead null behind.
+  const clearObj = Object.fromEntries(keysToClear.map(k => [k, undefined]));
 
   // Only reset error state if no active locks remain
   if (remainingActiveLocks.length === 0) {

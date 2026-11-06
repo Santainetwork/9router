@@ -10,6 +10,7 @@ import {
   persistsUnavailableMarker,
   skipsStaleUnavailable,
   modelLockMsForStatus,
+  buildClearModelLocksUpdate,
   MODEL_NOT_FOUND_LOCK_MS,
 } from "../../open-sse/services/accountFallback.js";
 
@@ -49,4 +50,23 @@ test("404/406 lock the model for the long window, others keep their cooldown", (
   assert.equal(modelLockMsForStatus(406, 5000), MODEL_NOT_FOUND_LOCK_MS);
   assert.equal(modelLockMsForStatus(429, 30000), 30000);
   assert.equal(modelLockMsForStatus(502, 30000), 30000);
+});
+
+test("clearing locks removes the keys instead of leaving nulls behind", () => {
+  // The connection row is JSON.stringify'd on save, which drops undefined, so
+  // this is what actually deletes a lock key. Leaving null kept 99 dead
+  // "modelLock_*": null entries in production.
+  const conn = {
+    id: "x",
+    testStatus: "unavailable",
+    modelLock_a: new Date().toISOString(),
+    modelLock_b: null,
+  };
+  const update = buildClearModelLocksUpdate(conn);
+  assert.deepEqual(Object.keys(update).sort(), ["modelLock_a", "modelLock_b"]);
+  assert.ok(Object.values(update).every((v) => v === undefined));
+  const serialized = JSON.parse(JSON.stringify({ ...conn, ...update }));
+  assert.equal("modelLock_a" in serialized, false);
+  assert.equal("modelLock_b" in serialized, false);
+  assert.equal(serialized.testStatus, "unavailable");
 });

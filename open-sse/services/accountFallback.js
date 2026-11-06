@@ -211,11 +211,16 @@ export function modelLockMsForStatus(status, cooldownMs) {
 
 /**
  * Build update object to clear all model locks on a connection.
+ *
+ * Values are `undefined`, not `null`: the connection row is serialized with
+ * JSON.stringify, which drops undefined properties, so the lock key disappears
+ * instead of lingering as `"modelLock_x": null`. Clearing used to leave null
+ * keys behind — 99 of 152 lock keys in production were dead nulls.
  */
 export function buildClearModelLocksUpdate(connection) {
   const cleared = {};
   for (const key of Object.keys(connection)) {
-    if (key.startsWith(MODEL_LOCK_PREFIX)) cleared[key] = null;
+    if (key.startsWith(MODEL_LOCK_PREFIX)) cleared[key] = undefined;
   }
   return cleared;
 }

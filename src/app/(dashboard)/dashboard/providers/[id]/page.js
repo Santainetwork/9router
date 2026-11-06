@@ -26,6 +26,7 @@ import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 import CustomConfigCard from "./CustomConfigCard";
 import CodebuddyMultiplierCard from "./CodebuddyMultiplierCard";
 import QoderMultiplierCard from "./QoderMultiplierCard";
+import CommandCodeTransportCard from "./CommandCodeTransportCard";
 import AutoPingScheduleModal from "./AutoPingScheduleModal";
 import WebLoginButton, { WEB_LOGIN_PROVIDERS } from "../components/WebLoginButton.js";
 import MinimaxLeaseButton from "../components/MinimaxLeaseButton.js";
@@ -1970,6 +1971,17 @@ export default function ProviderDetailPage() {
       {(providerId === "codebuddy-intl" || providerId === "codebuddy-cn") && (
         <CodebuddyMultiplierCard />
       )}
+
+      {/* Command Code transport switch (alpha CLI envelope vs provider/v1) */}
+      {providerId === "commandcode" && (() => {
+        const conn = connections.find((c) => c.isActive !== false) || connections[0];
+        return (
+          <CommandCodeTransportCard
+            connectionId={conn?.id || null}
+            transport={conn?.providerSpecificData?.commandcodeTransport || "alpha"}
+          />
+        );
+      })()}
 
       {/* Qoder credit multiplier reference (live price_factor per model) */}
       {(providerId === "qoder" || providerId === "qoder-cn") && (
