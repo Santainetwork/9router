@@ -233,3 +233,59 @@ describe("openaiToCommandCodeRequest — native image blocks", () => {
     expect(texts).not.toContain("[image omitted]");
   });
 });
+
+describe("openaiToCommandCodeRequest — tool-result name resolution (Gemini proto)", () => {
+  it("resolves toolName from the assistant tool_calls when the tool message omits it", () => {
+    // Gemini via CommandCode rejects the request with
+    // "contents[N].parts[0].function_response.name: [REQUIRED_FIELD_MISSING]"
+    // when functionResponse.name is empty, and OpenAI tool messages only carry
+    // tool_call_id — so the name has to come from the matching tool_call.
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "check the weather" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            { id: "call_42", type: "function", function: { name: "get_weather", arguments: "{\"city\":\"Jakarta\"}" } },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_42", content: "31C clear" },
+      ],
+    }, true);
+
+    const toolMsg = out.params.messages[out.params.messages.length - 1];
+    expect(toolMsg.role).toBe("tool");
+    expect(toolMsg.content[0].toolName).toBe("get_weather");
+    expect(toolMsg.content[0].toolCallId).toBe("call_42");
+  });
+
+  it("prefers an explicit name on the tool message over the lookup", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "go" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "call_7", type: "function", function: { name: "from_call", arguments: "{}" } }],
+        },
+        { role: "tool", tool_call_id: "call_7", name: "explicit", content: "ok" },
+      ],
+    }, true);
+
+    const toolMsg = out.params.messages[out.params.messages.length - 1];
+    expect(toolMsg.content[0].toolName).toBe("explicit");
+  });
+
+  it("leaves toolName empty when no matching tool_call exists", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "go" },
+        { role: "tool", tool_call_id: "orphan", content: "ok" },
+      ],
+    }, true);
+
+    const toolMsg = out.params.messages[out.params.messages.length - 1];
+    expect(toolMsg.content[0].toolName).toBe("");
+  });
+});

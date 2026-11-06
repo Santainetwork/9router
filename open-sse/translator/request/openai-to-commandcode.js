@@ -107,6 +107,21 @@ function convertMessages(messages = []) {
   const out = [];
   const systemTexts = [];
 
+  // OpenAI tool messages carry only tool_call_id; the function name lives on the
+  // assistant tool_calls that produced them. CommandCode forwards toolName into
+  // Gemini's functionResponse.name, and Gemini rejects the whole request when it
+  // is missing ("contents[2].parts[0].function_response.name:
+  // [REQUIRED_FIELD_MISSING]"), so resolve the name up front.
+  const toolNameById = new Map();
+  for (const m of messages) {
+    if (!m || m.role !== ROLE.ASSISTANT || !Array.isArray(m.tool_calls)) continue;
+    for (const tc of m.tool_calls) {
+      const id = tc?.id;
+      const name = tc?.function?.name;
+      if (id && name) toolNameById.set(id, name);
+    }
+  }
+
   for (const m of messages) {
     if (!m) continue;
     const role = m.role;
@@ -119,12 +134,16 @@ function convertMessages(messages = []) {
 
     if (role === ROLE.TOOL) {
       const value = typeof m.content === "string" ? m.content : flattenText(m.content);
+      const callId = m.tool_call_id || "";
+      // m.name is non-standard (most OpenAI clients omit it); fall back to the
+      // name recorded on the matching assistant tool_call.
+      const toolName = m.name || toolNameById.get(callId) || "";
       out.push({
         role: ROLE.TOOL,
         content: [{
           type: "tool-result",
-          toolCallId: m.tool_call_id || "",
-          toolName: m.name || "",
+          toolCallId: callId,
+          toolName,
           output: { type: "text", value },
         }],
       });

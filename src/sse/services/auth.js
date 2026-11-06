@@ -8,6 +8,20 @@ import { isSqliteMulticoreWorker } from "@/lib/db/driver.js";
 import { assertProviderWorkerSafe } from "@/lib/db/providerEligibility.js";
 import * as log from "../utils/logger.js";
 
+// Failures that describe the MODEL, the REQUEST, or the upstream's condition —
+// never the credential itself. These get a model lock (so a dead model is not
+// retried on every request) but must leave the connection's health markers
+// alone: marking the account "unavailable" here disables it permanently, because
+// the lock expires, the stale marker survives, and getProviderCredentials then
+// skips the account forever with no request left to clear it.
+// 400 rejected · 404 model missing · 406 unsupported · 429 rate limit · 5xx upstream
+const NON_CREDENTIAL_ERROR_CODES = new Set([400, 404, 406, 429, 500, 502, 503, 504]);
+
+// Only these say "this credential is broken" (bad/forbidden/expired auth or an
+// exhausted billing account). Everything else must not persist an unavailable
+// marker.
+const CREDENTIAL_ERROR_CODES = new Set([401, 402, 403]);
+
 // Mutex to prevent race conditions during account selection (single-process).
 // Multicore replaces this with atomic Redis routing state; never fall back.
 let selectionMutex = Promise.resolve();
@@ -115,9 +129,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // unavailable with empty locks -> 28-45s per request). Skip it until a
       // successful probe clears the marker. A live lock still wins above, so a
       // genuinely cooling account is never skipped twice.
-      // NOTE: Transient 429 (rate limits) must NEVER be permanently skipped once
-      // their cooldown expires.
-      if (c.testStatus === "unavailable" && c.errorCode !== 429 && !getEarliestModelLockUntil(c)) return false;
+      // NOTE: statuses that describe the MODEL/REQUEST, not the credential,
+      // must NEVER be permanently skipped once their cooldown expires:
+      //   400 request rejected, 404 model missing, 406 model unsupported,
+      //   429 rate limited. A 404 used to poison the marker forever (the model
+      // lock expires, then the account is skipped with no way back), which
+      // turned one missing model into a dead credential.
+      if (c.testStatus === "unavailable" && !NON_CREDENTIAL_ERROR_CODES.has(Number(c.errorCode)) && !getEarliestModelLockUntil(c)) return false;
       const enabled = c.providerSpecificData?.enabledModels;
       if (providerId === "codex" && Array.isArray(enabled) && enabled.length && requestedModel && !enabled.includes(requestedModel)) return false;
       // Antigravity: skip if live quota exhausted for this model
@@ -355,6 +373,20 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";
   const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
+  const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
+
+  // A model-scoped failure says nothing about the credential: the model may be
+  // missing/unsupported for this account, or the request itself was rejected.
+  // Lock only that model (so a dead model does not cost an upstream round trip
+  // per request) and leave testStatus/errorCode/lastError untouched — otherwise
+  // the dashboard paints the account as broken and, once the lock expires,
+  // getProviderCredentials keeps skipping it forever.
+  if (NON_CREDENTIAL_ERROR_CODES.has(Number(status)) && !githubResetAtMs && !resetsAtMs) {
+    await updateProviderConnection(connectionId, lockUpdate);
+    const lockKey = Object.keys(lockUpdate)[0];
+    log.warn("AUTH", `${connName} model unavailable (${status}) → locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s, credential untouched`);
+    return { shouldFallback: true, cooldownMs };
+  }
 
   const updates = {
     ...lockUpdate,
@@ -364,17 +396,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     backoffLevel: newBackoffLevel ?? backoffLevel
   };
 
-  // Only set connection testStatus to "unavailable" for permanent/auth errors (401, 403, etc.),
-  // NOT for transient rate limits (429). Otherwise, once the model lock expires, the account
-  // remains stuck in "unavailable" and is permanently skipped by getProviderCredentials!
-  if (status !== 429) {
+  // Only permanent credential failures may persist the unavailable marker — see
+  // CREDENTIAL_ERROR_CODES above. A transient limit or an upstream 5xx must never
+  // leave the account stuck in "unavailable" once its model lock expires.
+  if (CREDENTIAL_ERROR_CODES.has(Number(status))) {
     updates.testStatus = "unavailable";
   }
 
   await updateProviderConnection(connectionId, updates);
 
   const lockKey = Object.keys(lockUpdate)[0];
-  const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
   log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
 
   if (provider && status && reason) {
