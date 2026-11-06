@@ -132,6 +132,13 @@ function getProviderConfig(provider, credentials = null) {
 
 // Get target format for provider
 export function getTargetFormat(provider, credentials = null) {
+  // Command Code: the connection picks its wire. The v1 gateway speaks plain
+  // OpenAI, so the request must NOT be translated into the CLI envelope (that
+  // envelope has no top-level `messages`, which v1 rejects with
+  // "Invalid input: expected array, received undefined").
+  if (provider === "commandcode" && credentials?.providerSpecificData?.commandcodeTransport === "v1") {
+    return "openai";
+  }
   if (isOpenAICompatible(provider)) {
     return resolveOpenAICompatibleApiType(provider, credentials) === "responses" ? "openai-responses" : "openai";
   }
