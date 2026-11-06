@@ -1,6 +1,6 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId, pickProxyPoolIdMulticore } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, modelLockMsForStatus } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
@@ -21,6 +21,10 @@ const NON_CREDENTIAL_ERROR_CODES = new Set([400, 404, 406, 429, 500, 502, 503, 5
 // exhausted billing account). Everything else must not persist an unavailable
 // marker.
 const CREDENTIAL_ERROR_CODES = new Set([401, 402, 403]);
+
+// Model-not-found (404/406) is a model problem, never a credential problem: it
+// is held for a long window in accountFallback.js so a dead model is probed at
+// most once per window instead of every couple of minutes.
 
 // Mutex to prevent race conditions during account selection (single-process).
 // Multicore replaces this with atomic Redis routing state; never fall back.
@@ -382,10 +386,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // the dashboard paints the account as broken and, once the lock expires,
   // getProviderCredentials keeps skipping it forever.
   if (NON_CREDENTIAL_ERROR_CODES.has(Number(status)) && !githubResetAtMs && !resetsAtMs) {
-    await updateProviderConnection(connectionId, lockUpdate);
-    const lockKey = Object.keys(lockUpdate)[0];
-    log.warn("AUTH", `${connName} model unavailable (${status}) → locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s, credential untouched`);
-    return { shouldFallback: true, cooldownMs };
+    const lockMs = modelLockMsForStatus(status, cooldownMs);
+    const modelLockUpdate = lockMs === cooldownMs ? lockUpdate : buildModelLockUpdate(model, lockMs);
+    await updateProviderConnection(connectionId, modelLockUpdate);
+    const lockKey = Object.keys(modelLockUpdate)[0];
+    log.warn("AUTH", `${connName} model unavailable (${status}) → locked ${lockKey} for ${Math.round(lockMs / 1000)}s, credential untouched`);
+    return { shouldFallback: true, cooldownMs: lockMs };
   }
 
   const updates = {

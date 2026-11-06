@@ -170,6 +170,24 @@ export function buildModelLockUpdate(model, cooldownMs) {
   return { [key]: new Date(Date.now() + cooldownMs).toISOString() };
 }
 
+// A model that does not exist for a provider keeps not existing for a while, so
+// retrying it every couple of minutes only produces upstream 404s. Hold the miss
+// on that model for a long window, per connection: the credential is untouched
+// and every other model on the account keeps working.
+const MODEL_NOT_FOUND_CODES = new Set([404, 406]);
+export const MODEL_NOT_FOUND_LOCK_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Lock duration for a failure that carries no credential evidence. Model
+ * not-found/unsupported holds far longer than a transient limit; everything else
+ * keeps the cooldown it was given.
+ */
+export function modelLockMsForStatus(status, cooldownMs) {
+  return MODEL_NOT_FOUND_CODES.has(Number(status))
+    ? Math.max(cooldownMs || 0, MODEL_NOT_FOUND_LOCK_MS)
+    : cooldownMs;
+}
+
 /**
  * Build update object to clear all model locks on a connection.
  */
