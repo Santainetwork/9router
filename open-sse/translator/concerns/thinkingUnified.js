@@ -129,6 +129,11 @@ const NATIVE_ONLY_FORMATS = new Set(["gemini-level", "gemini-budget", "claude-bu
 
 function resolveFormat(targetFormat, model, provider) {
   if (targetFormat === "commandcode") return "commandcode";
+  // Command Code's capability block describes the alpha CLI envelope
+  // (params.reasoning_effort). A connection on the v1 OpenAI gateway must get the
+  // OpenAI shape instead — sending params there only adds an unknown field and
+  // silently loses the requested effort.
+  if ((provider === "commandcode" || provider === "cmc") && targetFormat === "openai") return "openai";
   // A multi-endpoint provider can declare, per transports[] entry, the thinking shape that
   // endpoint accepts. It wins over the model's thinkingFormat, which describes the Chat wire:
   // strict /responses upstreams (Meta, OpenCode Go) reject Chat-shaped reasoning_effort /

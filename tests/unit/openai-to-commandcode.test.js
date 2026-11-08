@@ -291,3 +291,22 @@ describe("openaiToCommandCodeRequest — tool-result name resolution (Gemini pro
     expect(toolMsg.content[0].toolName).toBe("unknown_function");
   });
 });
+
+describe("openaiToCommandCodeRequest — thinking suffix", () => {
+  it("strips a thinking suffix from params.model", () => {
+    // Upstream rejects "moonshotai/Kimi-K3.1-Pro(high)" with
+    // "Model/provider not recognized"; the level itself is applied later via
+    // params.reasoning_effort.
+    const out = openaiToCommandCodeRequest("moonshotai/Kimi-K3.1-Pro(high)", {
+      messages: [{ role: "user", content: "hi" }],
+    }, true);
+    expect(out.params.model).toBe("moonshotai/Kimi-K3.1-Pro");
+  });
+
+  it("leaves a bare model id untouched", () => {
+    const out = openaiToCommandCodeRequest("moonshotai/Kimi-K3.1-Pro", {
+      messages: [{ role: "user", content: "hi" }],
+    }, true);
+    expect(out.params.model).toBe("moonshotai/Kimi-K3.1-Pro");
+  });
+});
