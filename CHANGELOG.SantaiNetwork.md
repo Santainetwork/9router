@@ -1,9 +1,44 @@
 # Changelog — SantaiNetwork modifications
 
 Local fork changelog for the SantaiNetwork build (dev on `:20130`, prod on
-`:20128`). Base upstream version: **9Router v0.5.55**. Not part of the upstream
-`CHANGELOG.md`.
+`:20128`). Base upstream version: **9Router v0.5.55** (currently merged through
+v0.5.112). Not part of the upstream `CHANGELOG.md`.
 
+---
+
+## 2026-11-08 — CommandCode Transport Switch, Auth Failure Classification, Qoder, PostgreSQL Read-Only
+
+### CommandCode transport switch, alpha CLI vs v1 OpenAI (`777ae196`, `a6e3493f`, `a881cf19`)
+- Command Code serves two wires from one host/key: `/alpha/generate` (CLI envelope, AI-SDK NDJSON, the historical default) and `/provider/v1/chat/completions` (standard OpenAI, plan-gated per model). A connection now picks one via `providerSpecificData.commandcodeTransport`; any value other than `"v1"` keeps alpha, so existing connections are untouched.
+- `open-sse/executors/commandcode.js`: `buildUrl()` targets v1, `buildHeaders()` drops the alpha-only `sessionId`, and `execute()` skips the NDJSON unwrap so upstream SSE/JSON passes through. Base URL is `COMMAND_CODE_API_BASE_URL` (default `https://api.commandcode.ai`).
+- `getTargetFormat()` (`open-sse/services/provider.js`) returns `openai` for commandcode+v1; without it the body was still translated into the CLI envelope and upstream answered `400 expected array`.
+- Effort: `resolveFormat()` (`thinkingUnified.js`) returns `openai` for commandcode when the target is `openai`, so `reasoning_effort` goes top-level instead of the alpha-only `params.reasoning_effort` that v1 ignores. Verified live: Kimi-K3.1-Pro `(low)` 200 with 67 reasoning tokens vs `(high)` 199.
+- Thinking suffix (`model(high)`) is stripped from `params.model` in `openai-to-commandcode.js`; leaving it there made alpha answer `403 Model/provider not recognized`.
+- UI: `CommandCodeTransportCard.js` on the provider page, saved via `PUT /api/providers/[id]`. Production value is `alpha`.
+
+### Model-scoped failures no longer disable a credential (`405f6d0a`, `4f2868c6`, `e0c497db`)
+- One upstream `404` used to write `testStatus: "unavailable"`. The model lock expired but the marker survived, so `getProviderCredentials()` skipped that account forever with no request left to clear it. Same trap for `400`, `406`, `429`, `5xx`.
+- Classification now lives in `open-sse/services/accountFallback.js`: only `CREDENTIAL_ERROR_CODES` (`401`/`402`/`403`) may persist an unavailable marker; `NON_CREDENTIAL_ERROR_CODES` (`400`, `404`, `406`, `429`, `500`, `502`, `503`, `504`) write only a model lock and leave `testStatus`/`errorCode`/`lastError` alone. `skipsStaleUnavailable()` releases accounts already poisoned by an old marker.
+- `404`/`406` now lock the model for 6 h (`MODEL_NOT_FOUND_LOCK_MS`) instead of re-probing a dead model every 2 minutes. The credential is never touched and other models on the account keep working.
+- Clearing locks writes `undefined` rather than `null`, so the key actually disappears through `JSON.stringify`. 99 of 152 lock keys in production were dead nulls; those were cleaned.
+- New tests: `auth-failure-classification.test.mjs`, `model-not-found-lock.test.mjs`, extended `auth-skip-unavailable.test.mjs`.
+
+### Orphan tool results get a name (`d606f183`)
+- OpenAI tool messages only carry `tool_call_id`. When the matching `assistant.tool_calls` entry is gone (clients trimming context), `toolName` was empty and Gemini via commandcode rejected the turn with `contents[N].parts[0].function_response.name: [REQUIRED_FIELD_MISSING]`. The translator resolves the name from history by `tool_call_id` and falls back to `unknown_function` instead of sending a 400.
+
+### Qoder credit multiplier card (`8ca8c4f4`)
+- Qoder's catalog publishes `price_factor` per chat model. `resolveQoderModels` carries it as `priceFactor`, `/api/providers/[id]/models` exposes it, and `QoderMultiplierCard.js` renders a sortable live table on the `qoder` / `qoder-cn` provider pages. Display-only; routing and billing untouched.
+
+### Qoder image upload disabled by default (`24395b1a`, `db02b3f8`)
+- Probing `/algo/api/v2/image/upload` against the live gateway showed the transport cannot carry images: multipart bodies always fail COSY validation (`403 signature invalid`), raw binary is rejected with the same 403 whenever the payload contains a UTF-8-encoded surrogate (`ED A0..BF`, which compressed image data hits immediately), and an ASCII base64 body validates but answers `500` for PAT-derived (`jt-...`) tokens.
+- Uploads are now off unless `QODER_IMAGE_UPLOAD=1`. Images ≤ 512 KB stay inline as data URIs, larger ones become a text stub, and vision still answers 200.
+
+### Release gate and provider baseline (`bebc53ab`, `311f6f5c`)
+- `verify-release.sh` ignores `route-cache` along with `cache/`: Next writes `.next/server/route-cache` at runtime, so a healthy release always failed the byte-identical diff.
+- `providers-baseline.json` refreshed after the v0.5.112 merge (`sensenova`, `runcrate`, `codebuddyHeaders` hooks, `reasoningAliasFields`).
+
+### PostgreSQL read-only incident (hotfix, no code change)
+- Brief window where the production database endpoint answered read-only; `PUT /api/providers/[id]` 500s and a dependent service's heartbeat failed. Fixed by pointing `DATABASE_URL` at a writable endpoint and restarting, no code change, no deploy. Details and runbook are in the internal ops notes under `docs/` (not committed).
 ---
 
 ## 2026-10-25 — RPM Spillover, Queue RPM Bar, Credit Multiplier Table

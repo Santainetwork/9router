@@ -90,3 +90,13 @@ Pre-translate hooks that compress `tool_result` content in-place to cut tokens. 
 - Binary/protobuf upstreams (kiro EventStream, cursor protobuf, commandcode NDJSON) don't round-trip through OpenAI — they're handled inside their own executor, not the translator.
 - **Security-first on PRs**: Security is the top priority when reviewing or creating PRs. Audit authentication, credential/token storage & leaks, header manipulation (`X-Forwarded-For`), and SSRF risks before functional logic. Always include explicit security warnings/notes when reporting PR reviews or changes to the user.
 - Versioning: root and `cli/` are versioned independently; changes are logged in `CHANGELOG.md`. Commit style is Conventional Commits (`fix(translator): …`, `feat(...)`).
+
+### This checkout is the SantaiNetwork fork
+
+Upstream guidance above still applies, but read these first before changing anything host-specific:
+
+- `AGENTS.md` — every fork customization, the production systemd topology (Go gateway `:20128`, Next `:20127`, limiter `:20129`, workers, public portal `:20140`), the `.next-tailadmin` build/deploy flow, and PostgreSQL endpoint notes.
+- `CHANGELOG.SantaiNetwork.md` — fork changelog, newest first, with commit hashes.
+- `docs/2026-11-08-commandcode-auth-db-report.md` — CommandCode transport switch, auth failure classification, Qoder multiplier/upload, and the PostgreSQL incident runbook (internal notes under `docs/`, not committed).
+
+Two things that are easy to get wrong here: the live service serves the `tailadmin` bundle, so a plain `npm run build` writes `.next` and the live build goes stale silently; and `tests/unit` holds two runner families (`*.test.mjs` under `node --test`, `*.test.js` under `vitest`), so `npm run verify` does not cover the `*.test.js` specs.

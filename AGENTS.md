@@ -7,8 +7,9 @@
 
 ## Current State
 - **Active Branch**: `master` (and `dev`)
-- **Latest Version**: `v0.5.75-custom` (Upstream merged from `origin/master`)
-- **Status**: Production Ready ✅ (all tests passing)
+- **Latest Version**: `v0.5.112-custom` (upstream v0.5.112 merged via `eac1a2ae`)
+- **Production Build**: `cBhhHDVF5p0GMkMP6WzdM` (`.next-tailadmin`)
+- **Status**: Production Ready ✅ (`npm run verify`: 678 pass, 2 skip, 0 fail)
 
 **Installer distDir pitfall**: `scripts/install.sh` builds with plain `npm run build` and defaults `DIST_DIR_NAME="${NEXT_DIST_DIR:-.next}"`. On this host the live bundle is `.next-tailadmin`, so `install.sh --upgrade` without `NEXT_DIST_DIR=.next-tailadmin` writes the santai build and `.dist-dir` then records `.next` wrongly. Always upgrade with `sudo NEXT_DIST_DIR=.next-tailadmin bash scripts/install.sh --upgrade` (env var must sit **before** `sudo`, not `export`ed; sudo strips the exported environment unless `-E` is passed, and the resulting fallback to `.next` is a silent wrong-bundle swap, not a gate failure). After install, run `bash scripts/verify-release.sh` (it prefers the recorded `.dist-dir` and needs repo/release byte-identical on that dir). Alternatively use the manual `build:tailadmin` flow below.
 
@@ -115,8 +116,10 @@
 
 ---
 
-### 9. Upstream Merge v0.5.75 ✅ SYNCHRONIZED
-- Merged all 29 commits from `origin/master` (v0.5.75: OpenRouter and Vertex AI Veo video generation, Antigravity weekly quota tracking, Codex GPT Image 2.5 / Flare / Sunburst image models, Qoder usage and attachments escalation, OpenCode Go catalog and models, DeepSeek Anthropic-only tool types, Claude cache_control budget fix, Xiaomi MiMo dual auth desktop integration).
+### 9. Upstream Merge v0.5.112 ✅ SYNCHRONIZED
+- Merged upstream through **v0.5.112** (merge commit `eac1a2ae`), keeping every fork feature intact. `pkg.version` tracks upstream for update checks; the SantaiNetwork version is display-only.
+- Baseline `tests/__baseline__/providers-baseline.json` refreshed after the merge (`sensenova` and `runcrate` landed upstream, plus `codebuddyHeaders` hooks and `reasoningAliasFields` on existing entries) — `npm run verify` failed on that drift before the refresh.
+- Earlier merges for reference: v0.5.75 (`origin/master`, 29 commits: OpenRouter/Vertex Veo video, Antigravity weekly quota, Codex GPT Image 2.5 / Flare / Sunburst, Qoder usage and attachments, OpenCode Go catalog, DeepSeek Anthropic-only tool types, Claude cache_control budget, Xiaomi MiMo dual auth desktop).
 
 ---
 
@@ -182,12 +185,75 @@
 
 **Operational note**: PostgreSQL startup may log a non-fatal duplicate `requestlogs.id` column warning during schema synchronization. Verify live schema before any repair. Expected state: 21 `requestlogs` columns, primary key `requestlogs_pkey`, indexes `idx_rl_key`, `idx_rl_status`, and `idx_rl_ts`.
 
+**Operational note — PostgreSQL endpoints**: this deployment fronts one cluster through two TCP entry paths, so a third-party endpoint (e.g. a pooled/recovery sidecar) can briefly answer read-only even though the production target is writable. `DATABASE_URL` lives in the deployment env file (kept out of this repo; keep a backup copy on the host). Before switching targets, verify with `select pg_is_in_recovery(), pg_current_wal_lsn()` on the port you are about to use — the port number alone does not imply primary or replica. See the internal ops notes under `docs/` (not committed).
+
+---
+
+### 15. CommandCode Transport Switch (alpha CLI vs v1 OpenAI) ✅ DEPLOYED
+**Purpose**: Let a single CommandCode connection choose which wire it speaks, without changing behaviour for existing connections.
+
+Command Code serves two endpoints from the same host and API key:
+
+| Transport | Endpoint | Body shape | Notes |
+|---|---|---|---|
+| `alpha` (default) | `/alpha/generate` | CLI envelope, AI-SDK NDJSON | Historical path; every pre-existing connection |
+| `v1` | `/provider/v1/chat/completions` | Standard OpenAI | Plan-gated per model |
+
+**Implementation**:
+- `open-sse/executors/commandcode.js`: `commandCodeTransport(credentials)` reads `providerSpecificData.commandcodeTransport`; anything but an explicit `"v1"` stays `alpha`. `buildUrl()` targets the v1 URL, `buildHeaders()` drops the `sessionId` header there, and `execute()` skips the NDJSON unwrap so upstream SSE/JSON passes through. Base URL is `COMMAND_CODE_API_BASE_URL` (default `https://api.commandcode.ai`).
+- `open-sse/services/provider.js`: `getTargetFormat()` returns `openai` for commandcode+v1, so the body is not translated into the CLI envelope (otherwise upstream answers `400 expected array`).
+- `open-sse/translator/concerns/thinkingUnified.js`: `resolveFormat()` returns `openai` for commandcode when the target format is `openai`, so `reasoning_effort` is sent top-level instead of in the alpha-only `params.reasoning_effort` that the v1 gateway ignores.
+- `open-sse/translator/request/openai-to-commandcode.js`: `params.model` is stripped of a thinking suffix (`model(high)`); leaving it in produced `403 Model/provider not recognized` on alpha.
+- UI: `src/app/(dashboard)/dashboard/providers/[id]/CommandCodeTransportCard.js`, saved via `PUT /api/providers/[id]`.
+
+**Live verification** (through `:20128`): `Kimi-K3.1-Pro(low)` 200 with 67 reasoning tokens vs `(high)` 200 with 199; upstream v1 body carried top-level `reasoning_effort` and a bare `model`; alpha with a `(high)` suffix went 403 → 200 after the fix.
+
+**Production value is `alpha`.** Switch with the card, or the same `PUT` body.
+
+---
+
+### 16. Model-scoped failures must not disable a credential ✅ DEPLOYED
+**Purpose**: One upstream `404` used to kill an account permanently.
+
+**Root cause**: `markAccountUnavailable()` wrote `testStatus: "unavailable"` for every failure. The model lock expired, the marker survived, and `getProviderCredentials()` then skipped the account forever — no request was left that could ever clear it. Same trap for `400`, `406`, `429`, `5xx`.
+
+**Implementation** (classification lives in `open-sse/services/accountFallback.js` so it is unit-testable without loading all of `auth.js`):
+- `CREDENTIAL_ERROR_CODES = {401, 402, 403}` are the only statuses allowed to persist an `unavailable` marker (`persistsUnavailableMarker`).
+- `NON_CREDENTIAL_ERROR_CODES = {400, 404, 406, 429, 500, 502, 503, 504}` write only a model lock; `testStatus`, `errorCode`, and `lastError` stay untouched.
+- `skipsStaleUnavailable(errorCode)` returns false for those statuses, so already-poisoned accounts rejoin rotation.
+- `modelLockMsForStatus(status, cooldownMs)` holds `404`/`406` for at least `MODEL_NOT_FOUND_LOCK_MS` (6 h) instead of re-probing a dead model every 2 minutes.
+- `buildClearModelLocksUpdate()` writes `undefined` instead of `null` so the lock key disappears through `JSON.stringify`. Clearing used to leave dead null keys (99 of 152 lock keys in production were nulls); those were cleaned out.
+- `open-sse/translator/request/openai-to-commandcode.js` names orphan tool results: `toolName` is resolved from the matching `assistant.tool_calls` entry by `tool_call_id`, falling back to `unknown_function` instead of sending an empty name (which Gemini rejects with `function_response.name: [REQUIRED_FIELD_MISSING]`).
+
+**Tests**: `tests/unit/auth-failure-classification.test.mjs`, `tests/unit/auth-skip-unavailable.test.mjs`, `tests/unit/model-not-found-lock.test.mjs`, `tests/unit/openai-to-commandcode.test.js`.
+
+---
+
+### 17. Qoder credit multiplier card & disabled image upload ✅ DEPLOYED
+**Multiplier card** (`8ca8c4f4`): Qoder's catalog publishes `price_factor` per chat model. `open-sse/services/qoderModels.js` carries it as `priceFactor`, `/api/providers/[id]/models` exposes it, and `QoderMultiplierCard.js` renders the live sortable table on `qoder`/`qoder-cn` provider pages. **Display-only**, never fed to routing or billing.
+
+**Image upload disabled by default** (`24395b1a`, `db02b3f8`): native qodercli `PUT`s images to `/algo/api/v2/image/upload` (COSY-signed multipart) and sends the returned OSS URL. Against the live gateway that transport cannot carry images at all:
+
+| Body shape | Result |
+|---|---|
+| multipart | always `403 signature invalid`, even with a matching envelope signature |
+| raw binary | `403` whenever the payload contains a UTF-8-encoded surrogate (`ED A0..BF`), which compressed image data hits almost immediately |
+| JSON base64 (ASCII) | passes validation, but the handler answers `500` for PAT-derived (`jt-...`) tokens |
+
+So `open-sse/shared/qoder/attachments.js` keeps uploads off (`QODER_IMAGE_UPLOAD=1` re-enables the attempt): images ≤ 512 KB (`QODER_INLINE_FALLBACK_MAX_BYTES`) stay inline as a data URI, larger ones become a short text stub, and vision still answers 200.
+
+---
+
+### 18. Release gate & provider baseline ✅ DEPLOYED
+- `scripts/verify-release.sh` excludes `route-cache` alongside `cache/`: Next writes `.next/server/route-cache` at runtime (`APP_PAGE`/`APP_ROUTE`), so a healthy release always failed the byte-identical check.
+- `tests/__baseline__/providers-baseline.json` refreshed after the v0.5.112 merge (`sensenova`, `runcrate`, `codebuddyHeaders` hooks, `reasoningAliasFields`).
+
 ---
 
 ## 🔧 Verification & Testing
 
 ```bash
-# Run unit test suite (all 60 tests passing)
+# Run unit test suite (678 pass, 2 skip)
 npm run verify
 
 # Run automated Neobrutalism E2E test
@@ -198,6 +264,14 @@ node --test tests/unit/db-postgres-adapter.test.mjs
 
 # Run Go hybrid engine tests with race detector
 cd hybrid-engine && go test ./... -race
+
+# Two runner families live in tests/unit. `npm test` only globs *.test.mjs
+# (node:test). The *.test.js files are vitest specs and are NOT part of
+# `npm run verify`; run the ones you touched separately from tests/:
+#   cd tests && npx vitest run unit/commandcode-executor.test.js
+# Passing a *.test.js file to `node --test` fails inside @vitest/runner
+# ("Cannot read properties of undefined (reading 'config')") and looks like a
+# regression when it is only the wrong runner.
 
 # Build standalone production bundle.
 # NOTE: the live service serves the tailadmin (friend) bundle, NOT the default
@@ -245,6 +319,6 @@ curl -sf -m 5 http://localhost:20128/api/health >/dev/null || { echo 'health che
 
 ---
 
-*Last Updated: September 15, 2026*  
-*Version: v0.5.75-custom*  
+*Last Updated: November 8, 2026*  
+*Version: v0.5.112-custom*  
 *Maintained by: SantaiNetwork AI Infrastructure Team*
