@@ -32,7 +32,13 @@ export function isStaleSocketError(error) {
 // bundled-in-Node global fetch), so originalFetch/globalThis.fetch is not an
 // option once we build our own Agents.
 let undiciFetch = null;
+// Test hook: a suite that stubs the network installs its fetch here instead of
+// on globalThis.fetch, which this module no longer routes through (we always
+// fetch via the package's own undici). Production path is untouched.
+let testRawFetch = null;
+export function setRawFetchForTests(fn) { testRawFetch = fn; }
 async function rawFetch(url, options) {
+  if (testRawFetch) return testRawFetch(url, options);
   undiciFetch ??= (await import("undici")).fetch;
   return undiciFetch(url, options);
 }

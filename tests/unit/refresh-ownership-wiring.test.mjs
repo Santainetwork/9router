@@ -15,11 +15,13 @@ const managerSource = await readFile(
   "utf8",
 );
 
-// proxyFetch captures globalThis.fetch once, at its first import (triggered by
-// the first credential-manager import below). Install one stable dispatcher now
-// and route each test through it, so every later module copy reaches the
-// current test's stub instead of a stale one.
+// proxyFetch no longer routes through globalThis.fetch (it always fetches via
+// the package's own undici), so the stub is installed through the module's test
+// hook instead. One stable dispatcher for the whole file: every later module
+// copy (distinct ?worker= URLs) reaches the current test's stub through it.
 let httpStub = async () => { throw new Error("no HTTP stub installed for this test"); };
+const { setRawFetchForTests } = await import("../../open-sse/utils/proxyFetch.js");
+setRawFetchForTests((url, options) => httpStub(url, options));
 globalThis.fetch = (url, options) => httpStub(url, options);
 
 function fakeRedis() {
