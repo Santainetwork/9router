@@ -76,33 +76,33 @@
    selected. Light mode: neutral slate; dark mode: Zinc/Neutral base
    (bg #09090b, card #18181b, border #27272a, text #f4f4f5, muted #a1a1aa). */
 html[data-ui-variant="friend"] {
-  --color-brand-25: #fafafa;
-  --color-brand-50: #f4f4f5;
-  --color-brand-100: #e4e4e7;
-  --color-brand-200: #d4d4d8;
-  --color-brand-300: #a1a1aa;
-  --color-brand-400: #71717a;
-  --color-brand-500: #52525b;
-  --color-brand-600: #3f3f46;
-  --color-brand-700: #27272a;
-  --color-brand-800: #1c1917;
-  --color-brand-900: #18181b;
-  --color-brand-950: #09090b;
-  --color-primary: #18181b;
-  --color-primary-hover: #27272a;
-  --color-on-primary: #fafafa;
-  --color-bg: #fafafa;
-  --color-bg-alt: #f4f4f5;
+  --color-brand-25: #f5f3ff;
+  --color-brand-50: #ede9fe;
+  --color-brand-100: #ddd6fe;
+  --color-brand-200: #c4b5fd;
+  --color-brand-300: #a78bfa;
+  --color-brand-400: #8b5cf6;
+  --color-brand-500: #7c3aed;
+  --color-brand-600: #6d28d9;
+  --color-brand-700: #5b21b6;
+  --color-brand-800: #4c1d95;
+  --color-brand-900: #2e1065;
+  --color-brand-950: #1e1b4b;
+  --color-primary: #7c3aed;
+  --color-primary-hover: #6d28d9;
+  --color-on-primary: #ffffff;
+  --color-bg: #faf9fe;
+  --color-bg-alt: #f5f3ff;
   --color-surface: #ffffff;
-  --color-surface-2: #f4f4f5;
-  --color-surface-3: #e4e4e7;
+  --color-surface-2: #f5f4fe;
+  --color-surface-3: #ebe7f8;
   --color-sidebar: #ffffff;
-  --color-border: #e4e4e7;
-  --color-border-subtle: #f4f4f5;
-  --color-text: #18181b;
-  --color-text-main: #18181b;
-  --color-text-muted: #52525b;
-  --color-text-subtle: #3f3f46;
+  --color-border: #e8e5f3;
+  --color-border-subtle: #f3f1fb;
+  --color-text: #1e1b2e;
+  --color-text-main: #1e1b2e;
+  --color-text-muted: #5a5470;
+  --color-text-subtle: #6e6885;
 
   /* Status (soft shadcn tones) */
   --color-danger: #be123c;
@@ -110,48 +110,48 @@ html[data-ui-variant="friend"] {
   --color-warning: #92400e;
   --color-info: #1d4ed8;
 
-  /* Radius (rounded-lg default) */
-  --radius-brand: 8px;
-  --radius-brand-lg: 8px;
+  /* Radius — slightly softer than zinc baseline */
+  --radius-brand: 10px;
+  --radius-brand-lg: 14px;
 
-  /* Shadows (flat with crisp borders) */
-  --shadow-soft: 0 1px 2px rgba(9, 9, 11, 0.05);
-  --shadow-warm: 0 1px 2px rgba(9, 9, 11, 0.06);
-  --shadow-elevated: 0 4px 12px -2px rgba(9, 9, 11, 0.08);
-  --shadow-elev: 0 8px 16px -4px rgba(9, 9, 11, 0.08);
-  --shadow-focus: 0 0 0 2px rgba(9, 9, 11, 0.08);
+  /* Shadows — layered with a violet undertone so elevation feels warm */
+  --shadow-soft: 0 1px 2px rgba(124, 58, 237, 0.04), 0 1px 3px rgba(9, 9, 11, 0.04);
+  --shadow-warm: 0 2px 8px rgba(124, 58, 237, 0.08), 0 1px 2px rgba(9, 9, 11, 0.04);
+  --shadow-elevated: 0 4px 16px -2px rgba(124, 58, 237, 0.10), 0 2px 4px rgba(9, 9, 11, 0.04);
+  --shadow-elev: 0 8px 24px -4px rgba(124, 58, 237, 0.10), 0 2px 8px rgba(9, 9, 11, 0.04);
+  --shadow-focus: 0 0 0 3px rgba(124, 58, 237, 0.15);
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
 }
 
 html.dark[data-ui-variant="friend"] {
-  --color-brand-25: #09090b;
-  --color-brand-50: #111113;
-  --color-brand-100: #18181b;
-  --color-brand-200: #27272a;
-  --color-brand-300: #3f3f46;
-  --color-brand-400: #52525b;
-  --color-brand-500: #71717a;
-  --color-brand-600: #a1a1aa;
-  --color-brand-700: #d4d4d8;
-  --color-brand-800: #e4e4e7;
-  --color-brand-900: #f4f4f5;
-  --color-brand-950: #fafafa;
-  --color-primary: #fafafa;
-  --color-primary-hover: #e4e4e7;
-  --color-on-primary: #09090b;
-  --color-bg: #09090b;
-  --color-bg-alt: #0c0a09;
-  --color-surface: #18181b;
-  --color-surface-2: #1c1917;
-  --color-surface-3: #27272a;
-  --color-sidebar: #0c0a09;
-  --color-border: #27272a;
-  --color-border-subtle: #1c1917;
-  --color-text: #f4f4f5;
-  --color-text-main: #f4f4f5;
-  --color-text-muted: #a1a1aa;
-  --color-text-subtle: #d4d4d8;
+  --color-brand-25: #0c0a14;
+  --color-brand-50: #130f1e;
+  --color-brand-100: #1a1625;
+  --color-brand-200: #2a2340;
+  --color-brand-300: #4c3f6e;
+  --color-brand-400: #7c6aaa;
+  --color-brand-500: #a78bfa;
+  --color-brand-600: #c4b5fd;
+  --color-brand-700: #ddd6fe;
+  --color-brand-800: #ede9fe;
+  --color-brand-900: #f5f3ff;
+  --color-brand-950: #faf5ff;
+  --color-primary: #a78bfa;
+  --color-primary-hover: #c4b5fd;
+  --color-on-primary: #0c0a14;
+  --color-bg: #0c0a14;
+  --color-bg-alt: #100e1a;
+  --color-surface: #181624;
+  --color-surface-2: #1f1c2e;
+  --color-surface-3: #282438;
+  --color-sidebar: #0e0c18;
+  --color-border: #282438;
+  --color-border-subtle: #1f1c2e;
+  --color-text: #f4f2fa;
+  --color-text-main: #f4f2fa;
+  --color-text-muted: #a19bba;
+  --color-text-subtle: #c4bdd6;
 
   /* Status (soft dark tones) */
   --color-danger: #fb7185;
@@ -160,12 +160,55 @@ html.dark[data-ui-variant="friend"] {
   --color-info: #60a5fa;
 
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-warm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-elevated: 0 4px 12px -2px rgba(0, 0, 0, 0.6);
-  --shadow-elev: 0 8px 16px -4px rgba(0, 0, 0, 0.6);
-  --shadow-focus: 0 0 0 2px rgba(244, 244, 245, 0.12);
+  --shadow-warm: 0 2px 8px rgba(167, 139, 250, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 4px 16px -2px rgba(167, 139, 250, 0.08), 0 2px 4px rgba(0, 0, 0, 0.5);
+  --shadow-elev: 0 8px 24px -4px rgba(167, 139, 250, 0.08), 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-focus: 0 0 0 2px rgba(196, 181, 253, 0.18);
 
   color-scheme: dark;
+}
+
+/* Ambient brand glow — two very faint violet radials at the top-center and
+   bottom-right corners. Adds depth without a hard gradient edge. */
+html[data-ui-variant="friend"] body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 58, 237, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(124, 58, 237, 0.03) 0%, transparent 50%),
+    var(--color-bg);
+}
+html.dark[data-ui-variant="friend"] body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(167, 139, 250, 0.02) 0%, transparent 50%),
+    var(--color-bg);
+}
+
+/* Active nav indicator — a 3px violet bar on the left edge of the current page
+   link. Scoped to the friend variant; santai sidebar is untouched. */
+html[data-ui-variant="friend"] aside nav a,
+html[data-ui-variant="friend"] aside nav button {
+  position: relative;
+}
+html[data-ui-variant="friend"] aside nav a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: var(--color-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Selection — violet-tinted instead of the santai orange */
+html[data-ui-variant="friend"] ::selection {
+  background-color: rgba(124, 58, 237, 0.18);
+  color: #1e1b2e;
+}
+html.dark[data-ui-variant="friend"] ::selection {
+  background-color: rgba(167, 139, 250, 0.20);
+  color: #f4f2fa;
 }
 
 /* Tabular numbers for metrics/latency/tokens in TailAdmin variant */

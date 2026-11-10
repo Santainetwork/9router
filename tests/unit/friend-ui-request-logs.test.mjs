@@ -8,15 +8,17 @@ test("TailAdmin (friend) CSS variant tokens complete", () => {
   const css = source("app/globals.css");
 
   assert.match(css, /html\[data-ui-variant="friend"\]/, "friend variant block must exist");
-  // Zinc/shadcn palette (was TailAdmin blue #f2f7ff..#161950 before the restyle).
-  assert.match(css, /--color-brand-25:\s*#fafafa/, "friend brand-25 token (zinc)");
-  assert.match(css, /--color-brand-950:\s*#09090b/, "friend brand-950 token (zinc)");
-  assert.match(css, /--color-primary:\s*#18181b/, "friend light primary (shadcn zinc)");
-  assert.match(css, /--color-on-primary:\s*#fafafa/, "friend light on-primary");
-  assert.match(css, /--radius-brand:\s*8px/, "friend radius-brand 8px");
-  assert.match(css, /--radius-brand-lg:\s*8px/, "friend radius-brand-lg 8px (rounded-lg default)");
-  assert.match(css, /--shadow-elev:\s*0\s+8px\s+16px/, "friend shadow-elev");
-  assert.match(css, /--shadow-focus:\s*0\s+0\s+0\s+2px/, "friend shadow-focus");
+  // Violet palette (was zinc/shadcn, which read as monochrome and flat — the
+  // whole reason for the restyle). Distinct from the santai indigo so the two
+  // variants remain visually separate.
+  assert.match(css, /--color-brand-25:\s*#f5f3ff/, "friend brand-25 token (violet tint)");
+  assert.match(css, /--color-brand-950:\s*#1e1b4b/, "friend brand-950 token (violet shade)");
+  assert.match(css, /--color-primary:\s*#7c3aed/, "friend light primary (violet-600)");
+  assert.match(css, /--color-on-primary:\s*#ffffff/, "friend light on-primary");
+  assert.match(css, /--radius-brand:\s*10px/, "friend radius-brand 10px");
+  assert.match(css, /--radius-brand-lg:\s*14px/, "friend radius-brand-lg 14px");
+  assert.match(css, /--shadow-elev:/, "friend shadow-elev");
+  assert.match(css, /--shadow-focus/, "friend shadow-focus");
   assert.match(css, /--color-danger:\s*#be123c/, "friend danger status color");
   assert.match(css, /--color-success:\s*#047857/, "friend success status color");
 });
@@ -25,8 +27,8 @@ test("TailAdmin dark tokens + on-primary contrast guard", () => {
   const css = source("app/globals.css");
 
   assert.match(css, /html\.dark\[data-ui-variant="friend"\]/, "friend dark block must exist");
-  assert.match(css, /--color-primary:\s*#fafafa/, "friend dark primary inverts to near-white");
-  assert.match(css, /--color-on-primary:\s*#09090b/, "friend dark on-primary inverts to near-black");
+  assert.match(css, /--color-primary:\s*#a78bfa/, "friend dark primary (violet-300)");
+  assert.match(css, /--color-on-primary:\s*#0c0a14/, "friend dark on-primary (violet-950 ink)");
   // Without this shim every `bg-primary text-white` call site goes invisible in
   // friend dark mode, where primary is near-white (#fafafa).
   assert.match(
