@@ -85,7 +85,7 @@ export function buildRequestLogSavePayload(entry) {
   return withoutUndefined(Object.fromEntries([
     "timestamp", "apiKeyId", "apiKeyName", "apiKeyMasked", "ip", "method", "path", "endpointKind",
     "model", "provider", "resolvedModel", "status", "stream", "promptTokens", "completionTokens",
-    "durationMs", "ttftMs", "tps", "inputTps", "userAgent", "error",
+    "durationMs", "ttftMs", "tps", "userAgent", "error",
   ].map((key) => [key, entry[key]])));
 }
 

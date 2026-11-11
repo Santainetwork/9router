@@ -189,7 +189,7 @@ function applyRequestDetailSave(db, payload) {
 }
 
 function applyRequestLogSave(db, payload) {
-  const cols = ["timestamp", "apiKeyId", "apiKeyName", "apiKeyMasked", "ip", "method", "path", "endpointKind", "model", "provider", "resolvedModel", "status", "stream", "promptTokens", "completionTokens", "durationMs", "ttftMs", "tps", "inputTps", "userAgent", "error"];
+  const cols = ["timestamp", "apiKeyId", "apiKeyName", "apiKeyMasked", "ip", "method", "path", "endpointKind", "model", "provider", "resolvedModel", "status", "stream", "promptTokens", "completionTokens", "durationMs", "ttftMs", "tps", "userAgent", "error"];
   const values = cols.map((key) => payload[key] ?? null);
   db.run(`INSERT INTO requestLogs(${cols.join(",")}) VALUES(${cols.map(() => "?").join(",")})`, values);
   const maxRows = Math.max(100, parseInt(process.env.REQUEST_LOGS_MAX || "5000", 10));

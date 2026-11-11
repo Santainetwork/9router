@@ -2,7 +2,6 @@ import { getApiKeyByKey } from "@/lib/db/repos/apiKeysRepo.js";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import { requestLogStore, insertRequestLog } from "@/lib/db/repos/requestLogsRepo.js";
 import { extractApiKey, maskKey } from "@/lib/requestLogUtils.js";
-import { computeInputTps, computeTps } from "@/lib/requestLogTps.js";
 
 function clientIp(request) {
   return getClientIp(request);
@@ -19,9 +18,10 @@ async function peekModel(request) {
   } catch { return null; }
 }
 
-// Re-export so existing importers keep working; the math lives in its own
-// import-free module so it can be unit-tested without the DB layer.
-export { computeTps, computeInputTps } from "@/lib/requestLogTps.js";
+export function computeTps(completionTokens, durationMs, ttftMs, stream) {
+  const generationMs = stream && durationMs > ttftMs ? durationMs - ttftMs : durationMs;
+  return completionTokens && generationMs > 0 ? Math.round((completionTokens / (generationMs / 1000)) * 10) / 10 : 0;
+}
 
 export function withRequestLog(kind, handler) {
   return async (request, routeCtx) => {
@@ -39,7 +39,7 @@ export function withRequestLog(kind, handler) {
       const ended = Date.now();
       const durationMs = ended - started;
       const ttftMs = context.ttftAt ? context.ttftAt - started : durationMs;
-      return insertRequestLog({ ...context, status, durationMs, ttftMs, tps: computeTps(context.completionTokens, durationMs, ttftMs, context.stream), inputTps: computeInputTps(context.promptTokens, ttftMs) });
+      return insertRequestLog({ ...context, status, durationMs, ttftMs, tps: computeTps(context.completionTokens, durationMs, ttftMs, context.stream) });
     };
     let response;
     try { response = await requestLogStore.run(context, () => handler(request, routeCtx)); }

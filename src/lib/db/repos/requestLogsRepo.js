@@ -13,7 +13,7 @@ export async function insertRequestLog(entry) {
       return;
     }
     const db = await getAdapter();
-    const cols = ["timestamp", "apiKeyId", "apiKeyName", "apiKeyMasked", "ip", "method", "path", "endpointKind", "model", "provider", "resolvedModel", "status", "stream", "promptTokens", "completionTokens", "durationMs", "ttftMs", "tps", "inputTps", "userAgent", "error"];
+    const cols = ["timestamp", "apiKeyId", "apiKeyName", "apiKeyMasked", "ip", "method", "path", "endpointKind", "model", "provider", "resolvedModel", "status", "stream", "promptTokens", "completionTokens", "durationMs", "ttftMs", "tps", "userAgent", "error"];
     const values = cols.map((key) => typeof entry[key] === "boolean" ? (entry[key] ? 1 : 0) : entry[key] ?? null);
     db.run(`INSERT INTO requestLogs(${cols.join(",")}) VALUES(${cols.map(() => "?").join(",")})`, values);
     if (++insertsSincePrune >= 100) {
@@ -44,9 +44,7 @@ export async function getRequestLogs(filter = {}) {
   const pageSize = Math.min(200, Math.max(1, Number(filter.pageSize) || 50));
   const total = Number(db.get(`SELECT COUNT(*) AS c FROM requestLogs${where}`, params)?.c || 0);
   const logs = db.all(`SELECT * FROM requestLogs${where} ORDER BY id DESC LIMIT ? OFFSET ?`, [...params, pageSize, (page - 1) * pageSize])
-    // Rows written before inputTps existed carry 0; derive it from the same
-    // numbers the writer would have used rather than showing a blank column.
-    .map((row) => ({ ...row, inputTps: row.inputTps || (row.promptTokens && row.ttftMs ? Math.round((row.promptTokens / (row.ttftMs / 1000)) * 10) / 10 : 0), stream: row.stream === 1 }));
+    .map((row) => ({ ...row, stream: row.stream === 1 }));
   return { logs, pagination: { page, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) } };
 }
 
