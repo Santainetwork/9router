@@ -213,6 +213,7 @@ export const TABLES = {
       durationMs: "INTEGER DEFAULT 0",
       ttftMs: "INTEGER DEFAULT 0",
       tps: "REAL DEFAULT 0",
+      inputTps: "REAL DEFAULT 0",
       userAgent: "TEXT",
       error: "TEXT",
     },

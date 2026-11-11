@@ -45,7 +45,7 @@ function createDb() {
       timestamp TEXT NOT NULL, apiKeyId TEXT, apiKeyName TEXT, apiKeyMasked TEXT, ip TEXT,
       method TEXT NOT NULL, path TEXT NOT NULL, endpointKind TEXT, model TEXT, provider TEXT,
       resolvedModel TEXT, status INTEGER, stream INTEGER, promptTokens INTEGER, completionTokens INTEGER,
-      durationMs INTEGER, ttftMs INTEGER, tps REAL, userAgent TEXT, error TEXT
+      durationMs INTEGER, ttftMs INTEGER, tps REAL, inputTps REAL, userAgent TEXT, error TEXT
     );
     CREATE TABLE provider_footer_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

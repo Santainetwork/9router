@@ -12,6 +12,12 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function formatTps(value) {
+  const n = Number(value || 0);
+  if (!n) return "—";
+  return n >= 100 ? String(Math.round(n)) : n.toFixed(1);
+}
+
 function statusClass(status) {
   if (status >= 500 || status === 499) return "text-danger dark:text-danger";
   if (status >= 400) return "text-warning dark:text-warning";
@@ -67,7 +73,7 @@ export default function RequestLogsClient() {
       {error && <p className="p-4 text-sm text-danger dark:text-danger">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="bg-surface-2 text-xs uppercase text-text-muted"><tr>{["Time", "Status", "API key", "IP", "Method / path", "Model", "In", "Out", "TPS", "Duration"].map((label) => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead>
+          <thead className="bg-surface-2 text-xs uppercase text-text-muted"><tr>{["Time", "Status", "API key", "IP", "Method / path", "Model", "In tok", "Out tok", "In TPS", "Out TPS", "Duration"].map((label) => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-border-subtle">
             {data.logs.map((log) => <tr key={log.id} className="text-text-main">
               <td className="whitespace-nowrap px-4 py-3 text-xs text-text-muted">{new Date(log.timestamp).toLocaleString()}</td>
@@ -76,10 +82,12 @@ export default function RequestLogsClient() {
               <td className="px-4 py-3 font-mono text-xs">{log.ip || "unknown"}</td>
               <td className="px-4 py-3"><span className="font-semibold">{log.method}</span> <span className="font-mono text-xs">{log.path}</span></td>
               <td className="max-w-[220px] truncate px-4 py-3" title={log.resolvedModel || log.model}>{log.resolvedModel || log.model || "-"}</td>
-              <td className="px-4 py-3">{formatNumber(log.promptTokens)}</td><td className="px-4 py-3">{formatNumber(log.completionTokens)}</td>
-              <td className="px-4 py-3">{Number(log.tps || 0).toFixed(1)}</td><td className="px-4 py-3">{formatNumber(log.durationMs)}ms</td>
+              <td className="px-4 py-3 tabular-nums">{formatNumber(log.promptTokens)}</td><td className="px-4 py-3 tabular-nums">{formatNumber(log.completionTokens)}</td>
+              <td className="px-4 py-3 tabular-nums" title={`${formatNumber(log.promptTokens)} prompt tok / ${formatNumber(log.ttftMs)}ms TTFT`}>{formatTps(log.inputTps)}</td>
+              <td className="px-4 py-3 tabular-nums" title={log.stream ? `${formatNumber(log.completionTokens)} out tok / ${formatNumber(Math.max(0, (log.durationMs || 0) - (log.ttftMs || 0)))}ms generation` : "non-streaming: uses total duration"}>{formatTps(log.tps)}</td>
+              <td className="px-4 py-3 tabular-nums">{formatNumber(log.durationMs)}ms</td>
             </tr>)}
-            {!data.logs.length && <tr><td colSpan="10" className="px-4 py-12 text-center text-text-muted">No inbound requests logged.</td></tr>}
+            {!data.logs.length && <tr><td colSpan="11" className="px-4 py-12 text-center text-text-muted">No inbound requests logged.</td></tr>}
           </tbody>
         </table>
       </div>
