@@ -183,7 +183,9 @@
 - `src/shared/components/Sidebar.js`: `/dashboard/request-logs` navigation entry in both SantaiNetwork and TailAdmin themes.
 - `tests/unit/friend-ui-request-logs.test.mjs`: Regression coverage for route and navigation visibility.
 
-**Operational note**: PostgreSQL startup may log a non-fatal duplicate `requestlogs.id` column warning during schema synchronization. Verify live schema before any repair. Expected state: 21 `requestlogs` columns, primary key `requestlogs_pkey`, indexes `idx_rl_key`, `idx_rl_status`, and `idx_rl_ts`.
+**Operational note**: PostgreSQL startup may log
+
+**Operational note — request log retention**: `requestLogs` is a bounded ring buffer, not an audit log. The writer prunes every 100 inserts down to `REQUEST_LOGS_MAX` rows (default **5000**, ~3 days at the observed ~1.7k/day peak). The pruning deletes the oldest rows server-side, so anything older silently disappears from Request Logs even though `usagehistory` still has it (that table is never pruned). `REQUEST_LOGS_MAX=20000` is now set in `/etc/9router.env` (≈2 weeks of history); bump it further in the env file if longer retention is wanted — no rebuild needed, just `systemctl restart 9router`. Env backup: `/etc/9router.env.bak-20261112-134927`. a non-fatal duplicate `requestlogs.id` column warning during schema synchronization. Verify live schema before any repair. Expected state: 21 `requestlogs` columns, primary key `requestlogs_pkey`, indexes `idx_rl_key`, `idx_rl_status`, and `idx_rl_ts`.
 
 **Operational note — PostgreSQL endpoints**: this deployment fronts one cluster through two TCP entry paths, so a third-party endpoint (e.g. a pooled/recovery sidecar) can briefly answer read-only even though the production target is writable. `DATABASE_URL` lives in the deployment env file (kept out of this repo; keep a backup copy on the host). Before switching targets, verify with `select pg_is_in_recovery(), pg_current_wal_lsn()` on the port you are about to use — the port number alone does not imply primary or replica. See the internal ops notes under `docs/` (not committed).
 
